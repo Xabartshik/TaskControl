@@ -11,4 +11,8 @@
     <Folder Include="Presentation\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="UnitsNet" Version="5.74.0" />
+  </ItemGroup>
+
 </Project>

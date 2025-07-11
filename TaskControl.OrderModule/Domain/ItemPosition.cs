@@ -1,0 +1,37 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using UnitsNet;
+
+namespace TaskControl.OrderModule.Domain
+{
+    /// <summary>
+    /// Физическое расположение товара на складе
+    /// </summary>
+    public class ItemPosition
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(50)]
+        public string Barcode { get; set; }
+
+        [Required]
+        [Range(1, int.MaxValue)]
+        public int PositionId { get; set; } // Ссылка на складскую позицию
+
+        [Required]
+        [Range(0.001, double.MaxValue)]
+        public decimal Quantity { get; set; }
+
+        // Использование UnitsNet для размеров
+        public Length Length { get; set; }
+        public Length Width { get; set; }
+        public Length Height { get; set; }
+
+    }
+}
