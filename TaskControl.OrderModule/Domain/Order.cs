@@ -51,14 +51,14 @@ namespace TaskControl.OrderModule.Domain
         /// Статус заказа
         /// </summary>
         [Required]
-        [RegularExpression("^(New|Processing|Shipped|Delivered|Cancelled)$",
+        [RegularExpression("^(New|Processing|Delivered|Cancelled)$",
             ErrorMessage = "Недопустимый статус заказа")]
         public string Status { get; set; } = "New";
 
         /// <summary>
         /// Проверяет, требует ли заказ доставки
         /// </summary>
-        public bool RequiresDelivery() => Type == "Online" || Type == "Wholesale";
+        public bool RequiresDelivery() => Type == "Online";
 
     }
 }
