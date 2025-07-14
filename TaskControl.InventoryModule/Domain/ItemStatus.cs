@@ -26,6 +26,9 @@ namespace TaskControl.OrderModule.Domain
         [Required]
         public DateTime StatusDate { get; set; } = DateTime.UtcNow;
 
+        [Required]
+        public int Quantity { get; set; }
+
 
 
     }

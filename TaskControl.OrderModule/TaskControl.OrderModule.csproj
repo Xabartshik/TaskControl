@@ -7,11 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="DataAccess\" />
+    <Folder Include="DataAccess\Infrastructure\" />
+    <Folder Include="DataAccess\Interface\" />
+    <Folder Include="DataAccess\Mapper\" />
+    <Folder Include="DataAccess\Repositories\" />
     <Folder Include="Presentation\" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="linq2db" Version="5.4.1" />
+    <PackageReference Include="linq2db.PostgreSQL" Version="5.4.1" />
     <PackageReference Include="UnitsNet" Version="5.74.0" />
   </ItemGroup>
 

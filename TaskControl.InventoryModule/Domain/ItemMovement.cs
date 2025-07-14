@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TaskControl.OrderModule.Domain
+namespace TaskControl.InventoryModule.Domain
 {
     /// <summary>
     /// Запись о перемещении товара между позициями
@@ -15,25 +15,17 @@ namespace TaskControl.OrderModule.Domain
         [Key]
         public int Id { get; set; }
 
-        [Required]
-        public int SourceItemPositionId { get; set; }
+        public int? SourceItemPositionId { get; set; }
 
+        public int? SourceBranchId { get; set; }
 
-        [Required]
-        public int SourceBranchId { get; set; }
+        public int? DestinationBranchId { get; set; }
 
-        [Required]
-        public int DestinationBranchId { get; set; }
-
-        public int DestinationPositionId { get; set; }
+        public int? DestinationPositionId { get; set; }
 
         [Required]
         [Range(0.001, double.MaxValue)]
         public decimal Quantity { get; set; }
 
-
-
-        [StringLength(50)]
-        public string? Status { get; set; }
     }
 }

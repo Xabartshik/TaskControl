@@ -8,9 +8,9 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.OrderModule.Application.DTOs
 {
-    public record OrderPositionDto
+    public record OrderPositionDTO
     {
-        public int UniqueID { get; init; }
+        public int Id { get; init; }
 
         [Required]
         [Range(1, int.MaxValue)]
@@ -24,17 +24,17 @@ namespace TaskControl.OrderModule.Application.DTOs
         [Range(0.01, double.MaxValue)]
         public decimal Quantity { get; init; }
 
-        public static OrderPosition FromDto(OrderPositionDto dto) => new()
+        public static OrderPosition FromDto(OrderPositionDTO dto) => new()
         {
-            UniqueID = dto.UniqueID,
+            UniqueID = dto.Id,
             OrderId = dto.OrderId,
             ItemPositionId = dto.ItemPositionId,
             Quantity = dto.Quantity
         };
 
-        public static OrderPositionDto ToDto(OrderPosition entity) => new()
+        public static OrderPositionDTO ToDto(OrderPosition entity) => new()
         {
-            UniqueID = entity.UniqueID,
+            Id = entity.UniqueID,
             OrderId = entity.OrderId,
             ItemPositionId = entity.ItemPositionId,
             Quantity = entity.Quantity

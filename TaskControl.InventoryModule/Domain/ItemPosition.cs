@@ -17,12 +17,13 @@ namespace TaskControl.OrderModule.Domain
         public int Id { get; set; }
 
         [Required]
-        [StringLength(50)]
-        public string Barcode { get; set; }
+        [Range(1, int.MaxValue)]
+        public int ItemId { get; set; } // Ссылка на номер предмета
 
         [Required]
         [Range(1, int.MaxValue)]
         public int PositionId { get; set; } // Ссылка на складскую позицию
+
 
         [Required]
         [Range(0.001, double.MaxValue)]

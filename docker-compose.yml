@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: taskservice_postgres
+    environment:
+      POSTGRES_DB: taskservice_db
+      POSTGRES_USER: taskservice_user
+      POSTGRES_PASSWORD: qwertyuiop
+    ports:
+      - "2192:2192"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: taskservice_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@taskservice.com
+      PGADMIN_DEFAULT_PASSWORD: qwertyuiop
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data: 
+  pgadmin-data:   

@@ -8,9 +8,9 @@ using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
-    public record PositionDto
+    public record PositionDTO
     {
-        public int PositionCellId { get; init; }
+        public int Id { get; init; }
 
         [Required]
         [Range(1, int.MaxValue)]
@@ -45,9 +45,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Range(0.01, 20)]
         public decimal Height { get; init; }
 
-        public static PositionCell FromDto(PositionDto dto) => new()
+        public static PositionCell FromDto(PositionDTO dto) => new()
         {
-            PositionId = dto.PositionCellId,
+            PositionId = dto.Id,
             BranchId = dto.BranchId,
             Status = dto.Status,
             ZoneCode = dto.ZoneCode,
@@ -60,9 +60,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Height = dto.Height
         };
 
-        public static PositionDto ToDto(PositionCell entity) => new()
+        public static PositionDTO ToDto(PositionCell entity) => new()
         {
-            PositionCellId = entity.PositionId,
+            Id = entity.PositionId,
             BranchId = entity.BranchId,
             Status = entity.Status,
             ZoneCode = entity.ZoneCode,
