@@ -4,14 +4,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.ReportsModule.DataAccess.Model;
 
-namespace TaskControl.TaskModule.DataAccess.Interface
+namespace TaskControl.ReportsModule.DataAccess.Interface
 {
-    public interface ITaskDataConnection
+    public interface IReportDataConnection
     {
-        ITable<ActiveTaskModel> ActiveTasks { get; }
-        ITable<TaskAssignationModel> TaskAssignations { get; }
+        ITable<RawEventModel> RawEvents { get; }
 
         Task<int> InsertAsync<T>(T entity) where T : class;
         Task<int> UpdateAsync<T>(T entity) where T : class;

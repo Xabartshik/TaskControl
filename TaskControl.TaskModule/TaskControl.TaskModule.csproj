@@ -8,13 +8,13 @@
 
   <ItemGroup>
     <Folder Include="DataAccess\Repositories\" />
-    <Folder Include="DataAccess\Infrastructure\" />
     <Folder Include="Presentation\" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="linq2db" Version="5.4.1" />
     <PackageReference Include="linq2db.PostgreSQL" Version="5.4.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.7" />
   </ItemGroup>
 
 </Project>
