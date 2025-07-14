@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnitsNet;
 
 namespace TaskControl.InventoryModule.Domain
 {
@@ -64,22 +65,18 @@ namespace TaskControl.InventoryModule.Domain
         /// Длина ячейки в метрах
         /// </summary>
         [Range(0.01, 20, ErrorMessage = "Длина должна быть от 0.01 до 20 м")]
-        public decimal Length { get; set; }
+        public Length Length { get; set; }
         /// <summary>
         /// Ширина ячейки в метрах
         /// </summary>
         [Range(0.01, 20, ErrorMessage = "Ширина должна быть от 0.01 до 20 м")]
-        public decimal Width { get; set; }
+        public Length Width { get; set; }
         /// <summary>
         /// Высота ячейки в метрах
         /// </summary>
         [Range(0.01, 20, ErrorMessage = "Высота должна быть от 0.01 до 20 м")]
-        public decimal Height { get; set; }
+        public Length Height { get; set; }
 
-        /// <summary>
-        /// Рассчитывает объем ячейки в m^3
-        /// </summary>
-        public decimal CalculateVolume() => Length * Width * Height;
 
         /// <summary>
         /// Проверяет доступность позиции

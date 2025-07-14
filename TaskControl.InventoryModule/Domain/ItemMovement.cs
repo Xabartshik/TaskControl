@@ -25,7 +25,7 @@ namespace TaskControl.InventoryModule.Domain
 
         [Required]
         [Range(0.001, double.MaxValue)]
-        public decimal Quantity { get; set; }
+        public int Quantity { get; set; }
 
     }
 }

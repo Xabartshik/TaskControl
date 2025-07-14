@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace TaskControl.InformationModule.DataAccess.Model
 {
     [Table("check_io_employees")]
-    public class CheckIoEmployeeModel
+    public class CheckIOEmployeeModel
     {
         [Column("id")][PrimaryKey][Identity] public int Id { get; set; }
         [Column("employee_id")][NotNull] public int EmployeeId { get; set; }

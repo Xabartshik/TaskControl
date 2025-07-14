@@ -13,7 +13,7 @@ namespace TaskControl.OrderModule.Domain
     public class OrderPosition
     {
         [Required]
-        public int UniqueID { get; set; }
+        public int UniqueId { get; set; }
 
         [Required(ErrorMessage = "Не указан заказ")]
         [Range(1, int.MaxValue, ErrorMessage = "Некорректный ID заказа")]
@@ -25,14 +25,11 @@ namespace TaskControl.OrderModule.Domain
 
         [Required(ErrorMessage = "Укажите количество")]
         [Range(0.01, double.MaxValue, ErrorMessage = "Количество должно быть положительным")]
-        public decimal Quantity { get; set; }
+        public int Quantity { get; set; }
 
         /// <summary>
         /// Проверяет валидность количества
         /// </summary>
-        public bool ValidateQuantity(decimal availableQuantity)
-        {
-            return Quantity > 0 && Quantity <= availableQuantity;
-        }
+
     }
 }

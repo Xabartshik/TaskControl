@@ -10,7 +10,7 @@ namespace TaskControl.OrderModule.DataAccess.Model
     [Table("orders")]
     public class OrderModel
     {
-        [Column("order_id"), PrimaryKey, Identity] public int Id { get; set; }
+        [Column("order_id"), PrimaryKey, Identity] public int OrderId { get; set; }
         [Column("customer_id"), NotNull] public int CustomerId { get; set; }
         [Column("branch_id"), NotNull] public int BranchId { get; set; }
         [Column("delivery_date")] public DateTime? DeliveryDate { get; set; }

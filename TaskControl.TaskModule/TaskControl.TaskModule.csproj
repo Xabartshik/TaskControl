@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="DataAccess\Mapper\" />
     <Folder Include="DataAccess\Repositories\" />
     <Folder Include="DataAccess\Infrastructure\" />
     <Folder Include="Presentation\" />

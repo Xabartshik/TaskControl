@@ -121,7 +121,6 @@ CREATE INDEX idx_orders_delivery_date ON orders (delivery_date);
 CREATE TABLE IF NOT EXISTS positions (
     position_id SERIAL PRIMARY KEY,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
-    position_code VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Inactive', 'Maintenance')),
     zone_code VARCHAR(10),
     first_level_storage_type VARCHAR(30) NOT NULL,

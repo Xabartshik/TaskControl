@@ -9,7 +9,6 @@
   <ItemGroup>
     <Folder Include="DataAccess\Infrastructure\" />
     <Folder Include="DataAccess\Interface\" />
-    <Folder Include="DataAccess\Mapper\" />
     <Folder Include="DataAccess\Repositories\" />
     <Folder Include="Presentation\" />
   </ItemGroup>
