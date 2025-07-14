@@ -134,7 +134,6 @@ CREATE TABLE IF NOT EXISTS positions (
 );
 
 -- Уникальный индекс для кодов позиций
-CREATE UNIQUE INDEX idx_positions_code ON positions (position_code);
 CREATE INDEX idx_positions_branch ON positions (branch_id);
 CREATE INDEX idx_positions_status ON positions (status);
 CREATE INDEX idx_positions_zone ON positions (zone_code);
@@ -165,9 +164,9 @@ CREATE TABLE IF NOT EXISTS item_positions (
 );
 
 -- Индексы для товарных позиций
-CREATE INDEX idx_item_positions_barcode ON item_positions (barcode);
 CREATE INDEX idx_item_positions_position ON item_positions (position_id);
-CREATE UNIQUE INDEX idx_item_positions_unique ON item_positions (barcode, position_id);
+CREATE INDEX idx_item_positions_item ON item_positions (item_id);
+CREATE UNIQUE INDEX idx_item_positions_id ON item_positions (id);
 
 -- Создание таблицы перемещений товара
 CREATE TABLE IF NOT EXISTS item_movements (
@@ -181,11 +180,10 @@ CREATE TABLE IF NOT EXISTS item_movements (
 );
 
 -- Индексы для перемещений
-CREATE INDEX idx_item_movements_source ON item_movements (source_item_position_id);
-CREATE INDEX idx_item_movements_destination ON item_movements (destination_position_id);
-CREATE INDEX idx_item_movements_user ON item_movements (user_id);
-CREATE INDEX idx_item_movements_time ON item_movements (movement_time);
-
+CREATE INDEX idx_item_movements_source_itempos ON item_movements (source_item_position_id);
+CREATE INDEX idx_item_movements_destination_pos ON item_movements (destination_position_id);
+CREATE INDEX idx_item_movements_source_branch ON item_movements (source_branch_id);
+CREATE INDEX idx_item_movements_destination_branch ON item_movements (destination_branch_id);
 -- Создание таблицы статусов товара
 CREATE TABLE IF NOT EXISTS item_statuses (
     id SERIAL PRIMARY KEY,
