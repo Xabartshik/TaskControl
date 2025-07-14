@@ -8,7 +8,8 @@
 
   <ItemGroup>
     <Folder Include="AppSettings\" />
-    <Folder Include="Interfaces\" />
+    <Folder Include="SharedInterfaces\" />
+    <Folder Include="SharedDomain\" />
   </ItemGroup>
 
 </Project>
