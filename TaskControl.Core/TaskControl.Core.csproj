@@ -10,7 +10,6 @@
     <Folder Include="AppSettings\" />
     <Folder Include="SharedDomain\" />
     <Folder Include="SharedInfrastucture\" />
-    <Folder Include="SharedInterfaces\" />
   </ItemGroup>
 
   <ItemGroup>
