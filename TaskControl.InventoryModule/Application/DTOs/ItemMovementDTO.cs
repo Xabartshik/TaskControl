@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
@@ -22,6 +23,26 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
+        public static ItemMovement FromDto(ItemMovementDTO dto) => new()
+        {
+            Id = dto.Id,
+            SourceItemPositionId = dto.SourceItemPositionId,
+            DestinationPositionId = dto.DestinationPositionId,
+            SourceBranchId = dto.SourceBranchId,
+            DestinationBranchId = dto.DestinationBranchId,
+            Quantity = dto.Quantity
+        };
 
+        public static ItemMovementDTO ToDto(ItemMovement entity) => new()
+        {
+            Id = entity.Id,
+            SourceItemPositionId = entity.SourceItemPositionId,
+            DestinationPositionId = entity.DestinationPositionId,
+            SourceBranchId = entity.SourceBranchId,
+            DestinationBranchId = entity.DestinationBranchId,
+            Quantity = entity.Quantity
+        };
     }
+
+
 }
