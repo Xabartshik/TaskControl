@@ -21,7 +21,8 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 DestinationPositionId = entity.DestinationPositionId,
                 SourceBranchId = entity.SourceBranchId,
                 DestinationBranchId = entity.DestinationBranchId,
-                Quantity = entity.Quantity
+                Quantity = entity.Quantity,
+                CreatedAt = DateTime.UtcNow
             };
         }
 

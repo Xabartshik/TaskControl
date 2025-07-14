@@ -16,5 +16,6 @@ namespace TaskControl.InventoryModule.DataAccess.Model
         [Column("source_branch_id")] public int? SourceBranchId { get; set; }
         [Column("destination_branch_id")] public int? DestinationBranchId { get; set; }
         [Column("quantity")][NotNull] public int Quantity { get; set; }
+        [Column("created_at")][NotNull] public DateTime CreatedAt { get; set; }
     }
 }

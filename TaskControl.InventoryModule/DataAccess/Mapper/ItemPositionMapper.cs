@@ -23,6 +23,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 Length = entity.Length,
                 Width = entity.Width,
                 Height = entity.Height,
+                CreatedAt = DateTime.UtcNow
             };
         }
 

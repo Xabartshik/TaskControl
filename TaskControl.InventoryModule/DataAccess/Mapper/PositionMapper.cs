@@ -27,7 +27,8 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 ThirdLevelStorage = entity.ThirdLevelStorage,
                 Length = entity.Length,
                 Width = entity.Width,
-                Height = entity.Height
+                Height = entity.Height,
+                CreatedAt = DateTime.UtcNow
             };
         }
 

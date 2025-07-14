@@ -14,6 +14,6 @@ namespace TaskControl.InformationModule.DataAccess.Model
         [Column("employee_id")][NotNull] public int EmployeeId { get; set; }
         [Column("branch_id")][NotNull] public int BranchId { get; set; }
         [Column("check_type")][NotNull] public string CheckType { get; set; }
-        [Column("check_timestamp")][NotNull] public DateTime CheckTimestamp { get; set; }
+        [Column("check_timestamp")][NotNull] public DateTime CheckTimeStamp { get; set; }
     }
 }

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InventoryModule.Domain;
+using UnitsNet;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
@@ -37,13 +38,13 @@ namespace TaskControl.InventoryModule.Application.DTOs
         public string? ThirdLevelStorage { get; init; }
 
         [Range(0.01, 20)]
-        public decimal Length { get; init; }
+        public Length Length { get; init; }
 
         [Range(0.01, 20)]
-        public decimal Width { get; init; }
+        public Length Width { get; init; }
 
         [Range(0.01, 20)]
-        public decimal Height { get; init; }
+        public Length Height { get; init; }
 
         public static PositionCell FromDto(PositionDTO dto) => new()
         {

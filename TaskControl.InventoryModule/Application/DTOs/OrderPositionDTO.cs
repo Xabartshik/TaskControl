@@ -10,7 +10,7 @@ namespace TaskControl.OrderModule.Application.DTOs
 {
     public record OrderPositionDTO
     {
-        public int Id { get; init; }
+        public int UniqueId { get; init; }
 
         [Required]
         [Range(1, int.MaxValue)]
@@ -21,12 +21,11 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int ItemPositionId { get; init; }
 
         [Required]
-        [Range(0.01, double.MaxValue)]
-        public decimal Quantity { get; init; }
+        public int Quantity { get; init; }
 
         public static OrderPosition FromDto(OrderPositionDTO dto) => new()
         {
-            UniqueID = dto.Id,
+            UniqueId = dto.UniqueId,
             OrderId = dto.OrderId,
             ItemPositionId = dto.ItemPositionId,
             Quantity = dto.Quantity
@@ -34,7 +33,7 @@ namespace TaskControl.OrderModule.Application.DTOs
 
         public static OrderPositionDTO ToDto(OrderPosition entity) => new()
         {
-            Id = entity.UniqueID,
+            UniqueId = entity.UniqueId,
             OrderId = entity.OrderId,
             ItemPositionId = entity.ItemPositionId,
             Quantity = entity.Quantity

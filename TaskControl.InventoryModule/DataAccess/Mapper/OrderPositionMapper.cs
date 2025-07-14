@@ -19,7 +19,8 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 UniqueId = entity.UniqueId,
                 OrderId = entity.OrderId,
                 ItemPositionId = entity.ItemPositionId,
-                Quantity = entity.Quantity
+                Quantity = entity.Quantity,
+                CreatedAt = DateTime.UtcNow
             };
         }
 

@@ -176,7 +176,8 @@ CREATE TABLE IF NOT EXISTS item_movements (
     destination_position_id INT REFERENCES positions(position_id),
     source_branch_id INT REFERENCES branches(branch_id),
     destination_branch_id INT REFERENCES branches(branch_id),
-    quantity INT NOT NULL CHECK (quantity > 0)
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Индексы для перемещений
