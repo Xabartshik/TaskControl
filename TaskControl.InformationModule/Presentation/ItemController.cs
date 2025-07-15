@@ -6,7 +6,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class ItemController : ControllerBase
+    public class ItemController : ControllerBase, ICrudController<ItemDto, int>
     {
         private readonly IService<ItemDto> _service;
 

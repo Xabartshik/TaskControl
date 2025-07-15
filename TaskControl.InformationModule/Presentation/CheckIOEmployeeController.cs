@@ -6,7 +6,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class CheckIOEmployeeController : ControllerBase
+    public class CheckIOEmployeeController : ControllerBase, ICrudController<CheckIOEmployeeDto, int>
     {
         private readonly IService<CheckIOEmployeeDto> _service;
 

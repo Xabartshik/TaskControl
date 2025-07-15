@@ -8,7 +8,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class EmployeeController : ControllerBase
+    public class EmployeeController : ControllerBase, ICrudController<EmployeeDto, int>
     {
         private readonly IService<EmployeeDto> _service;
 
