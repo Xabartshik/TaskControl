@@ -11,7 +11,7 @@ namespace TaskControl.InformationModule.DataAccess.Interface
     public interface IInformationDataConnection
     {
         ITable<BranchModel> Branches { get; }
-        ITable<CheckIOEmployeeModel> CheckIoEmployees { get; }
+        ITable<CheckIOEmployeeModel> CheckIOEmployees { get; }
         ITable<EmployeeModel> Employees { get; }
         ITable<ItemModel> Items { get; }
 

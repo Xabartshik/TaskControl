@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.OrderModule.Domain;
+using UnitsNet;
 
 namespace TaskControl.InventoryModule.DataAccess.Mapper
 {
@@ -25,9 +26,9 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 FLSNumber = entity.FLSNumber,
                 SecondLevelStorage = entity.SecondLevelStorage,
                 ThirdLevelStorage = entity.ThirdLevelStorage,
-                Length = entity.Length,
-                Width = entity.Width,
-                Height = entity.Height,
+                Length = entity.Length.Millimeters,
+                Width = entity.Width.Millimeters,
+                Height = entity.Height.Millimeters,
                 CreatedAt = DateTime.UtcNow
             };
         }
@@ -46,9 +47,9 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 FLSNumber = model.FLSNumber,
                 SecondLevelStorage = model.SecondLevelStorage,
                 ThirdLevelStorage = model.ThirdLevelStorage,
-                Length = model.Length,
-                Width = model.Width,
-                Height = model.Height
+                Length = Length.FromMillimeters(model.Length),
+                Width = Length.FromMillimeters(model.Width),
+                Height = Length.FromMillimeters(model.Height)
             };
         }
     }

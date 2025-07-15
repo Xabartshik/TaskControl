@@ -23,22 +23,14 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
-        // В метрах для API
-        public Length Length { get; init; }
 
-        public Length Width { get; init; }
-
-        public Length Height { get; init; }
 
         public static ItemPosition FromDto(ItemPositionDTO dto) => new()
         {
             Id = dto.Id,
             ItemId = dto.ItemId,
             PositionId = dto.PositionId,
-            Quantity = dto.Quantity,
-            Length = dto.Length,
-            Width = dto.Width,
-            Height = dto.Height
+            Quantity = dto.Quantity
         };
 
         public static ItemPositionDTO ToDto(ItemPosition entity) => new()
@@ -46,10 +38,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Id = entity.Id,
             ItemId = entity.ItemId,
             PositionId = entity.PositionId,
-            Quantity = entity.Quantity,
-            Length = entity.Length,
-            Width = entity.Width,
-            Height = entity.Height
+            Quantity = entity.Quantity
         };
     }
 }

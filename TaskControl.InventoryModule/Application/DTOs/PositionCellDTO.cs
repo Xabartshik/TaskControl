@@ -21,15 +21,18 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [RegularExpression("^(Active|Inactive|Maintenance)$")]
         public string Status { get; init; } = "Active";
 
+        [Required]
         [StringLength(10)]
-        public string? ZoneCode { get; init; }
+        public string ZoneCode { get; init; }
 
         [Required]
         [StringLength(30)]
         public string FirstLevelStorageType { get; init; }
 
+        [Required]
         [StringLength(20)]
-        public string? FLSNumber { get; init; }
+        public string FLSNumber { get; init; }
+
 
         [StringLength(30)]
         public string? SecondLevelStorage { get; init; }
@@ -37,13 +40,10 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [StringLength(30)]
         public string? ThirdLevelStorage { get; init; }
 
-        [Range(0.01, 20)]
         public Length Length { get; init; }
 
-        [Range(0.01, 20)]
         public Length Width { get; init; }
 
-        [Range(0.01, 20)]
         public Length Height { get; init; }
 
         public static PositionCell FromDto(PositionDTO dto) => new()

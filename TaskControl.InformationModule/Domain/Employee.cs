@@ -51,10 +51,6 @@ namespace TaskControl.InformationModule.Domain
         /// </summary>
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        /// <summary>
-        /// Дата последнего обновления записи
-        /// </summary>
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 
 

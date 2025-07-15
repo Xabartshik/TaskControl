@@ -15,9 +15,6 @@ namespace TaskControl.InventoryModule.DataAccess.Model
         [Column("item_id")][NotNull] public int ItemId { get; set; }
         [Column("position_id")][NotNull] public int PositionId { get; set; }
         [Column("quantity")][NotNull] public int Quantity { get; set; }
-        [Column("length")] public Length Length { get; set; }
-        [Column("width")] public Length Width { get; set; }
-        [Column("height")] public Length Height { get; set; }
         [Column("created_at")][NotNull] public DateTime CreatedAt { get; set; }
     }
 }

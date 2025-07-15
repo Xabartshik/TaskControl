@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Domain;
+using UnitsNet;
 
 namespace TaskControl.InformationModule.Application.DTOs
 {
@@ -19,32 +20,28 @@ namespace TaskControl.InformationModule.Application.DTOs
         public int ItemId { get; init; }
 
         /// <summary>
-        /// Вес в килограммах
+        /// Вес в граммах
         /// </summary>
         [Required(ErrorMessage = "Укажите вес товара")]
-        [Range(0.01, 1000, ErrorMessage = "Вес должен быть от 0.01 до 1000 кг")]
-        public decimal Weight { get; init; }
+        public Mass Weight { get; init; }
 
         /// <summary>
-        /// Длина в сантиметрах
+        /// Длина в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите длину товара")]
-        [Range(0.1, 500, ErrorMessage = "Длина должна быть от 0.1 до 500 см")]
-        public decimal Length { get; init; }
+        public Length Length { get; init; }
 
         /// <summary>
-        /// Ширина в сантиметрах
+        /// Ширина в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите ширину товара")]
-        [Range(0.1, 500, ErrorMessage = "Ширина должна быть от 0.1 до 500 см")]
-        public decimal Width { get; init; }
+        public Length Width { get; init; }
 
         /// <summary>
-        /// Высота в сантиметрах
+        /// Высота в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите высоту товара")]
-        [Range(0.1, 500, ErrorMessage = "Высота должна быть от 0.1 до 500 см")]
-        public decimal Height { get; init; }
+        public Length Height { get; init; }
 
         /// <summary>
         /// Преобразует сущность в DTO

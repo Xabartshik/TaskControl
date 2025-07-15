@@ -64,8 +64,7 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
                 Role = entity.Role,
-                CreatedAt = entity.CreatedAt,
-                UpdatedAt = entity.UpdatedAt
+                CreatedAt = entity.CreatedAt
             };
         }
 
@@ -81,7 +80,7 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Name = dto.Name,
                 MiddleName = dto.MiddleName,
                 Role = dto.Role
-                // CreatedAt и UpdatedAt будут установлены автоматически
+                // CreatedAt будeт установлены автоматически
             };
         }
     }

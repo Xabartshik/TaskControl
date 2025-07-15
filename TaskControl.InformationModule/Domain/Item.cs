@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnitsNet;
 
 namespace TaskControl.InformationModule.Domain
 {
@@ -18,36 +19,28 @@ namespace TaskControl.InformationModule.Domain
         public int ItemId { get; set; }
 
         /// <summary>
-        /// Вес товара в кг (положительное число)
+        /// Вес товара в граммах (положительное число)
         /// </summary>
         [Required(ErrorMessage = "Вес товара обязателен для заполнения")]
-        [Range(0.01, double.MaxValue, ErrorMessage = "Вес должен быть положительным числом")]
-        public decimal Weight { get; set; }
+        public Mass Weight { get; set; }
 
         /// <summary>
-        /// Длина товара в см (положительное число)
+        /// Длина товара в мм (положительное число)
         /// </summary>
         [Required(ErrorMessage = "Длина товара обязательна для заполнения")]
-        [Range(0.01, double.MaxValue, ErrorMessage = "Длина должна быть положительным числом")]
-        public decimal Length { get; set; }
+        public Length Length { get; set; }
 
         /// <summary>
-        /// Ширина товара в см (положительное число)
+        /// Ширина товара в мм (положительное число)
         /// </summary>
         [Required(ErrorMessage = "Ширина товара обязательна для заполнения")]
-        [Range(0.01, double.MaxValue, ErrorMessage = "Ширина должна быть положительным числом")]
-        public decimal Width { get; set; }
+        public Length Width { get; set; }
 
         /// <summary>
-        /// Высота товара в см (положительное число)
+        /// Высота товара в мм (положительное число)
         /// </summary>
         [Required(ErrorMessage = "Высота товара обязательна для заполнения")]
-        [Range(0.01, double.MaxValue, ErrorMessage = "Высота должна быть положительным числом")]
-        public decimal Height { get; set; }
+        public Length Height { get; set; }
 
-        /// <summary>
-        /// Рассчитывает объем товара в м³
-        /// </summary>
-        public decimal CalculateVolume() => (Length * Width * Height) / 1_000_000;
     }
 }

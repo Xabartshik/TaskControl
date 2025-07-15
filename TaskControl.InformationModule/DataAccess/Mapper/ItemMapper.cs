@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InformationModule.Domain;
+using UnitsNet;
 
 namespace TaskControl.InformationModule.DataAccess.Mapper
 {
@@ -17,10 +18,10 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             return new ItemModel
             {
                 ItemId = entity.ItemId,
-                Weight = entity.Weight,
-                Length = entity.Length,
-                Width = entity.Width,
-                Height = entity.Height,
+                Weight = entity.Weight.Kilograms,
+                Length = entity.Length.Millimeters,
+                Width = entity.Width.Millimeters,
+                Height = entity.Height.Millimeters,
                 CreatedAt = DateTime.UtcNow // Устанавливается при создании
             };
         }
@@ -32,11 +33,10 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             return new Item
             {
                 ItemId = model.ItemId,
-                Weight = model.Weight,
-                Length = model.Length,
-                Width = model.Width,
-                Height = model.Height
-                // CreatedAt не передается в бизнес-сущность
+                Weight = Mass.FromGrams(model.Weight),
+                Length = Length.FromMillimeters(model.Length),
+                Width = Length.FromMillimeters(model.Width),
+                Height = Length.FromMillimeters(model.Width)
             };
         }
     }

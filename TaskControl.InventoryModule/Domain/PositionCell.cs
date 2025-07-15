@@ -34,8 +34,9 @@ namespace TaskControl.InventoryModule.Domain
         /// <summary>
         /// Код зоны хранения -- некоторой области склада
         /// </summary>
+        [Required(ErrorMessage = "Код зоны хранения обязателен")]
         [StringLength(10, ErrorMessage = "Код зоны не должен превышать 10 символов")]
-        public string? ZoneCode { get; set; }
+        public string ZoneCode { get; set; }
         /// <summary>
         /// Тип хранилища первого уровня -- (какой-то объект мебели или четко выделенная область для хранения) стеллаж, пол, ячейка, витрина, постамат и так далее
         /// </summary>
@@ -46,8 +47,9 @@ namespace TaskControl.InventoryModule.Domain
         /// <summary>
         /// Номер хранилища первого уровня
         /// </summary>
+        [Required(ErrorMessage = "Номер хранилища первого уровня обязателен")]
         [StringLength(20, ErrorMessage = "Номер хранилища первого уровня не должен превышать 20 символов")]
-        public string? FLSNumber { get; set; }
+        public string FLSNumber { get; set; }
 
         /// <summary>
         /// Номер хранилища второго уровня -- какой-то сектор внутри хранилища первого уровня (полка стеллажа и так далее)
@@ -62,19 +64,16 @@ namespace TaskControl.InventoryModule.Domain
         public string? ThirdLevelStorage { get; set; }
 
         /// <summary>
-        /// Длина ячейки в метрах
+        /// Длина ячейки в миллиметрах (в системе используются миллиметры)
         /// </summary>
-        [Range(0.01, 20, ErrorMessage = "Длина должна быть от 0.01 до 20 м")]
         public Length Length { get; set; }
         /// <summary>
-        /// Ширина ячейки в метрах
+        /// Ширина ячейки в миллиметрах (в системе используются миллиметры)
         /// </summary>
-        [Range(0.01, 20, ErrorMessage = "Ширина должна быть от 0.01 до 20 м")]
         public Length Width { get; set; }
         /// <summary>
-        /// Высота ячейки в метрах
+        /// Высота ячейки в миллиметрах (в системе используются миллиметры)
         /// </summary>
-        [Range(0.01, 20, ErrorMessage = "Высота должна быть от 0.01 до 20 м")]
         public Length Height { get; set; }
 
 

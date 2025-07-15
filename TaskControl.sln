@@ -1,21 +1,39 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36301.6 d17.14
+VisualStudioVersion = 17.14.36301.6
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.Web", "TaskControl.Web\TaskControl.Web.csproj", "{E8C1DFC4-26F2-4CE1-BB2C-8D1808AE6DDD}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.Core", "TaskControl.Core\TaskControl.Core.csproj", "{9DCC8E88-833D-491F-B4A7-709A2152E2F7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.TaskModule", "TaskControl.TaskModule\TaskControl.TaskModule.csproj", "{FA823958-8ED0-42CE-ABDC-F92DCED914E5}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.ReportsModule", "TaskControl.ReportsModule\TaskControl.ReportsModule.csproj", "{ADDBB9CC-ECF0-4FD2-B311-5CA53A82A235}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.InventoryModule", "TaskControl.InventoryModule\TaskControl.InventoryModule.csproj", "{99275FA3-9493-4FA4-9F10-2A5CC768854A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.OrderModule", "TaskControl.OrderModule\TaskControl.OrderModule.csproj", "{4C1DEFF3-A73D-47F1-BA44-F4442540D3FE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskControl.InformationModule", "TaskControl.InformationModule\TaskControl.InformationModule.csproj", "{3CD85A61-FC78-45FC-82BB-26B35D872EB3}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9DCC8E88-833D-491F-B4A7-709A2152E2F7} = {9DCC8E88-833D-491F-B4A7-709A2152E2F7}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

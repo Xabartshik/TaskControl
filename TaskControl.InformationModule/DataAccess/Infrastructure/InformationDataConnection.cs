@@ -21,7 +21,7 @@ namespace TaskControl.InformationModule.DataAccess.Infrastructure
         }
 
         public ITable<BranchModel> Branches => this.GetTable<BranchModel>();
-        public ITable<CheckIOEmployeeModel> CheckIoEmployees => this.GetTable<CheckIOEmployeeModel>();
+        public ITable<CheckIOEmployeeModel> CheckIOEmployees => this.GetTable<CheckIOEmployeeModel>();
         public ITable<EmployeeModel> Employees => this.GetTable<EmployeeModel>();
         public ITable<ItemModel> Items => this.GetTable<ItemModel>();
 

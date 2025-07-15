@@ -20,9 +20,6 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 ItemId = entity.ItemId,
                 PositionId = entity.PositionId,
                 Quantity = entity.Quantity,
-                Length = entity.Length,
-                Width = entity.Width,
-                Height = entity.Height,
                 CreatedAt = DateTime.UtcNow
             };
         }
@@ -36,10 +33,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 Id = model.Id,
                 ItemId = model.ItemId,
                 PositionId = model.PositionId,
-                Quantity = model.Quantity,
-                Length = model.Length,
-                Width = model.Width,
-                Height = model.Height,
+                Quantity = model.Quantity
             };
         }
     }

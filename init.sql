@@ -30,10 +30,10 @@ CREATE INDEX idx_branches_type ON branches (branch_type);
 -- Создание таблицы товаров
 CREATE TABLE IF NOT EXISTS items (
     item_id SERIAL PRIMARY KEY,
-    weight DECIMAL(10,4) NOT NULL CHECK (weight > 0),
-    length DECIMAL(10,4) NOT NULL CHECK (length > 0),
-    width DECIMAL(10,4) NOT NULL CHECK (width > 0),
-    height DECIMAL(10,4) NOT NULL CHECK (height > 0),
+    weight DOUBLE PRECISION NOT NULL CHECK (weight > 0),
+    length DOUBLE PRECISION NOT NULL CHECK (length > 0),
+    width DOUBLE PRECISION NOT NULL CHECK (width > 0),
+    height DOUBLE PRECISION NOT NULL CHECK (height > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -122,14 +122,14 @@ CREATE TABLE IF NOT EXISTS positions (
     position_id SERIAL PRIMARY KEY,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Inactive', 'Maintenance')),
-    zone_code VARCHAR(10),
+    zone_code VARCHAR(10) NOT NULL,
     first_level_storage_type VARCHAR(30) NOT NULL,
-    fls_number VARCHAR(20),
+    fls_number VARCHAR(20) NOT NULL,
     second_level_storage VARCHAR(30),
     third_level_storage VARCHAR(30),
-    length DECIMAL(10,4) CHECK (length > 0),
-    width DECIMAL(10,4) CHECK (width > 0),
-    height DECIMAL(10,4) CHECK (height > 0),
+    length DOUBLE PRECISION CHECK (length > 0),
+    width DOUBLE PRECISION CHECK (width > 0),
+    height DOUBLE PRECISION CHECK (height > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -157,9 +157,6 @@ CREATE TABLE IF NOT EXISTS item_positions (
     item_id INT NOT NULL REFERENCES items(item_id),
     position_id INT NOT NULL REFERENCES positions(position_id),
     quantity INT NOT NULL CHECK (quantity > 0),
-    length DECIMAL(10,4) CHECK (length > 0),
-    width DECIMAL(10,4) CHECK (width > 0),
-    height DECIMAL(10,4) CHECK (height > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
