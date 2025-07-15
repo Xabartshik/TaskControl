@@ -57,9 +57,6 @@ namespace TaskControl.InformationModule.DataAccess.Repositories
                 if (entity == null)
                     throw new ArgumentNullException(nameof(entity));
 
-                // Установка временных меток
-                entity.CreatedAt = DateTime.UtcNow;
-
                 return await _db.InsertAsync(entity);
             }
             catch (Exception ex)

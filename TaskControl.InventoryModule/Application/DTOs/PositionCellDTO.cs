@@ -48,7 +48,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
 
         public static PositionCell FromDto(PositionCellDto dto) => new()
         {
-            PositionId = dto.Id,
+            PositionId = dto.PositionId,
             BranchId = dto.BranchId,
             Status = dto.Status,
             ZoneCode = dto.ZoneCode,
@@ -63,7 +63,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
 
         public static PositionCellDto ToDto(PositionCell entity) => new()
         {
-            Id = entity.PositionId,
+            PositionId = entity.PositionId,
             BranchId = entity.BranchId,
             Status = entity.Status,
             ZoneCode = entity.ZoneCode,

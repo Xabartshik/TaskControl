@@ -56,9 +56,6 @@ namespace TaskControl.InformationModule.DAL.Repositories
                 if (entity == null)
                     throw new ArgumentNullException(nameof(entity));
 
-                // Установка даты создания
-                entity.CreatedAt = DateTime.UtcNow;
-
                 var model = entity.ToModel();
                 return await _db.InsertAsync(model);
             }
