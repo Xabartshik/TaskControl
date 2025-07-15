@@ -38,7 +38,7 @@ namespace TaskControl.InformationModule.Services
 
             try
             {
-                var entity = Branch.FromDto(dto);
+                var entity = BranchDto.FromDto(dto);
                 var newId = await _repository.AddAsync(entity);
 
                 _logger.LogInformation("Филиал успешно добавлен. ID: {BranchId}", newId);
@@ -62,7 +62,7 @@ namespace TaskControl.InformationModule.Services
 
             try
             {
-                var result = await _repository.DeleteAsync(id);
+                var result = await _repository.DeleteAsync(id) == 1;
                 if (result)
                 {
                     _logger.LogInformation("Филиал ID: {BranchId} успешно удален", id);
@@ -92,7 +92,7 @@ namespace TaskControl.InformationModule.Services
             try
             {
                 var branches = await _repository.GetAllAsync();
-                var result = branches.Select(Branch.ToDto).ToList();
+                var result = branches.Select(BranchDto.ToDto).ToList();
 
                 _logger.LogInformation("Получено {Count} филиалов", result.Count);
                 return result;
@@ -123,7 +123,7 @@ namespace TaskControl.InformationModule.Services
                 }
 
                 _logger.LogInformation("Филиал ID: {BranchId} успешно получен", id);
-                return Branch.ToDto(branch);
+                return BranchDto.ToDto(branch);
             }
             catch (Exception ex)
             {
@@ -143,8 +143,8 @@ namespace TaskControl.InformationModule.Services
 
             try
             {
-                var entity = Branch.FromDto(dto);
-                var result = await _repository.UpdateAsync(entity);
+                var entity = BranchDto.FromDto(dto);
+                var result = await _repository.UpdateAsync(entity) == 1;
 
                 if (result)
                 {
