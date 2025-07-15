@@ -5,7 +5,7 @@ using TaskControl.ReportsModule.DataAccess.Interface;
 using TaskControl.ReportsModule.DataAccess.Mapper;
 using TaskControl.ReportsModule.Domain;
 
-namespace TaskControl.ReportingModule.DAL.Repositories
+namespace TaskControl.ReportsModule.DataAccess.Repositories
 {
     public class RawEventRepository : IRepository<RawEvent>
     {
