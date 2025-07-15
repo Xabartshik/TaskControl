@@ -55,10 +55,6 @@ namespace TaskControl.OrderModule.Domain
             ErrorMessage = "Недопустимый статус заказа")]
         public string Status { get; set; } = "New";
 
-        /// <summary>
-        /// Проверяет, требует ли заказ доставки
-        /// </summary>
-        public bool RequiresDelivery() => Type == "Online";
 
     }
 }

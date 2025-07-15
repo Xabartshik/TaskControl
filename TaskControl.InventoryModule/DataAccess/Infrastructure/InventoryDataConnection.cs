@@ -20,7 +20,7 @@ namespace TaskControl.InventoryModule.DataAccess.Infrastructure
         public ITable<ItemPositionModel> ItemPositions => this.GetTable<ItemPositionModel>();
         public ITable<ItemStatusModel> ItemStatuses => this.GetTable<ItemStatusModel>();
         public ITable<OrderPositionModel> OrderPositions => this.GetTable<OrderPositionModel>();
-        public ITable<PositionModel> Positions => this.GetTable<PositionModel>();
+        public ITable<PositionModel> PositionCells => this.GetTable<PositionModel>();
 
         public async Task<int> InsertAsync<T>(T entity) where T : class
         {

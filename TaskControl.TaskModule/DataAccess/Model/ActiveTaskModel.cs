@@ -6,7 +6,7 @@ namespace TaskControl.TaskModule.DataAccess.Model
     [Table("active_tasks")]
     public class ActiveTaskModel
     {
-        [Column("task_id"), PrimaryKey, Identity] public int Id { get; set; }
+        [Column("task_id"), PrimaryKey, Identity] public int TaskId { get; set; }
         [Column("branch_id"), NotNull] public int BranchId { get; set; }
         [Column("type"), NotNull] public string Type { get; set; }
         [Column("created_at"), NotNull] public DateTime CreatedAt { get; set; }

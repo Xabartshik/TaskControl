@@ -18,7 +18,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
             var values = entity.JSONParams is null ? null : entity.JSONParams.RootElement.ToString();
             return new ActiveTaskModel
             {
-                Id = entity.TaskId,
+                TaskId = entity.TaskId,
                 BranchId = entity.BranchId,
                 Type = entity.Type,
                 CreatedAt = entity.CreatedAt,
@@ -35,7 +35,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
 
             return new ActiveTask
             {
-                TaskId = model.Id,
+                TaskId = model.TaskId,
                 BranchId = model.BranchId,
                 Type = model.Type,
                 CreatedAt = model.CreatedAt,

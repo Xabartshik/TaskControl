@@ -24,7 +24,6 @@ namespace TaskControl.InventoryModule.Domain
         public int? DestinationPositionId { get; set; }
 
         [Required]
-        [Range(0.001, double.MaxValue)]
         public int Quantity { get; set; }
 
     }

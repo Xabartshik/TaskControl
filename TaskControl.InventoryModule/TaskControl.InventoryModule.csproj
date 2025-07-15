@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <Folder Include="DataAccess\Interface\" />
-    <Folder Include="DataAccess\Repositories\" />
     <Folder Include="Presentation\" />
   </ItemGroup>
 
@@ -17,6 +16,10 @@
     <PackageReference Include="linq2db.PostgreSQL" Version="5.4.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.7" />
     <PackageReference Include="UnitsNet" Version="5.74.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TaskControl.Core\TaskControl.Core.csproj" />
   </ItemGroup>
 
 </Project>

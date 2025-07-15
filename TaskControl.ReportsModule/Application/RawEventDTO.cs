@@ -18,8 +18,7 @@ namespace TaskControl.ReportsModule.Application
         /// Идентификатор отчета
         /// </summary>
         [Required(ErrorMessage = "Укажите идентификатор отчета")]
-        [StringLength(36, MinimumLength = 1, ErrorMessage = "Длина ID отчета должна быть от 1 до 36 символов")]
-        public string ReportId { get; init; }
+        public int ReportId { get; init; }
 
         /// <summary>
         /// Тип события

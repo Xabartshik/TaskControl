@@ -10,7 +10,7 @@ namespace TaskControl.ReportsModule.DataAccess.Model
     [Table("raw_events")]
     public class RawEventModel
     {
-        [Column("report_id")][PrimaryKey] public string ReportId { get; set; }
+        [Column("report_id")][PrimaryKey] public int ReportId { get; set; }
         [Column("type")][NotNull] public string Type { get; set; }
         [Column("json_params")][NotNull] public string JsonParams { get; set; } // Используется string для JSONB
         [Column("event_time")][NotNull] public DateTime EventTime { get; set; }

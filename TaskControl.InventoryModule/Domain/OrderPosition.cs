@@ -27,9 +27,5 @@ namespace TaskControl.OrderModule.Domain
         [Range(0.01, double.MaxValue, ErrorMessage = "Количество должно быть положительным")]
         public int Quantity { get; set; }
 
-        /// <summary>
-        /// Проверяет валидность количества
-        /// </summary>
-
     }
 }

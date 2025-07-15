@@ -17,7 +17,7 @@ namespace TaskControl.ReportsModule.Domain
         /// <summary>
         /// Уникальный идентификатор отчета/события
         /// </summary>
-        public string ReportId { get; set; }
+        public int ReportId { get; set; }
 
         /// <summary>
         /// Тип события (классификатор)

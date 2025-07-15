@@ -14,7 +14,7 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         ITable<ItemPositionModel> ItemPositions { get; }
         ITable<ItemStatusModel> ItemStatuses { get; }
         ITable<OrderPositionModel> OrderPositions { get; }
-        ITable<PositionModel> Positions { get; }
+        ITable<PositionModel> PositionCells { get; }
 
         Task<int> InsertAsync<T>(T entity) where T : class;
         Task<int> UpdateAsync<T>(T entity) where T : class;

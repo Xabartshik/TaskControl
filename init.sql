@@ -57,7 +57,7 @@ CREATE INDEX idx_check_io_type ON check_io_employees (check_type);
 
 -- Создание таблицы сырых событий
 CREATE TABLE IF NOT EXISTS raw_events (
-    report_id VARCHAR(36) PRIMARY KEY,
+    report_id SERIAL PRIMARY KEY,
     type VARCHAR(50) NOT NULL,
     json_params JSONB NOT NULL,
     event_time TIMESTAMP NOT NULL,
