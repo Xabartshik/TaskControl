@@ -7,7 +7,7 @@ using TaskControl.ReportsModule.Domain;
 
 namespace TaskControl.ReportsModule.DataAccess.Repositories
 {
-    public class RawEventRepository : IRepository<RawEvent>
+    public class RawEventRepository : IRepository<RawEvent>, IRawEventRepository
     {
         private readonly IReportDataConnection _db;
         private readonly ILogger<RawEventRepository> _logger;

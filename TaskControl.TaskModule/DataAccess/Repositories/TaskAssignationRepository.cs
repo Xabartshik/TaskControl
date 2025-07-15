@@ -7,7 +7,7 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DAL.Repositories
 {
-    public class TaskAssignationRepository : IRepository<TaskAssignation>
+    public class TaskAssignationRepository : IRepository<TaskAssignation>, ITaskAssignationRepository
     {
         private readonly ITaskDataConnection _db;
         private readonly ILogger<TaskAssignationRepository> _logger;

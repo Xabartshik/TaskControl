@@ -7,7 +7,7 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.OrderModule.DAL.Repositories
 {
-    public class OrderRepository : IRepository<Order>
+    public class OrderRepository : IRepository<Order>, IOrderRepository
     {
         private readonly IOrderDataConnection _db;
         private readonly ILogger<OrderRepository> _logger;
