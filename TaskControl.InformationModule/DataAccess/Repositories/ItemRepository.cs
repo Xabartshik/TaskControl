@@ -11,7 +11,7 @@ using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.DAL.Repositories
 {
-    public class ItemRepository : IRepository<Item>
+    public class ItemRepository : IRepository<Item>, IItemRepository
     {
         private readonly IInformationDataConnection _db;
         private readonly ILogger<ItemRepository> _logger;

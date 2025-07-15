@@ -39,15 +39,7 @@ namespace TaskControl.InformationModule.Application.DTOs
         [StringLength(500, ErrorMessage = "Адрес филиала не может превышать 500 символов")]
         public string Address { get; init; }
 
-        /// <summary>
-        /// Дата создания записи
-        /// </summary>
-        public DateTime CreatedAt { get; init; }
 
-        /// <summary>
-        /// Дата последнего обновления записи
-        /// </summary>
-        public DateTime UpdatedAt { get; init; }
 
         /// <summary>
         /// Преобразует сущность Branch в BranchDto
@@ -59,9 +51,7 @@ namespace TaskControl.InformationModule.Application.DTOs
                 BranchId = entity.BranchId,
                 BranchName = entity.BranchName,
                 BranchType = entity.BranchType,
-                Address = entity.Address,
-                CreatedAt = entity.CreatedAt,
-                UpdatedAt = entity.UpdatedAt
+                Address = entity.Address
             };
         }
 
@@ -76,7 +66,6 @@ namespace TaskControl.InformationModule.Application.DTOs
                 BranchName = dto.BranchName,
                 BranchType = dto.BranchType,
                 Address = dto.Address
-                // CreatedAt и UpdatedAt будут установлены автоматически
             };
         }
     }

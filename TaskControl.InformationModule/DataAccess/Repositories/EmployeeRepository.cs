@@ -7,7 +7,7 @@ using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.DAL.Repositories
 {
-    public class EmployeeRepository : IRepository<Employee>
+    public class EmployeeRepository : IRepository<Employee>, IEmployeeRepository
     {
         private readonly IInformationDataConnection _db;
         private readonly ILogger<EmployeeRepository> _logger;

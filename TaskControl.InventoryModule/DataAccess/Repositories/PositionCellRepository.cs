@@ -7,7 +7,7 @@ using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
-    public class PositionCellRepository : IRepository<PositionCell>
+    public class PositionCellRepository : IRepository<PositionCell>, IPositionCellRepository
     {
         private readonly IInventoryDataConnection _db;
         private readonly ILogger<PositionCellRepository> _logger;

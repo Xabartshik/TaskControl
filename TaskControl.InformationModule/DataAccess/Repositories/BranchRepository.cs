@@ -8,7 +8,7 @@ using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.DataAccess.Repositories
 {
-    public class BranchRepository : IRepository<Branch>
+    public class BranchRepository : IRepository<Branch>, IBranchRepository
     {
         private readonly IInformationDataConnection _db;
         private readonly ILogger<BranchRepository> _logger;

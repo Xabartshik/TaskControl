@@ -46,11 +46,6 @@ namespace TaskControl.InformationModule.Domain
         [StringLength(150, ErrorMessage = "Название должности не может превышать 150 символов")]
         public string Role { get; set; }
 
-        /// <summary>
-        /// Дата создания записи
-        /// </summary>
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
     }
 
 

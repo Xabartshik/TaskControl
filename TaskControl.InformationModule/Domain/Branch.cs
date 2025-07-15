@@ -38,15 +38,6 @@ namespace TaskControl.InformationModule.Domain
         [StringLength(500, ErrorMessage = "Адрес не может превышать 500 символов")]
         public string Address { get; set; }
 
-        /// <summary>
-        /// Дата создания (устанавливается автоматически)
-        /// </summary>
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-        /// <summary>
-        /// Дата обновления (устанавливается автоматически)
-        /// </summary>
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }
 

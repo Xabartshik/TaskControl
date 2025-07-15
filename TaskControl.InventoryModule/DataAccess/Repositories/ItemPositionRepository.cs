@@ -7,7 +7,7 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
-    public class ItemPositionRepository : IRepository<ItemPosition>
+    public class ItemPositionRepository : IRepository<ItemPosition>, IItemPositionRepository
     {
         private readonly IInventoryDataConnection _db;
         private readonly ILogger<ItemPositionRepository> _logger;

@@ -48,11 +48,6 @@ namespace TaskControl.InformationModule.Application.DTOs
         public DateTime CreatedAt { get; init; }
 
         /// <summary>
-        /// Дата последнего обновления записи
-        /// </summary>
-        public DateTime UpdatedAt { get; init; }
-
-        /// <summary>
         /// Преобразует сущность Employee в EmployeeDto
         /// </summary>
         public static EmployeeDto ToDto(Employee entity)
@@ -63,8 +58,7 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Surname = entity.Surname,
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
-                Role = entity.Role,
-                CreatedAt = entity.CreatedAt
+                Role = entity.Role
             };
         }
 
@@ -80,7 +74,6 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Name = dto.Name,
                 MiddleName = dto.MiddleName,
                 Role = dto.Role
-                // CreatedAt будeт установлены автоматически
             };
         }
     }

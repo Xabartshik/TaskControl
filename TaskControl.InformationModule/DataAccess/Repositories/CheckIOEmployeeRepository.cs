@@ -8,7 +8,7 @@ using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.DAL.Repositories
 {
-    public class CheckIOEmployeeRepository : IRepository<CheckIOEmployee>
+    public class CheckIOEmployeeRepository : IRepository<CheckIOEmployee>, ICheckIOEmployeeRepository
     {
         private readonly IInformationDataConnection _db;
         private readonly ILogger<CheckIOEmployeeRepository> _logger;

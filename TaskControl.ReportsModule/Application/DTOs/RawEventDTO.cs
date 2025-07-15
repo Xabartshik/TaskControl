@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using TaskControl.ReportsModule.Domain;
 
-namespace TaskControl.ReportsModule.Application
+namespace TaskControl.ReportsModule.Application.DTOs
 {
     /// <summary>
     /// DTO для передачи сырых событий
