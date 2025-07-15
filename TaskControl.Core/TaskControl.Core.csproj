@@ -9,7 +9,6 @@
   <ItemGroup>
     <Folder Include="AppSettings\" />
     <Folder Include="SharedDomain\" />
-    <Folder Include="SharedInfrastucture\" />
   </ItemGroup>
 
   <ItemGroup>

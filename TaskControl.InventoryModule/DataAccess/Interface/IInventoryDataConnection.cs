@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TaskControl.Core.SharedInfrastructure;
 using TaskControl.InventoryModule.DataAccess.Model;
 
 namespace TaskControl.InventoryModule.DataAccess.Interface
 {
-    public interface IInventoryDataConnection
+    public interface IInventoryDataConnection : IDataConnection
     {
         ITable<ItemMovementModel> ItemMovements { get; }
         ITable<ItemPositionModel> ItemPositions { get; }
@@ -16,8 +17,5 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         ITable<OrderPositionModel> OrderPositions { get; }
         ITable<PositionModel> PositionCells { get; }
 
-        Task<int> InsertAsync<T>(T entity) where T : class;
-        Task<int> UpdateAsync<T>(T entity) where T : class;
-        Task<int> DeleteAsync<T>(T entity) where T : class;
     }
 }
