@@ -8,7 +8,7 @@ using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
-    public record ItemMovementDTO
+    public record ItemMovementDto
     {
         public int Id { get; init; }
 
@@ -23,7 +23,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
-        public static ItemMovement FromDto(ItemMovementDTO dto) => new()
+        public static ItemMovement FromDto(ItemMovementDto dto) => new()
         {
             Id = dto.Id,
             SourceItemPositionId = dto.SourceItemPositionId,
@@ -33,7 +33,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Quantity = dto.Quantity
         };
 
-        public static ItemMovementDTO ToDto(ItemMovement entity) => new()
+        public static ItemMovementDto ToDto(ItemMovement entity) => new()
         {
             Id = entity.Id,
             SourceItemPositionId = entity.SourceItemPositionId,

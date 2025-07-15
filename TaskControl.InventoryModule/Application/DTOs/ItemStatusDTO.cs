@@ -8,7 +8,7 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
-    public record ItemStatusDTO
+    public record ItemStatusDto
     {
         [Required]
         [Range(1, int.MaxValue)]
@@ -28,7 +28,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Required]
         public int Quantity { get; set; }
 
-        public static ItemStatus FromDto(ItemStatusDTO dto) => new()
+        public static ItemStatus FromDto(ItemStatusDto dto) => new()
         {
             Id = dto.Id,
             ItemPositionId = dto.ItemPositionId,
@@ -37,7 +37,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Quantity = dto.Quantity
         };
 
-        public static ItemStatusDTO ToDto(ItemStatus entity) => new()
+        public static ItemStatusDto ToDto(ItemStatus entity) => new()
         {
             Id = entity.Id,
             ItemPositionId = entity.ItemPositionId,

@@ -9,7 +9,7 @@ using UnitsNet;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
-    public record ItemPositionDTO
+    public record ItemPositionDto
     {
         public int Id { get; init; }
 
@@ -25,7 +25,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
 
 
 
-        public static ItemPosition FromDto(ItemPositionDTO dto) => new()
+        public static ItemPosition FromDto(ItemPositionDto dto) => new()
         {
             Id = dto.Id,
             ItemId = dto.ItemId,
@@ -33,7 +33,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Quantity = dto.Quantity
         };
 
-        public static ItemPositionDTO ToDto(ItemPosition entity) => new()
+        public static ItemPositionDto ToDto(ItemPosition entity) => new()
         {
             Id = entity.Id,
             ItemId = entity.ItemId,

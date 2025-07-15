@@ -20,7 +20,7 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
         {
         }
 
-        public ITable<ActiveTaskModel> ActiveTasks => this.GetTable<ActiveTaskModel>();
+        public ITable<BaseTaskModel> ActiveTasks => this.GetTable<BaseTaskModel>();
         public ITable<TaskAssignationModel> TaskAssignations => this.GetTable<TaskAssignationModel>();
 
     }

@@ -3,7 +3,7 @@ using System.Text.Json;
 using TaskControl.TaskModule.Domain;
 namespace TaskControl.TaskModule.Application.DTOs
 {
-    public record TaskDto
+    public record BaseTaskDto
     {
         public int TaskId { get; init; }
 
@@ -24,7 +24,7 @@ namespace TaskControl.TaskModule.Application.DTOs
 
         public JsonElement? JSONParams { get; init; }
 
-        public static ActiveTask FromDto(TaskDto dto) => new()
+        public static BaseTask FromDto(BaseTaskDto dto) => new()
         {
             TaskId = dto.TaskId,
             BranchId = dto.BranchId,
@@ -36,7 +36,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 JsonDocument.Parse(dto.JSONParams.Value.ToString()) : null
         };
 
-        public static TaskDto ToDto(ActiveTask entity) => new()
+        public static BaseTaskDto ToDto(BaseTask entity) => new()
         {
             TaskId = entity.TaskId,
             BranchId = entity.BranchId,

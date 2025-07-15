@@ -11,7 +11,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
 {
     public interface ITaskDataConnection : IDataConnection
     {
-        ITable<ActiveTaskModel> ActiveTasks { get; }
+        ITable<BaseTaskModel> ActiveTasks { get; }
         ITable<TaskAssignationModel> TaskAssignations { get; }
 
     }

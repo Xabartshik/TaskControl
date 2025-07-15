@@ -7,7 +7,7 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DAL.Repositories
 {
-    public class ActiveTaskRepository : IRepository<ActiveTask>, IActiveTaskRepository
+    public class ActiveTaskRepository : IRepository<BaseTask>, IActiveTaskRepository
     {
         private readonly ITaskDataConnection _db;
         private readonly ILogger<ActiveTaskRepository> _logger;
@@ -18,7 +18,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _logger = logger;
         }
 
-        public async Task<ActiveTask?> GetByIdAsync(int id)
+        public async Task<BaseTask?> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск задачи по ID: {id}", id);
             try
@@ -33,7 +33,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<ActiveTask>> GetAllAsync()
+        public async Task<IEnumerable<BaseTask>> GetAllAsync()
         {
             _logger.LogInformation("Получение всех задач");
             try
@@ -48,7 +48,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<int> AddAsync(ActiveTask entity)
+        public async Task<int> AddAsync(BaseTask entity)
         {
             _logger.LogInformation("Добавление новой задачи типа {type} в филиал {branchId}",
                                 entity.Type, entity.BranchId);
@@ -71,7 +71,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<int> UpdateAsync(ActiveTask entity)
+        public async Task<int> UpdateAsync(BaseTask entity)
         {
             _logger.LogInformation("Обновление задачи ID: {taskId}", entity.TaskId);
             try
@@ -111,7 +111,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<ActiveTask>> GetByBranchAsync(int branchId)
+        public async Task<IEnumerable<BaseTask>> GetByBranchAsync(int branchId)
         {
             _logger.LogInformation("Получение задач филиала ID: {branchId}", branchId);
             try
@@ -129,7 +129,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<ActiveTask>> GetByStatusAsync(string status)
+        public async Task<IEnumerable<BaseTask>> GetByStatusAsync(string status)
         {
             _logger.LogInformation("Получение задач со статусом: {status}", status);
             try
@@ -147,7 +147,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<ActiveTask>> GetActiveTasksAsync()
+        public async Task<IEnumerable<BaseTask>> GetActiveTasksAsync()
         {
             _logger.LogInformation("Получение активных задач");
             try
@@ -165,7 +165,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<ActiveTask>> GetByTypeAsync(string type)
+        public async Task<IEnumerable<BaseTask>> GetByTypeAsync(string type)
         {
             _logger.LogInformation("Получение задач типа: {type}", type);
             try

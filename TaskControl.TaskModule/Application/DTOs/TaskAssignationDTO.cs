@@ -8,7 +8,7 @@ using TaskControl.TaskModule.Domain;
 //TODO: Пересмотреть сущность, добавить в нее некоторые поля, по типу имени пользователя, типа задачи и все такое
 namespace TaskControl.TaskModule.Application.DTOs
 {
-    public record ActiveAssignedTaskDto
+    public record TaskAssignationDto
     {
         public int Id { get; init; }
 
@@ -22,7 +22,7 @@ namespace TaskControl.TaskModule.Application.DTOs
 
         public DateTime AssignedAt { get; init; }
 
-        public static TaskAssignation FromDto(ActiveAssignedTaskDto dto) => new()
+        public static TaskAssignation FromDto(TaskAssignationDto dto) => new()
         {
             Id = dto.Id,
             TaskId = dto.TaskId,
@@ -30,7 +30,7 @@ namespace TaskControl.TaskModule.Application.DTOs
             AssignedAt = dto.AssignedAt
         };
 
-        public static ActiveAssignedTaskDto ToDto(TaskAssignation entity) => new()
+        public static TaskAssignationDto ToDto(TaskAssignation entity) => new()
         {
             Id = entity.Id,
             TaskId = entity.TaskId,

@@ -8,7 +8,7 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.OrderModule.Application.DTOs
 {
-    public record OrderPositionDTO
+    public record OrderPositionDto
     {
         public int UniqueId { get; init; }
 
@@ -23,7 +23,7 @@ namespace TaskControl.OrderModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
-        public static OrderPosition FromDto(OrderPositionDTO dto) => new()
+        public static OrderPosition FromDto(OrderPositionDto dto) => new()
         {
             UniqueId = dto.UniqueId,
             OrderId = dto.OrderId,
@@ -31,7 +31,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             Quantity = dto.Quantity
         };
 
-        public static OrderPositionDTO ToDto(OrderPosition entity) => new()
+        public static OrderPositionDto ToDto(OrderPosition entity) => new()
         {
             UniqueId = entity.UniqueId,
             OrderId = entity.OrderId,

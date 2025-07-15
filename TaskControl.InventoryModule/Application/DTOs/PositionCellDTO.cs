@@ -9,9 +9,9 @@ using UnitsNet;
 
 namespace TaskControl.InventoryModule.Application.DTOs
 {
-    public record PositionDTO
+    public record PositionCellDto
     {
-        public int Id { get; init; }
+        public int PositionId { get; init; }
 
         [Required]
         [Range(1, int.MaxValue)]
@@ -46,7 +46,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
 
         public Length Height { get; init; }
 
-        public static PositionCell FromDto(PositionDTO dto) => new()
+        public static PositionCell FromDto(PositionCellDto dto) => new()
         {
             PositionId = dto.Id,
             BranchId = dto.BranchId,
@@ -61,7 +61,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
             Height = dto.Height
         };
 
-        public static PositionDTO ToDto(PositionCell entity) => new()
+        public static PositionCellDto ToDto(PositionCell entity) => new()
         {
             Id = entity.PositionId,
             BranchId = entity.BranchId,

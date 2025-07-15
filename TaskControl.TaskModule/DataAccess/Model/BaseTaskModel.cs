@@ -4,7 +4,7 @@
 namespace TaskControl.TaskModule.DataAccess.Model
 {
     [Table("active_tasks")]
-    public class ActiveTaskModel
+    public class BaseTaskModel
     {
         [Column("task_id"), PrimaryKey, Identity] public int TaskId { get; set; }
         [Column("branch_id"), NotNull] public int BranchId { get; set; }

@@ -13,7 +13,7 @@ namespace TaskControl.TaskModule.Domain
     /// <summary>
     /// Активная задача в системе
     /// </summary>
-    public class ActiveTask
+    public class BaseTask
     {
         /// <summary>
         /// Уникальный идентификатор задачи

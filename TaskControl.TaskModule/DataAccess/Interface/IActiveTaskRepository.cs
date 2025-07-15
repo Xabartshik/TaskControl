@@ -7,14 +7,14 @@ namespace TaskControl.TaskModule.DataAccess.Interface
 {
     public interface IActiveTaskRepository
     {
-        Task<ActiveTask?> GetByIdAsync(int id);
-        Task<IEnumerable<ActiveTask>> GetAllAsync();
-        Task<int> AddAsync(ActiveTask entity);
-        Task<int> UpdateAsync(ActiveTask entity);
+        Task<BaseTask?> GetByIdAsync(int id);
+        Task<IEnumerable<BaseTask>> GetAllAsync();
+        Task<int> AddAsync(BaseTask entity);
+        Task<int> UpdateAsync(BaseTask entity);
         Task<int> DeleteAsync(int id);
-        Task<IEnumerable<ActiveTask>> GetByBranchAsync(int branchId);
-        Task<IEnumerable<ActiveTask>> GetByStatusAsync(string status);
-        Task<IEnumerable<ActiveTask>> GetActiveTasksAsync();
-        Task<IEnumerable<ActiveTask>> GetByTypeAsync(string type);
+        Task<IEnumerable<BaseTask>> GetByBranchAsync(int branchId);
+        Task<IEnumerable<BaseTask>> GetByStatusAsync(string status);
+        Task<IEnumerable<BaseTask>> GetActiveTasksAsync();
+        Task<IEnumerable<BaseTask>> GetByTypeAsync(string type);
     }
 }

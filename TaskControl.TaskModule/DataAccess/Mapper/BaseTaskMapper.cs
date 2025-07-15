@@ -9,14 +9,14 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Mapper
 {
-    public static class ActiveTaskMapper
+    public static class BaseTaskMapper
     {
         // ActiveTask → ActiveTaskModel
-        public static ActiveTaskModel ToModel(this ActiveTask entity)
+        public static BaseTaskModel ToModel(this BaseTask entity)
         {
             if (entity == null) return null;
             var values = entity.JSONParams is null ? null : entity.JSONParams.RootElement.ToString();
-            return new ActiveTaskModel
+            return new BaseTaskModel
             {
                 TaskId = entity.TaskId,
                 BranchId = entity.BranchId,
@@ -29,11 +29,11 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
         }
 
         // ActiveTaskModel → ActiveTask
-        public static ActiveTask ToDomain(this ActiveTaskModel model)
+        public static BaseTask ToDomain(this BaseTaskModel model)
         {
             if (model == null) return null;
 
-            return new ActiveTask
+            return new BaseTask
             {
                 TaskId = model.TaskId,
                 BranchId = model.BranchId,
