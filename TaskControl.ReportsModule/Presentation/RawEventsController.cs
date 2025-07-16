@@ -1,46 +1,46 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
-using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.ReportsModule.Application.DTOs;
 
-namespace TaskControl.InformationModule.Presentation.Controllers
+namespace TaskControl.ReportsModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class BranchesController : ControllerBase, ICrudController<BranchDto, int>
+    public class RawEventsController : ControllerBase, ICrudController<RawEventDto, int>
     {
-        private readonly IService<BranchDto> _service;
-        private readonly ILogger<BranchesController> _logger;
+        private readonly IService<RawEventDto> _service;
+        private readonly ILogger<RawEventsController> _logger;
 
-        public BranchesController(
-            IService<BranchDto> service,
-            ILogger<BranchesController> logger)
+        public RawEventsController(
+            IService<RawEventDto> service,
+            ILogger<RawEventsController> logger)
         {
             _service = service;
             _logger = logger;
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BranchDto>>> GetAll()
+        public async Task<ActionResult<IEnumerable<RawEventDto>>> GetAll()
         {
             var records = await _service.GetAll();
             return Ok(records);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<BranchDto>> GetById(int id)
+        public async Task<ActionResult<RawEventDto>> GetById(int id)
         {
             var record = await _service.GetById(id);
             if (record == null)
             {
-                _logger.LogWarning("Филиал с ID: {BranchId} не найден", id);
+                _logger.LogWarning("Сырое событие с ID: {ReportId} не найдено", id);
                 return NotFound();
             }
             return Ok(record);
         }
 
         [HttpPost]
-        public async Task<ActionResult<int>> Add(BranchDto dto)
+        public async Task<ActionResult<int>> Add(RawEventDto dto)
         {
             if (!ModelState.IsValid)
             {
@@ -52,7 +52,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
         }
 
         [HttpPut]
-        public async Task<IActionResult> Update(BranchDto dto)
+        public async Task<IActionResult> Update(RawEventDto dto)
         {
             if (!ModelState.IsValid)
             {
@@ -62,7 +62,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
             var result = await _service.Update(dto);
             if (!result)
             {
-                _logger.LogWarning("Попытка обновления несуществующего филиала ID: {BranchId}", dto.BranchId);
+                _logger.LogWarning("Попытка обновления несуществующего сырого события ID: {ReportId}", dto.ReportId);
                 return NotFound();
             }
             return NoContent();
@@ -74,7 +74,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
             var result = await _service.Delete(id);
             if (!result)
             {
-                _logger.LogWarning("Попытка удаления несуществующего филиала ID: {BranchId}", id);
+                _logger.LogWarning("Попытка удаления несуществующего сырого события ID: {ReportId}", id);
                 return NotFound();
             }
             return NoContent();

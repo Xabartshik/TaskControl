@@ -1,46 +1,46 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
-using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.OrderModule.Application.DTOs;
 
-namespace TaskControl.InformationModule.Presentation.Controllers
+namespace TaskControl.OrderModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class BranchesController : ControllerBase, ICrudController<BranchDto, int>
+    public class OrdersController : ControllerBase, ICrudController<OrderDto, int>
     {
-        private readonly IService<BranchDto> _service;
-        private readonly ILogger<BranchesController> _logger;
+        private readonly IService<OrderDto> _service;
+        private readonly ILogger<OrdersController> _logger;
 
-        public BranchesController(
-            IService<BranchDto> service,
-            ILogger<BranchesController> logger)
+        public OrdersController(
+            IService<OrderDto> service,
+            ILogger<OrdersController> logger)
         {
             _service = service;
             _logger = logger;
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<BranchDto>>> GetAll()
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetAll()
         {
             var records = await _service.GetAll();
             return Ok(records);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<BranchDto>> GetById(int id)
+        public async Task<ActionResult<OrderDto>> GetById(int id)
         {
             var record = await _service.GetById(id);
             if (record == null)
             {
-                _logger.LogWarning("Филиал с ID: {BranchId} не найден", id);
+                _logger.LogWarning("Заказ с ID: {OrderId} не найден", id);
                 return NotFound();
             }
             return Ok(record);
         }
 
         [HttpPost]
-        public async Task<ActionResult<int>> Add(BranchDto dto)
+        public async Task<ActionResult<int>> Add(OrderDto dto)
         {
             if (!ModelState.IsValid)
             {
@@ -52,7 +52,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
         }
 
         [HttpPut]
-        public async Task<IActionResult> Update(BranchDto dto)
+        public async Task<IActionResult> Update(OrderDto dto)
         {
             if (!ModelState.IsValid)
             {
@@ -62,7 +62,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
             var result = await _service.Update(dto);
             if (!result)
             {
-                _logger.LogWarning("Попытка обновления несуществующего филиала ID: {BranchId}", dto.BranchId);
+                _logger.LogWarning("Попытка обновления несуществующего заказа ID: {OrderId}", dto.OrderId);
                 return NotFound();
             }
             return NoContent();
@@ -74,7 +74,7 @@ namespace TaskControl.InformationModule.Presentation.Controllers
             var result = await _service.Delete(id);
             if (!result)
             {
-                _logger.LogWarning("Попытка удаления несуществующего филиала ID: {BranchId}", id);
+                _logger.LogWarning("Попытка удаления несуществующего заказа ID: {OrderId}", id);
                 return NotFound();
             }
             return NoContent();

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TaskControl.Core.SharedInterfaces
+namespace TaskControl.Core.Shared.SharedInterfaces
 {
     public interface IService<T> where T : class
     {

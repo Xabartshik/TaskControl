@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TaskControl.Core.SharedInfrastructure
+namespace TaskControl.Core.Shared.SharedInfrastructure
 {
     public interface IDataConnection
     {

@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 
-namespace TaskControl.Core.SharedInterfaces
+namespace TaskControl.Core.Shared.SharedInterfaces
 {
     /// <summary>
     /// Интерфейс для управления ячейками позиций

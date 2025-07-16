@@ -1,5 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
 
 namespace TaskControl.InformationModule.Presentation.Controllers

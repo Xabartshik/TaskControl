@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TaskControl.Core.SharedInfrastructure;
+using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.ReportsModule.DataAccess.Model;
 
 namespace TaskControl.ReportsModule.DataAccess.Interface

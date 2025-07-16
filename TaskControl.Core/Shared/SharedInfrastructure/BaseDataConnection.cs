@@ -2,9 +2,9 @@
 using LinqToDB.Data;
 using LinqToDB.DataProvider.PostgreSQL;
 using Microsoft.Extensions.Configuration;
-using TaskControl.Core.SharedInfrastructure;
+using TaskControl.Core.Shared.SharedInfrastructure;
 
-namespace TaskControl.InventoryModule.DataAccess.Infrastructure
+namespace TaskControl.Core.Shared.Shared.SharedInfrastructure
 {
     public abstract class BaseDataConnection<Type> : DataConnection where Type : DataConnection
     {

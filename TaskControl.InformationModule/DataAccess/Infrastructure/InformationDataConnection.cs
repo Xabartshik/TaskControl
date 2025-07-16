@@ -1,8 +1,9 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Configuration;
+using TaskControl.Core.Shared.Shared.SharedInfrastructure;
+using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.DataAccess.Model;
-using TaskControl.InventoryModule.DataAccess.Infrastructure;
 
 namespace TaskControl.InformationModule.DataAccess.Infrastructure
 {

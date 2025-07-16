@@ -2,6 +2,8 @@
 using LinqToDB.Data;
 using LinqToDB.DataProvider.PostgreSQL;
 using Microsoft.Extensions.Configuration;
+using TaskControl.Core.Shared.Shared.SharedInfrastructure;
+using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Model;
 

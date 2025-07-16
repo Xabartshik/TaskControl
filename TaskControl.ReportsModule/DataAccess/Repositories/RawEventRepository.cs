@@ -1,6 +1,6 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.ReportsModule.DataAccess.Interface;
 using TaskControl.ReportsModule.DataAccess.Mapper;
 using TaskControl.ReportsModule.Domain;

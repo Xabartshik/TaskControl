@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.DTOs;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Shared.SharedInterfaces;
 
 namespace TaskControl.InformationModule.Presentation.Controllers
 {

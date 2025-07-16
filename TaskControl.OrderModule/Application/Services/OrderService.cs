@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaskControl.Core.AppSettings;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.DataAccess.Interface;
 

@@ -7,7 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TaskControl.InventoryModule.DataAccess.Infrastructure;
+using TaskControl.Core.Shared.Shared.SharedInfrastructure;
+using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
 

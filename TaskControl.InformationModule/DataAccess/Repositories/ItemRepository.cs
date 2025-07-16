@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.DataAccess.Mapper;
 using TaskControl.InformationModule.Domain;

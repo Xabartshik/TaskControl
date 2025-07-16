@@ -2,7 +2,8 @@
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Serilog;
 using TaskControl.Core.AppSettings;
-using TaskControl.Core.SharedInterfaces;
+using TaskControl.Core.Infrastructure;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.InformationModule.DataAccess.Infrastructure;
 using TaskControl.InformationModule.DataAccess.Interface;
@@ -35,9 +36,7 @@ namespace TaskControl.Web
 
 
             //builder.Services.AddScoped<IInventoryDataConnection, InventoryDataConnection>();
-            builder.Services.AddScoped<IInformationDataConnection, InformationDataConnection>();
-            builder.Services.AddScoped<IBranchRepository, BranchRepository>();
-            builder.Services.AddScoped<IService<BranchDto>, BranchService>();
+            builder.Services.AddServicesGroup();
 
 
 

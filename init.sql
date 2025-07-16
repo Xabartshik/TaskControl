@@ -196,3 +196,219 @@ CREATE INDEX idx_item_statuses_position ON item_statuses (item_position_id);
 CREATE INDEX idx_item_statuses_date ON item_statuses (status_date);
 
 
+-- 1. Вставка филиалов
+INSERT INTO branches (branch_name, branch_type, address)
+VALUES 
+    ('Центральный склад', 'Warehouse', 'г. Москва, ул. Ленина, 1'),
+    ('Филиал Восток', 'Retail', 'г. Владивосток, ул. Портовая, 42'),
+    ('Филиал Запад', 'Distribution', 'г. Калининград, пр. Мира, 15');
+
+-- 2. Вставка сотрудников
+INSERT INTO employees (surname, name, middle_name, role)
+VALUES
+    ('Иванов', 'Иван', 'Иванович', 'Кладовщик'),
+    ('Петрова', 'Мария', 'Сергеевна', 'Логист'),
+    ('Сидоров', 'Алексей', NULL, 'Грузчик');
+
+-- 3. Вставка товаров
+INSERT INTO items (weight, length, width, height)
+VALUES
+    (1.5, 20, 15, 10),
+    (0.8, 10, 10, 5),
+    (5.0, 50, 30, 20);
+
+-- 4. Вставка складских позиций
+INSERT INTO positions (
+    branch_id, status, zone_code, first_level_storage_type, fls_number,
+    second_level_storage, third_level_storage, length, width, height
+)
+VALUES
+    (1, 'Active', 'A', 'Стеллаж', 'A-01', 'Полка 2', 'Ячейка 3', 100, 50, 40),
+    (1, 'Active', 'B', 'Паллет', 'B-05', NULL, NULL, 120, 80, 100),
+    (2, 'Active', 'C', 'Контейнер', 'C-12', 'Секция 1', NULL, 60, 40, 30);
+
+-- 5. Вставка товарных позиций
+INSERT INTO item_positions (item_id, position_id, quantity)
+VALUES
+    (1, 1, 10),
+    (2, 2, 5),
+    (3, 3, 2);
+
+-- 6. Вставка заказов
+INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
+VALUES
+    (1001, 1, '2025-07-20 14:00:00', 'Online', 'Processing'),
+    (1002, 2, '2025-07-22 10:00:00', 'Offline', 'New'),
+    (1003, 1, '2025-07-25 16:00:00', 'Wholesale', 'Shipped');
+
+-- 7. Вставка позиций заказа
+INSERT INTO order_positions (order_id, item_position_id, quantity)
+VALUES
+    (1, 1, 2),
+    (1, 2, 1),
+    (2, 3, 3);
+
+-- 8. Вставка отметок сотрудников
+INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
+VALUES
+    (1, 1, 'in', '2025-07-16 08:00:00'),
+    (1, 1, 'out', '2025-07-16 17:30:00'),
+    (2, 2, 'in', '2025-07-16 09:15:00');
+
+-- 9. Вставка сырых событий
+INSERT INTO raw_events (type, json_params, event_time, source_service)
+VALUES
+    (
+        'scan', 
+        '{"barcode": "123456", "location": "A-01"}', 
+        '2025-07-16 10:30:00', 
+        'ScannerService'
+    ),
+    (
+        'login', 
+        '{"user_id": 2, "device": "tablet"}', 
+        '2025-07-16 09:00:00', 
+        'AuthService'
+    );
+
+-- 10. Вставка активных задач
+INSERT INTO active_tasks (branch_id, type, status, json_params)
+VALUES
+    (1, 'Переучет', 'InProgress', '{"zone": "A"}'),
+    (2, 'Приемка', 'New', '{"supplier": "ООО Поставщик"}'),
+    (1, 'Комплектация', 'Completed', '{"order_id": 1}');
+
+-- 11. Вставка назначенных задач
+INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
+VALUES
+    (1, 1, '2025-07-16 08:30:00'),
+    (2, 2, '2025-07-16 09:45:00'),
+    (3, 1, '2025-07-15 14:20:00');
+
+-- 12. Вставка перемещений товара
+INSERT INTO item_movements (
+    source_item_position_id, destination_position_id, 
+    source_branch_id, destination_branch_id, quantity
+)
+VALUES
+    (1, 2, 1, 1, 5),
+    (3, 1, 2, 1, 2);
+
+
+
+    -- Дополнительные отметки сотрудников (10 записей)
+INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
+VALUES
+    (2, 2, 'out', '2025-07-16 18:30:00'),
+    (3, 1, 'in', '2025-07-16 07:45:00'),
+    (3, 1, 'out', '2025-07-16 16:20:00'),
+    (1, 1, 'in', '2025-07-17 08:05:00'),
+    (1, 1, 'out', '2025-07-17 17:40:00'),
+    (2, 2, 'in', '2025-07-17 09:20:00'),
+    (2, 2, 'out', '2025-07-17 18:15:00'),
+    (3, 1, 'in', '2025-07-17 07:50:00'),
+    (3, 1, 'out', '2025-07-17 16:35:00'),
+    (1, 1, 'in', '2025-07-18 08:10:00');
+
+-- Дополнительные сырые события (8 записей)
+INSERT INTO raw_events (type, json_params, event_time, source_service)
+VALUES
+    ('scan', '{"barcode": "789012", "location": "B-05"}', '2025-07-16 11:15:00', 'ScannerService'),
+    ('logout', '{"user_id": 1, "device": "handheld"}', '2025-07-16 17:35:00', 'AuthService'),
+    ('error', '{"code": "E404", "message": "Не найдено"}', '2025-07-17 10:20:00', 'InventoryService'),
+    ('update', '{"position": "A-01", "quantity": 15}', '2025-07-17 14:00:00', 'WMS'),
+    ('scan', '{"barcode": "345678", "location": "C-12"}', '2025-07-18 09:45:00', 'MobileApp'),
+    ('login', '{"user_id": 3, "device": "desktop"}', '2025-07-18 08:30:00', 'AuthService'),
+    ('movement', '{"from": "A-01", "to": "B-05", "items": 5}', '2025-07-18 11:20:00', 'WMS'),
+    ('alert', '{"type": "low_stock", "position": "C-12"}', '2025-07-18 15:40:00', 'Monitoring');
+
+-- Дополнительные активные задачи (8 записей)
+INSERT INTO active_tasks (branch_id, type, status, json_params, created_at, completed_at)
+VALUES
+    (1, 'Инвентаризация', 'New', '{"zone": "B"}', '2025-07-17 09:00:00', NULL),
+    (2, 'Перемещение', 'InProgress', '{"target_branch": 1}', '2025-07-17 10:30:00', NULL),
+    (3, 'Приемка', 'New', '{"supplier": "ООО Снабжение"}', '2025-07-17 11:45:00', NULL),
+    (1, 'Упаковка', 'Completed', '{"order_id": 3}', '2025-07-16 13:20:00', '2025-07-16 15:40:00'),
+    (2, 'Выгрузка', 'InProgress', '{"truck": "A123BC"}', '2025-07-18 08:15:00', NULL),
+    (1, 'Маркировка', 'New', '{"items_count": 50}', '2025-07-18 10:00:00', NULL),
+    (3, 'Резервирование', 'Completed', '{"order_id": 2}', '2025-07-17 14:30:00', '2025-07-17 16:00:00'),
+    (2, 'Комплектация', 'InProgress', '{"order_id": 5}', '2025-07-18 09:30:00', NULL);
+
+-- Дополнительные назначения задач (8 записей)
+INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
+VALUES
+    (4, 2, '2025-07-16 10:00:00'),
+    (5, 3, '2025-07-17 11:00:00'),
+    (6, 1, '2025-07-17 12:30:00'),
+    (7, 2, '2025-07-18 08:20:00'),
+    (8, 3, '2025-07-18 09:35:00'),
+    (9, 1, '2025-07-18 10:05:00'),
+    (10, 2, '2025-07-18 11:15:00'),
+    (11, 3, '2025-07-18 13:40:00');
+
+-- Дополнительные заказы (8 записей)
+INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
+VALUES
+    (1004, 3, '2025-07-23 12:00:00', 'Online', 'Processing'),
+    (1005, 1, '2025-07-24 15:30:00', 'Wholesale', 'New'),
+    (1006, 2, '2025-07-25 11:00:00', 'Offline', 'Shipped'),
+    (1007, 1, '2025-07-26 14:45:00', 'Online', 'Delivered'),
+    (1008, 3, '2025-07-27 10:15:00', 'Online', 'Cancelled'),
+    (1009, 2, '2025-07-28 16:20:00', 'Wholesale', 'Processing'),
+    (1010, 1, '2025-07-29 09:30:00', 'Offline', 'New'),
+    (1011, 3, '2025-07-30 13:00:00', 'Online', 'Processing');
+
+-- Дополнительные позиции заказов (10 записей)
+INSERT INTO order_positions (order_id, item_position_id, quantity)
+VALUES
+    (4, 1, 3),
+    (4, 3, 1),
+    (5, 2, 4),
+    (6, 1, 2),
+    (6, 2, 2),
+    (7, 3, 1),
+    (8, 1, 5),
+    (9, 2, 3),
+    (10, 3, 2),
+    (11, 1, 4);
+
+-- Дополнительные товарные позиции (8 записей)
+INSERT INTO item_positions (item_id, position_id, quantity)
+VALUES
+    (1, 2, 8),
+    (2, 3, 6),
+    (3, 1, 3),
+    (1, 3, 4),
+    (2, 1, 7),
+    (3, 2, 2),
+    (1, 1, 5),
+    (2, 2, 9);
+
+-- Дополнительные перемещения товара (8 записей)
+INSERT INTO item_movements (
+    source_item_position_id, destination_position_id, 
+    source_branch_id, destination_branch_id, quantity
+)
+VALUES
+    (2, 1, 1, 1, 3),
+    (4, 3, 1, 1, 2),
+    (1, 2, 1, 1, 4),
+    (3, 1, 1, 1, 1),
+    (5, 3, 1, 1, 2),
+    (6, 2, 1, 1, 3),
+    (7, 1, 1, 1, 2),
+    (8, 3, 1, 1, 4);
+
+-- 13. Вставка статусов товара
+INSERT INTO item_statuses (item_position_id, status, quantity)
+VALUES
+    (1, 'Reserved', 3),
+    (2, 'Available', 5),
+    (3, 'Shipped', 2),
+    (4, 'Reserved', 2),
+    (5, 'Available', 7),
+    (6, 'Shipped', 1),
+    (7, 'Available', 5),
+    (8, 'Reserved', 3),
+    (9, 'Defective', 1),
+    (10, 'Available', 4);
