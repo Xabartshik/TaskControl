@@ -22,14 +22,12 @@ namespace TaskControl.InformationModule.Application.DTOs
         /// Идентификатор сотрудника
         /// </summary>
         [Required(ErrorMessage = "Укажите ID сотрудника")]
-        [Range(1, int.MaxValue, ErrorMessage = "ID сотрудника должен быть положительным числом")]
         public int EmployeeId { get; init; }
 
         /// <summary>
         /// Идентификатор филиала
         /// </summary>
         [Required(ErrorMessage = "Укажите ID филиала")]
-        [Range(1, int.MaxValue, ErrorMessage = "ID филиала должен быть положительным числом")]
         public int BranchId { get; init; }
 
         /// <summary>

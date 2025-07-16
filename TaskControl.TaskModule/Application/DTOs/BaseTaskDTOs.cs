@@ -8,7 +8,6 @@ namespace TaskControl.TaskModule.Application.DTOs
         public int TaskId { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int BranchId { get; init; }
 
         [Required]

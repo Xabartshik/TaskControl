@@ -13,11 +13,9 @@ namespace TaskControl.TaskModule.Application.DTOs
         public int Id { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int TaskId { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int UserId { get; init; }
 
         public DateTime AssignedAt { get; init; }

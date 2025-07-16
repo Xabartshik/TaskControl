@@ -16,11 +16,9 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int OrderId { get; init; }
 
         [Required(ErrorMessage = "Укажите ID клиента")]
-        [Range(1, int.MaxValue, ErrorMessage = "ID клиента должен быть положительным числом")]
         public int CustomerId { get; init; }
 
         [Required(ErrorMessage = "Укажите ID филиала")]
-        [Range(1, int.MaxValue, ErrorMessage = "ID филиала должен быть положительным числом")]
         public int BranchId { get; init; }
 
         [FutureDate(ErrorMessage = "Дата доставки должна быть в будущем")]

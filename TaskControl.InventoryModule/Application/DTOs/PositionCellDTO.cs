@@ -14,7 +14,6 @@ namespace TaskControl.InventoryModule.Application.DTOs
         public int PositionId { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int BranchId { get; init; }
 
         [Required]

@@ -11,11 +11,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
     public record ItemStatusDto
     {
         [Required]
-        [Range(1, int.MaxValue)]
         public int Id { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int ItemPositionId { get; init; }
 
         [Required]

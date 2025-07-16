@@ -13,11 +13,9 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int UniqueId { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int OrderId { get; init; }
 
         [Required]
-        [Range(1, int.MaxValue)]
         public int ItemPositionId { get; init; }
 
         [Required]
