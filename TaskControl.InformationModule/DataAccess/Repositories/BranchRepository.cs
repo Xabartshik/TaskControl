@@ -57,7 +57,7 @@ namespace TaskControl.InformationModule.DataAccess.Repositories
                 if (entity == null)
                     throw new ArgumentNullException(nameof(entity));
 
-                return await _db.InsertAsync(entity);
+                return await _db.InsertAsync(entity.ToModel());
             }
             catch (Exception ex)
             {
@@ -74,7 +74,7 @@ namespace TaskControl.InformationModule.DataAccess.Repositories
                 if (entity == null)
                     return 0;
 
-                return await _db.UpdateAsync(entity);
+                return await _db.UpdateAsync(entity.ToModel());
             }
             catch (Exception ex)
             {

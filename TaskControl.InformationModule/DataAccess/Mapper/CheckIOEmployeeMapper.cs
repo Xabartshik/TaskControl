@@ -10,7 +10,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
 {
     public static class CheckIoEmployeeMapper
     {
-        public static CheckIOEmployeeModel? ToModel(this CheckIOEmployee entity)
+        public static CheckIOEmployeeModel ToModel(this CheckIOEmployee entity)
         {
             if (entity == null) return null;
 
@@ -24,7 +24,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             };
         }
 
-        public static CheckIOEmployee? ToDomain(this CheckIOEmployeeModel model)
+        public static CheckIOEmployee ToDomain(this CheckIOEmployeeModel model)
         {
             if (model == null) return null;
 
