@@ -9,7 +9,7 @@ namespace TaskControl.InformationModule.DataAccess.Infrastructure
     public class InformationDataConnection : BaseDataConnection<InformationDataConnection>, IInformationDataConnection
     {
         public InformationDataConnection(IConfiguration configuration)
-            : base(configuration, "InformationConnection")
+            : base(configuration, "DefaultConnection")
         {
         }
 

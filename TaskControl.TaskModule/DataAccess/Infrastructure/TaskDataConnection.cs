@@ -16,7 +16,7 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
     public class TaskDataConnection : BaseDataConnection<TaskDataConnection>, ITaskDataConnection
     {
         public TaskDataConnection(IConfiguration configuration)
-            : base(configuration, "TaskConnection")
+            : base(configuration, "DefaultConnection")
         {
         }
 

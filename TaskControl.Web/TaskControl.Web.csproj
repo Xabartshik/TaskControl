@@ -16,4 +16,12 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\TaskControl.InformationModule\TaskControl.InformationModule.csproj" />
+    <ProjectReference Include="..\TaskControl.InventoryModule\TaskControl.InventoryModule.csproj" />
+    <ProjectReference Include="..\TaskControl.OrderModule\TaskControl.OrderModule.csproj" />
+    <ProjectReference Include="..\TaskControl.ReportsModule\TaskControl.ReportsModule.csproj" />
+    <ProjectReference Include="..\TaskControl.TaskModule\TaskControl.TaskModule.csproj" />
+  </ItemGroup>
+
 </Project>

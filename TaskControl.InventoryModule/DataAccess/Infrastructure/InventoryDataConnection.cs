@@ -10,7 +10,7 @@ namespace TaskControl.InventoryModule.DataAccess.Infrastructure
     public class InventoryDataConnection : BaseDataConnection<InventoryDataConnection>, IInventoryDataConnection
     {
         public InventoryDataConnection(IConfiguration configuration)
-            : base(configuration, "InventoryConnection")
+            : base(configuration, "DefaultConnection")
         {
         }
 

@@ -6,7 +6,7 @@ using TaskControl.Core.SharedInfrastructure;
 
 namespace TaskControl.InventoryModule.DataAccess.Infrastructure
 {
-    public abstract class BaseDataConnection<T> : DataConnection where T : DataConnection
+    public abstract class BaseDataConnection<Type> : DataConnection where Type : DataConnection
     {
         protected BaseDataConnection(IConfiguration configuration, string connectionStringName)
             : base(PostgreSQLTools.GetDataProvider(PostgreSQLVersion.v95),
@@ -16,17 +16,17 @@ namespace TaskControl.InventoryModule.DataAccess.Infrastructure
 
         public async Task<int> InsertAsync<T>(T entity) where T : class
         {
-            return await this.InsertAsync(entity);
+            return await DataExtensions.InsertAsync(this, entity);
         }
 
         public async Task<int> UpdateAsync<T>(T entity) where T : class
         {
-            return await this.UpdateAsync(entity);
+            return await DataExtensions.UpdateAsync(this, entity);
         }
 
         public async Task<int> DeleteAsync<T>(T entity) where T : class
         {
-            return await this.DeleteAsync(entity);
+            return await DataExtensions.DeleteAsync(this, entity);
         }
     }
 }

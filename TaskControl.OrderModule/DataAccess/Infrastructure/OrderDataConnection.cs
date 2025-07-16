@@ -16,7 +16,7 @@ namespace TaskControl.OrderModule.DataAccess.Infrastructure
     public class OrderDataConnection : BaseDataConnection<OrderDataConnection>, IOrderDataConnection
     {
         public OrderDataConnection(IConfiguration configuration)
-            : base(configuration, "OrderConnection")
+            : base(configuration, "DefaultConnection")
         {
         }
 

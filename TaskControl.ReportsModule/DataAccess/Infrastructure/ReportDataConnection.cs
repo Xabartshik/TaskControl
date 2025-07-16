@@ -9,7 +9,7 @@ namespace TaskControl.ReportsModule.DataAccess.Infrastructure
     public class ReportDataConnection : BaseDataConnection<ReportDataConnection>, IReportDataConnection
     {
         public ReportDataConnection(IConfiguration configuration)
-            : base(configuration, "ReportConnection")
+            : base(configuration, "DefaultConnection")
         {
         }
 
