@@ -24,12 +24,10 @@ namespace TaskControl.TaskModule.Domain
         /// <summary>
         /// Идентификатор филиала
         /// </summary>
-        [Required(ErrorMessage = "Не указан филиал")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный идентификатор филиала")]
         public int BranchId { get; set; }
 
         /// <summary>
-        /// Тип задачи
+        /// Тип задачи (Нужен для оптимизации работы фабрики)
         /// </summary>
         [Required(ErrorMessage = "Тип задачи обязателен")]
         [StringLength(50, ErrorMessage = "Тип задачи не может превышать 50 символов")]
@@ -55,9 +53,8 @@ namespace TaskControl.TaskModule.Domain
         public string Status { get; set; } = "New";
 
         /// <summary>
-        /// Дополнительные параметры задачи в формате JSON
+        /// Дополнительные параметры задачи в формате JSON были удалены, так как являются частью БД, а не бизнес-сущности
         /// </summary>
-        public JsonDocument? JSONParams { get; set; }
 
         /// <summary>
         /// Проверяет, является ли задача активной
