@@ -22,4 +22,8 @@
     <ProjectReference Include="..\TaskControl.Core\TaskControl.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Domain\TaskTypes\" />
+  </ItemGroup>
+
 </Project>

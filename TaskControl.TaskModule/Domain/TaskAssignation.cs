@@ -22,14 +22,12 @@ namespace TaskControl.TaskModule.Domain
         /// Идентификатор задачи
         /// </summary>
         [Required(ErrorMessage = "Не указана задача")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный идентификатор задачи")]
         public int TaskId { get; set; }
 
         /// <summary>
         /// Идентификатор пользователя
         /// </summary>
         [Required(ErrorMessage = "Не указан пользователь")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный идентификатор пользователя")]
         public int UserId { get; set; }
 
         /// <summary>
