@@ -30,9 +30,7 @@ namespace TaskControl.TaskModule.Application.DTOs
             Type = dto.Type,
             CreatedAt = dto.CreatedAt,
             CompletedAt = dto.CompletedAt,
-            Status = dto.Status,
-            JSONParams = dto.JSONParams.HasValue ?
-                JsonDocument.Parse(dto.JSONParams.Value.ToString()) : null
+            Status = dto.Status
         };
 
         public static BaseTaskDto ToDto(BaseTask entity) => new()
@@ -42,8 +40,7 @@ namespace TaskControl.TaskModule.Application.DTOs
             Type = entity.Type,
             CreatedAt = entity.CreatedAt,
             CompletedAt = entity.CompletedAt,
-            Status = entity.Status,
-            JSONParams = entity.JSONParams?.RootElement
+            Status = entity.Status
         };
     }
 }

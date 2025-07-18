@@ -15,7 +15,6 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
         public static BaseTaskModel ToModel(this BaseTask entity)
         {
             if (entity == null) return null;
-            var values = entity.JSONParams is null ? null : entity.JSONParams.RootElement.ToString();
             return new BaseTaskModel
             {
                 TaskId = entity.TaskId,
@@ -24,7 +23,6 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 CreatedAt = entity.CreatedAt,
                 CompletedAt = entity.CompletedAt,
                 Status = entity.Status,
-                JsonParams = values
             };
         }
 
@@ -40,10 +38,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Type = model.Type,
                 CreatedAt = model.CreatedAt,
                 CompletedAt = model.CompletedAt,
-                Status = model.Status,
-                JSONParams = model.JsonParams != null
-                    ? JsonDocument.Parse(model.JsonParams)
-                    : null // Десериализация
+                Status = model.Status
             };
         }
     }
