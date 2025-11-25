@@ -14,7 +14,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
         // ActiveTask → ActiveTaskModel
         public static BaseTaskModel ToModel(this BaseTask entity)
         {
-            if (entity == null) return null;
+            if (entity == null) return null; 
             return new BaseTaskModel
             {
                 TaskId = entity.TaskId,
