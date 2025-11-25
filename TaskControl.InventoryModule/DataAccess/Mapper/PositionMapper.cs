@@ -1,11 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
-using TaskControl.OrderModule.Domain;
 using UnitsNet;
 
 namespace TaskControl.InventoryModule.DataAccess.Mapper
@@ -19,13 +14,13 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             return new PositionModel
             {
                 PositionId = entity.PositionId,
-                BranchId = entity.BranchId,
+                BranchId = entity.Code.BranchId,
                 Status = entity.Status,
-                ZoneCode = entity.ZoneCode,
-                FirstLevelStorageType = entity.FirstLevelStorageType,
-                FLSNumber = entity.FLSNumber,
-                SecondLevelStorage = entity.SecondLevelStorage,
-                ThirdLevelStorage = entity.ThirdLevelStorage,
+                ZoneCode = entity.Code.ZoneCode,
+                FirstLevelStorageType = entity.Code.FirstLevelStorageType,
+                FLSNumber = entity.Code.FLSNumber,
+                SecondLevelStorage = entity.Code.SecondLevelStorage,
+                ThirdLevelStorage = entity.Code.ThirdLevelStorage,
                 Length = entity.Length.Millimeters,
                 Width = entity.Width.Millimeters,
                 Height = entity.Height.Millimeters,
@@ -40,13 +35,16 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             return new PositionCell
             {
                 PositionId = model.PositionId,
-                BranchId = model.BranchId,
+                Code = new PositionCode
+                {
+                    BranchId = model.BranchId,
+                    ZoneCode = model.ZoneCode,
+                    FirstLevelStorageType = model.FirstLevelStorageType,
+                    FLSNumber = model.FLSNumber,
+                    SecondLevelStorage = model.SecondLevelStorage,
+                    ThirdLevelStorage = model.ThirdLevelStorage
+                },
                 Status = model.Status,
-                ZoneCode = model.ZoneCode,
-                FirstLevelStorageType = model.FirstLevelStorageType,
-                FLSNumber = model.FLSNumber,
-                SecondLevelStorage = model.SecondLevelStorage,
-                ThirdLevelStorage = model.ThirdLevelStorage,
                 Length = Length.FromMillimeters(model.Length),
                 Width = Length.FromMillimeters(model.Width),
                 Height = Length.FromMillimeters(model.Height)
