@@ -11,6 +11,7 @@ using TaskControl.Core.Shared.Shared.SharedInfrastructure;
 using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.TaskModule.DataAccess.Models;
 
 namespace TaskControl.TaskModule.DataAccess.Infrastructure
 {
@@ -24,5 +25,12 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
         public ITable<BaseTaskModel> ActiveTasks => this.GetTable<BaseTaskModel>();
         public ITable<TaskAssignationModel> TaskAssignations => this.GetTable<TaskAssignationModel>();
 
+        public ITable<InventoryStatisticsModel> InventoryStatistics => this.GetTable<InventoryStatisticsModel>();
+
+        public ITable<InventoryDiscrepancyModel> InventoryDiscrepancies => this.GetTable<InventoryDiscrepancyModel>();
+
+        public ITable<InventoryAssignmentLineModel> InventoryAssignmentLines => this.GetTable<InventoryAssignmentLineModel>();
+
+        public ITable<InventoryAssignmentModel> InventoryAssignments => this.GetTable<InventoryAssignmentModel>();
     }
 }

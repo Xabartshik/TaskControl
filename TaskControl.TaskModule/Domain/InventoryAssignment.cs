@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.TaskModule.Domain
 {
@@ -17,42 +15,48 @@ namespace TaskControl.TaskModule.Domain
     /// </summary>
     public class InventoryAssignmentLine
     {
-        public int Id { get; private set; }
+        public int Id { get; internal set; }
 
         /// <summary>
         /// Ссылка на назначение (родительский агрегат).
         /// </summary>
-        public int InventoryAssignmentId { get; private set; }
+        public int InventoryAssignmentId { get; internal set; }
 
         /// <summary>
         /// Id ItemPosition (физическое расположение товара на складе).
         /// </summary>
-        public int ItemPositionId { get; private set; }
+        public int ItemPositionId { get; internal set; }
 
         /// <summary>
         /// Id складской ячейки (PositionCell.PositionId).
         /// </summary>
-        public int PositionId { get; private set; }
+        public int PositionId { get; internal set; }
+
+        /// <summary>
+        /// Снимок кода позиции (адрес ячейки) на момент назначения.
+        /// </summary>
+        public PositionCode PositionCode { get; internal set; }
 
         /// <summary>
         /// Ожидаемое количество (до инвентаризации).
         /// </summary>
-        public int ExpectedQuantity { get; private set; }
+        public int ExpectedQuantity { get; internal set; }
 
         /// <summary>
         /// Фактически отсканированное количество.
         /// </summary>
-        public int? ActualQuantity { get; private set; }
+        public int? ActualQuantity { get; internal set; }
 
         public bool IsCounted => ActualQuantity.HasValue;
 
-        private InventoryAssignmentLine() { }
+        internal InventoryAssignmentLine() { }
 
         public InventoryAssignmentLine(
             int id,
             int inventoryAssignmentId,
             int itemPositionId,
             int positionId,
+            PositionCode positionCode,
             int expectedQuantity)
         {
             if (inventoryAssignmentId <= 0)
@@ -63,11 +67,14 @@ namespace TaskControl.TaskModule.Domain
                 throw new ArgumentOutOfRangeException(nameof(positionId));
             if (expectedQuantity < 0)
                 throw new ArgumentOutOfRangeException(nameof(expectedQuantity));
+            if (positionCode == null)
+                throw new ArgumentNullException(nameof(positionCode));
 
             Id = id;
             InventoryAssignmentId = inventoryAssignmentId;
             ItemPositionId = itemPositionId;
             PositionId = positionId;
+            PositionCode = positionCode;
             ExpectedQuantity = expectedQuantity;
         }
 
@@ -85,41 +92,41 @@ namespace TaskControl.TaskModule.Domain
     /// </summary>
     public class InventoryAssignment
     {
-        public int Id { get; private set; }
+        public int Id { get; internal set; }
 
         /// <summary>
         /// Id задачи (Task из TaskModule) с типом TaskType.Inventory.
         /// </summary>
-        public int TaskId { get; private set; }
+        public int TaskId { get; internal set; }
 
         /// <summary>
         /// Пользователь, которому назначен участок.
         /// </summary>
-        public int AssignedToUserId { get; private set; }
+        public int AssignedToUserId { get; internal set; }
 
         /// <summary>
-        /// Филиал (BranchId из PositionCell).
+        /// Филиал (BranchId из PositionCell). Для всего назначения.
         /// </summary>
-        public int BranchId { get; private set; }
+        public int BranchId { get; internal set; }
 
         /// <summary>
-        /// Необязательный код зоны (ZoneCode из PositionCell).
+        /// Необязательный код зоны (ZoneCode из PositionCell) для всего назначения.
         /// </summary>
-        public string? ZoneCode { get; private set; }
+        public string? ZoneCode { get; internal set; }
 
-        public InventoryAssignmentStatus Status { get; private set; }
+        public InventoryAssignmentStatus Status { get; internal set; }
 
-        public DateTime AssignedAt { get; private set; }
-        public DateTime? CompletedAt { get; private set; }
+        public DateTime AssignedAt { get; internal set; }
+        public DateTime? CompletedAt { get; internal set; }
 
-        private readonly List<InventoryAssignmentLine> _lines = new();
+        internal readonly List<InventoryAssignmentLine> _lines = new();
         public IReadOnlyCollection<InventoryAssignmentLine> Lines => _lines.AsReadOnly();
 
         public int TotalLines => _lines.Count;
         public int CountedLines => _lines.Count(l => l.IsCounted);
         public bool IsCompleted => Status == InventoryAssignmentStatus.Completed;
 
-        private InventoryAssignment() { }
+        internal InventoryAssignment() { }
 
         public InventoryAssignment(
             int id,
@@ -198,6 +205,22 @@ namespace TaskControl.TaskModule.Domain
         public bool ContainsPosition(int positionId)
         {
             return _lines.Any(l => l.PositionId == positionId);
+        }
+
+        /// <summary>
+        /// Проверить, относится ли позиция с заданным кодом к этому назначению.
+        /// Удобно использовать при работе с QR, содержащим строковый код.
+        /// </summary>
+        public bool ContainsPositionCode(PositionCode code)
+        {
+            if (code == null) return false;
+            return _lines.Any(l =>
+                l.PositionCode.BranchId == code.BranchId &&
+                l.PositionCode.ZoneCode == code.ZoneCode &&
+                l.PositionCode.FirstLevelStorageType == code.FirstLevelStorageType &&
+                l.PositionCode.FLSNumber == code.FLSNumber &&
+                l.PositionCode.SecondLevelStorage == code.SecondLevelStorage &&
+                l.PositionCode.ThirdLevelStorage == code.ThirdLevelStorage);
         }
     }
 }

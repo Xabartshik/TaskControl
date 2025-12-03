@@ -7,7 +7,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
 {
     public static class PositionMapper
     {
-        public static PositionModel ToModel(this PositionCell entity)
+        public static PositionModel? ToModel(this PositionCell entity)
         {
             if (entity == null) return null;
 
@@ -28,7 +28,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             };
         }
 
-        public static PositionCell ToDomain(this PositionModel model)
+        public static PositionCell? ToDomain(this PositionModel model)
         {
             if (model == null) return null;
 

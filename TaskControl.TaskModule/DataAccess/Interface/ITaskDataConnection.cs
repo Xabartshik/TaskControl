@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.TaskModule.DataAccess.Models;
 
 namespace TaskControl.TaskModule.DataAccess.Interface
 {
@@ -13,6 +14,9 @@ namespace TaskControl.TaskModule.DataAccess.Interface
     {
         ITable<BaseTaskModel> ActiveTasks { get; }
         ITable<TaskAssignationModel> TaskAssignations { get; }
-
+        ITable<InventoryStatisticsModel> InventoryStatistics { get; }
+        ITable<InventoryDiscrepancyModel> InventoryDiscrepancies { get; }
+        ITable<InventoryAssignmentLineModel> InventoryAssignmentLines { get; }
+        ITable<InventoryAssignmentModel> InventoryAssignments { get; }
     }
 }
