@@ -412,3 +412,89 @@ VALUES
     (8, 'Reserved', 3),
     (9, 'Defective', 1),
     (10, 'Available', 4);
+
+-- =====================================================
+-- ТАБЛИЦЫ ДЛЯ ИНВЕНТАРИЗАЦИИ
+-- =====================================================
+
+-- Создание таблицы назначений инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_assignments (
+    id SERIAL PRIMARY KEY,
+    task_id INT NOT NULL REFERENCES active_tasks(task_id),
+    assigned_to_user_id INT NOT NULL REFERENCES employees(employees_id),
+    branch_id INT NOT NULL REFERENCES branches(branch_id),
+    zone_code VARCHAR(10),
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
+    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы inventory_assignments
+CREATE INDEX idx_inventory_assignments_task ON inventory_assignments(task_id);
+CREATE INDEX idx_inventory_assignments_user ON inventory_assignments(assigned_to_user_id);
+CREATE INDEX idx_inventory_assignments_branch ON inventory_assignments(branch_id);
+CREATE INDEX idx_inventory_assignments_zone ON inventory_assignments(zone_code);
+CREATE INDEX idx_inventory_assignments_status ON inventory_assignments(status);
+
+-- Создание таблицы строк инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_assignment_lines (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_id INT NOT NULL REFERENCES inventory_assignments(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    position_id INT NOT NULL REFERENCES positions(position_id),
+    expected_quantity INT NOT NULL CHECK (expected_quantity >= 0),
+    actual_quantity INT,
+    zone_code VARCHAR(10) NOT NULL,
+    first_level_storage_type VARCHAR(30) NOT NULL,
+    fls_number VARCHAR(20) NOT NULL,
+    second_level_storage VARCHAR(30),
+    third_level_storage VARCHAR(30)
+);
+
+-- Индексы для таблицы inventory_assignment_lines
+CREATE INDEX idx_inventory_lines_assignment ON inventory_assignment_lines(inventory_assignment_id);
+CREATE INDEX idx_inventory_lines_itemposition ON inventory_assignment_lines(item_position_id);
+CREATE INDEX idx_inventory_lines_position ON inventory_assignment_lines(position_id);
+CREATE INDEX idx_inventory_lines_zone ON inventory_assignment_lines(zone_code);
+
+-- Создание таблицы расхождений при инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_discrepancies (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_line_id INT NOT NULL REFERENCES inventory_assignment_lines(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    expected_quantity INT NOT NULL CHECK (expected_quantity >= 0),
+    actual_quantity INT NOT NULL CHECK (actual_quantity >= 0),
+    type INT NOT NULL CHECK (type IN (0, 1, 2)), -- None(0), Surplus(1), Shortage(2)
+    note TEXT,
+    identified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolution_status INT NOT NULL CHECK (resolution_status IN (0, 1, 2, 3)), -- Pending(0), Resolved(1), UnderInvestigation(2), WrittenOff(3)
+    CONSTRAINT positive_variance CHECK ((actual_quantity - expected_quantity) IS NOT NULL)
+);
+
+-- Индексы для таблицы inventory_discrepancies
+CREATE INDEX idx_discrepancies_line ON inventory_discrepancies(inventory_assignment_line_id);
+CREATE INDEX idx_discrepancies_itemposition ON inventory_discrepancies(item_position_id);
+CREATE INDEX idx_discrepancies_type ON inventory_discrepancies(type);
+CREATE INDEX idx_discrepancies_resolution ON inventory_discrepancies(resolution_status);
+CREATE INDEX idx_discrepancies_identified ON inventory_discrepancies(identified_at);
+
+-- Создание таблицы статистики инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_statistics (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_id INT NOT NULL UNIQUE REFERENCES inventory_assignments(id),
+    total_positions INT NOT NULL CHECK (total_positions > 0),
+    counted_positions INT NOT NULL CHECK (counted_positions >= 0),
+    discrepancy_count INT NOT NULL CHECK (discrepancy_count >= 0),
+    surplus_count INT NOT NULL CHECK (surplus_count >= 0),
+    shortage_count INT NOT NULL CHECK (shortage_count >= 0),
+    total_surplus_quantity INT NOT NULL CHECK (total_surplus_quantity >= 0),
+    total_shortage_quantity INT NOT NULL CHECK (total_shortage_quantity >= 0),
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы inventory_statistics
+CREATE INDEX idx_statistics_assignment ON inventory_statistics(inventory_assignment_id);
+CREATE INDEX idx_statistics_started ON inventory_statistics(started_at);
+CREATE INDEX idx_statistics_completed ON inventory_statistics(completed_at);
+
