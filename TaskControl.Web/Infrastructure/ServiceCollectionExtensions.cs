@@ -28,10 +28,13 @@ using TaskControl.ReportsModule.DataAccess.Infrastructure;
 using TaskControl.ReportsModule.DataAccess.Interface;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Presentation.Interface;
 
 namespace TaskControl.Core.Infrastructure
 {
@@ -116,6 +119,17 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ITaskAssignationRepository, TaskAssignationRepository>();
             services.AddScoped<IService<TaskAssignationDto>, TaskAssignationService>();
+
+            // Program.cs
+            services.AddScoped<IInventoryProcessService, InventoryProcessService>();
+            services.AddScoped<IDiscrepancyManagementService, DiscrepancyManagementService>();
+            services.AddScoped<IInventoryReportService, InventoryReportService>();
+
+            services.AddScoped<IInventoryAssignmentRepository, InventoryAssignmentRepository>();
+            services.AddScoped<IInventoryAssignmentLineRepository, InventoryAssignmentLineRepository>();
+            services.AddScoped<IInventoryDiscrepancyRepository, InventoryDiscrepancyRepository>();
+            services.AddScoped<IInventoryStatisticsRepository, InventoryStatisticsRepository>();
+
 
             return services;
         }

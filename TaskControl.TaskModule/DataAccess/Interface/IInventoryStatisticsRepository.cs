@@ -19,10 +19,10 @@ public interface IInventoryStatisticsRepository
     /// <summary>
     /// Создать новую статистику
     /// </summary>
-    Task<int> CreateAsync(InventoryStatistics statistics);
+    Task<int> AddAsync(InventoryStatistics statistics);
 
     /// <summary>
     /// Обновить статистику
     /// </summary>
-    Task UpdateAsync(InventoryStatistics statistics);
+    Task<int> UpdateAsync(InventoryStatistics statistics);
 }

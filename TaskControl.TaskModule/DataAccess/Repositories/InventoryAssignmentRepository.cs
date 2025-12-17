@@ -173,16 +173,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
     }
 }
 
-public interface IInventoryAssignmentLineRepository
-{
-    Task<InventoryAssignmentLine> GetByIdAsync(int id);
-    Task<List<InventoryAssignmentLine>> GetByAssignmentIdAsync(int inventoryAssignmentId);
-    Task<List<InventoryAssignmentLine>> GetByItemPositionIdAsync(int itemPositionId);
-    Task<List<InventoryAssignmentLine>> GetUncountedAsync(int inventoryAssignmentId);
-    Task<int> AddAsync(InventoryAssignmentLine line);
-    Task<int> UpdateAsync(InventoryAssignmentLine line);
-    Task<int> AddBatchAsync(List<InventoryAssignmentLine> lines);
-}
+
 
 public class InventoryAssignmentLineRepository : IInventoryAssignmentLineRepository
 {

@@ -7,14 +7,6 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Repositories;
 
-public interface IInventoryStatisticsRepository
-{
-    Task<InventoryStatistics> GetByIdAsync(int id);
-    Task<InventoryStatistics> GetByAssignmentIdAsync(int inventoryAssignmentId);
-    Task<int> AddAsync(InventoryStatistics statistics);
-    Task<int> UpdateAsync(InventoryStatistics statistics);
-}
-
 public class InventoryStatisticsRepository : IInventoryStatisticsRepository
 {
     private readonly ITaskDataConnection _db;

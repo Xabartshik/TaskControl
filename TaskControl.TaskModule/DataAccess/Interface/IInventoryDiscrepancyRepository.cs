@@ -35,25 +35,25 @@ public interface IInventoryDiscrepancyRepository
     /// <summary>
     /// Создать новое расхождение
     /// </summary>
-    Task<int> CreateAsync(InventoryDiscrepancy discrepancy);
+    Task<int> AddAsync(InventoryDiscrepancy discrepancy);
 
     /// <summary>
     /// Обновить расхождение
     /// </summary>
-    Task UpdateAsync(InventoryDiscrepancy discrepancy);
+    Task<int> UpdateAsync(InventoryDiscrepancy discrepancy);
 
     /// <summary>
     /// Удалить расхождение
     /// </summary>
-    Task DeleteAsync(int id);
+    Task<int> DeleteAsync(int id);
 
     /// <summary>
     /// Получить общее количество расхождений по назначению
     /// </summary>
     Task<int> GetCountByAssignmentIdAsync(int inventoryAssignmentId);
 
-    /// <summary>
-    /// Получить количество нерешённых расхождений
-    /// </summary>
-    Task<int> GetPendingCountAsync();
+    ///// <summary>
+    ///// Получить количество нерешённых расхождений
+    ///// </summary>
+    //Task<int> GetPendingCountAsync();
 }

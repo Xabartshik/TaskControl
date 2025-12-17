@@ -7,19 +7,6 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Repositories;
 
-public interface IInventoryDiscrepancyRepository
-{
-    Task<InventoryDiscrepancy> GetByIdAsync(int id);
-    Task<List<InventoryDiscrepancy>> GetByAssignmentLineIdAsync(int inventoryAssignmentLineId);
-    Task<List<InventoryDiscrepancy>> GetByAssignmentIdAsync(int inventoryAssignmentId);
-    Task<List<InventoryDiscrepancy>> GetPendingAsync();
-    Task<List<InventoryDiscrepancy>> GetByTypeAsync(DiscrepancyType type);
-    Task<int> AddAsync(InventoryDiscrepancy discrepancy);
-    Task<int> UpdateAsync(InventoryDiscrepancy discrepancy);
-    Task<int> DeleteAsync(int id);
-    Task<int> GetCountByAssignmentIdAsync(int inventoryAssignmentId);
-}
-
 public class InventoryDiscrepancyRepository : IInventoryDiscrepancyRepository
 {
     private readonly ITaskDataConnection _db;
