@@ -78,6 +78,31 @@ namespace TaskControl.TaskModule.Domain
             ExpectedQuantity = expectedQuantity;
         }
 
+        public InventoryAssignmentLine(
+            int inventoryAssignmentId,
+            int itemPositionId,
+            int positionId,
+            PositionCode positionCode,
+            int expectedQuantity)
+        {
+            if (inventoryAssignmentId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(inventoryAssignmentId));
+            if (itemPositionId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(itemPositionId));
+            if (positionId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(positionId));
+            if (expectedQuantity < 0)
+                throw new ArgumentOutOfRangeException(nameof(expectedQuantity));
+            if (positionCode == null)
+                throw new ArgumentNullException(nameof(positionCode));
+
+            InventoryAssignmentId = inventoryAssignmentId;
+            ItemPositionId = itemPositionId;
+            PositionId = positionId;
+            PositionCode = positionCode;
+            ExpectedQuantity = expectedQuantity;
+        }
+
         public void SetActualQuantity(int actualQuantity)
         {
             if (actualQuantity < 0)
@@ -160,6 +185,26 @@ namespace TaskControl.TaskModule.Domain
 
             _lines.AddRange(lineList);
         }
+
+        public InventoryAssignment(
+            int taskId,
+            int assignedToUserId,
+            int branchId,
+            string? zoneCode,
+            DateTime assignedAtUtc = default)
+        {
+            if (taskId <= 0) throw new ArgumentOutOfRangeException(nameof(taskId));
+            if (assignedToUserId <= 0) throw new ArgumentOutOfRangeException(nameof(assignedToUserId));
+            if (branchId <= 0) throw new ArgumentOutOfRangeException(nameof(branchId));
+
+            TaskId = taskId;
+            AssignedToUserId = assignedToUserId;
+            BranchId = branchId;
+            ZoneCode = zoneCode;
+            AssignedAt = assignedAtUtc == default ? DateTime.UtcNow : assignedAtUtc;
+            Status = InventoryAssignmentStatus.Assigned;
+        }
+
 
         public void Start()
         {

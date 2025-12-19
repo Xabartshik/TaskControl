@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TaskControl.InventoryModule.DataAccess.Model;
+using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.DataAccess.Interface;
@@ -73,7 +75,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var assignments = new List<InventoryAssignment>();
 
-                // Создать InventoryAssignment для каждого работника
+                // Создать InventoryAssignment для каждого работника (id не задается, оно будет задано после добавления объекта в БД)
                 for (int i = 0; i < zones.Count && i < availableWorkers.Count; i++)
                 {
                     var zoneCode = GetZoneCode(i);
@@ -82,7 +84,6 @@ namespace TaskControl.TaskModule.Application.Services
                         assignedToUserId: availableWorkers[i],
                         branchId: dto.BranchId,
                         zoneCode: zoneCode);
-
                     assignments.Add(assignment);
                     _logger.LogInformation(
                         "Назначение создано: работник {UserId}, зона {Zone}",
@@ -109,6 +110,10 @@ namespace TaskControl.TaskModule.Application.Services
                     var lines = new List<InventoryAssignmentLine>();
                     foreach (var itemId in zoneItems)
                     {
+//                        int positionId,
+//PositionCode positionCode,
+//            int expectedQuantity)
+
                         var line = new InventoryAssignmentLine(
                             inventoryAssignmentId: assignmentId,
                             itemPositionId: itemId);

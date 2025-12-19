@@ -40,7 +40,7 @@ namespace TaskControl.TaskModule.Presentation
         }
 
         /// <summary>
-        /// Создать новую задачу инвентаризации и распределить между работниками
+        /// Создать новую задачу инвентаризации и распределить между работникам. Получает список товаров
         /// </summary>
         /// <remarks>
         /// Пример запроса:
@@ -75,8 +75,8 @@ namespace TaskControl.TaskModule.Presentation
                     "Запрос на создание инвентаризации: филиал {BranchId}, приоритет {Priority}, позиций {ItemCount}",
                     dto.BranchId, dto.Priority, dto.ItemPositionIds.Count);
 
-                // TODO: Получить доступных работников по филиалу
-                // Для примера используем hardcoded список
+                // TODO: Получить доступных работников по филиалу (заменить на метод)
+                // Для примера используем hardcoded список 
                 var availableWorkers = new List<int> { 10, 11, 12 };
 
                 var result = await _processService.CreateAndDistributeInventoryAsync(

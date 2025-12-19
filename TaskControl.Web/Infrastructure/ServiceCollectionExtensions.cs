@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DAL.Repositories;
 using TaskControl.InformationModule.DataAccess.Infrastructure;
 using TaskControl.InformationModule.DataAccess.Interface;
@@ -65,6 +66,8 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IItemRepository, ItemRepository>();
             services.AddScoped<IService<ItemDto>, ItemService>();
+
+            services.AddScoped<ActiveEmployeeService>();
 
             return services;
         }
