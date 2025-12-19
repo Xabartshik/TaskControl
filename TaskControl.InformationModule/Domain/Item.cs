@@ -19,6 +19,12 @@ namespace TaskControl.InformationModule.Domain
         public int ItemId { get; set; }
 
         /// <summary>
+        /// Название товара
+        /// </summary>
+        [Required(ErrorMessage = "Название товара обязательно для заполнения")]
+        [StringLength(100, ErrorMessage = "Название товара не может превышать 100 символов")]
+        public string Name { get; set; }
+        /// <summary>
         /// Вес товара в граммах (положительное число)
         /// </summary>
         [Required(ErrorMessage = "Вес товара обязателен для заполнения")]

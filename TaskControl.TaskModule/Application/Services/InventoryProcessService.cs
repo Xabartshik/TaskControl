@@ -48,102 +48,102 @@ namespace TaskControl.TaskModule.Application.Services
             CreateInventoryTaskDto dto,
             List<int> availableWorkers)
         {
-            throw new NotImplementedException();
-            //try
-            //{
-            //    _logger.LogInformation(
-            //        "Создание инвентаризации: филиал {BranchId}, приоритет {Priority}, товаров {ItemCount}, работников {WorkerCount}",
-            //        dto.BranchId, dto.Priority, dto.ItemPositionIds.Count, dto.WorkerCount);
+            //throw new NotImplementedException();
+            try
+            {
+                _logger.LogInformation(
+                    "Создание инвентаризации: филиал {BranchId}, приоритет {Priority}, товаров {ItemCount}, работников {WorkerCount}",
+                    dto.BranchId, dto.Priority, dto.ItemPositionIds.Count, dto.WorkerCount);
 
-            //    if (dto.ItemPositionIds.Count == 0)
-            //        throw new ArgumentException("Список товаров не может быть пустым");
+                if (dto.ItemPositionIds.Count == 0)
+                    throw new ArgumentException("Список товаров не может быть пустым");
 
-            //    if (availableWorkers.Count == 0)
-            //        throw new ArgumentException("Нет доступных работников для распределения");
+                if (availableWorkers.Count == 0)
+                    throw new ArgumentException("Нет доступных работников для распределения");
 
-            //    var workerCount = Math.Min(dto.WorkerCount, availableWorkers.Count);
+                var workerCount = Math.Min(dto.WorkerCount, availableWorkers.Count);
 
-            //    // Разделить товары на зоны в зависимости от стратегии
-            //    var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
+                // Разделить товары на зоны в зависимости от стратегии
+                var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
 
-            //    _logger.LogInformation("Товары разделены на {ZoneCount} зон", zones.Count);
+                _logger.LogInformation("Товары разделены на {ZoneCount} зон", zones.Count);
 
-            //    // Создать BaseTask
-            //    var taskId = 1; // TODO: Интегрировать с IRepository<BaseTask>
+                // Создать BaseTask
+                var taskId = 1; // TODO: Интегрировать с IRepository<BaseTask>
 
-            //    var assignments = new List<InventoryAssignment>();
+                var assignments = new List<InventoryAssignment>();
 
-            //    // Создать InventoryAssignment для каждого работника
-            //    for (int i = 0; i < zones.Count && i < availableWorkers.Count; i++)
-            //    {
-            //        var zoneCode = GetZoneCode(i);
-            //        var assignment = new InventoryAssignment(
-            //            taskId: taskId,
-            //            assignedToUserId: availableWorkers[i],
-            //            branchId: dto.BranchId,
-            //            zoneCode: zoneCode);
+                // Создать InventoryAssignment для каждого работника
+                for (int i = 0; i < zones.Count && i < availableWorkers.Count; i++)
+                {
+                    var zoneCode = GetZoneCode(i);
+                    var assignment = new InventoryAssignment(
+                        taskId: taskId,
+                        assignedToUserId: availableWorkers[i],
+                        branchId: dto.BranchId,
+                        zoneCode: zoneCode);
 
-            //        assignments.Add(assignment);
-            //        _logger.LogInformation(
-            //            "Назначение создано: работник {UserId}, зона {Zone}",
-            //            availableWorkers[i], zoneCode);
-            //    }
+                    assignments.Add(assignment);
+                    _logger.LogInformation(
+                        "Назначение создано: работник {UserId}, зона {Zone}",
+                        availableWorkers[i], zoneCode);
+                }
 
-            //    // Сохранить назначения
-            //    var assignmentIds = new List<int>();
-            //    foreach (var assignment in assignments)
-            //    {
-            //        var id = await _assignmentRepository.AddAsync(assignment);
-            //        assignmentIds.Add(id);
-            //    }
+                // Сохранить назначения
+                var assignmentIds = new List<int>();
+                foreach (var assignment in assignments)
+                {
+                    var id = await _assignmentRepository.AddAsync(assignment);
+                    assignmentIds.Add(id);
+                }
 
-            //    _logger.LogInformation("Назначения сохранены: {Count}", assignmentIds.Count);
+                _logger.LogInformation("Назначения сохранены: {Count}", assignmentIds.Count);
 
-            //    // Создать Lines и Statistics для каждого назначения
-            //    for (int i = 0; i < assignmentIds.Count; i++)
-            //    {
-            //        var assignmentId = assignmentIds[i];
-            //        var zoneItems = zones[i];
+                // Создать Lines и Statistics для каждого назначения
+                for (int i = 0; i < assignmentIds.Count; i++)
+                {
+                    var assignmentId = assignmentIds[i];
+                    var zoneItems = zones[i];
 
-            //        // Создать Lines
-            //        var lines = new List<InventoryAssignmentLine>();
-            //        foreach (var itemId in zoneItems)
-            //        {
-            //            var line = new InventoryAssignmentLine(
-            //                inventoryAssignmentId: assignmentId,
-            //                itemPositionId: itemId);
-            //            lines.Add(line);
-            //        }
+                    // Создать Lines
+                    var lines = new List<InventoryAssignmentLine>();
+                    foreach (var itemId in zoneItems)
+                    {
+                        var line = new InventoryAssignmentLine(
+                            inventoryAssignmentId: assignmentId,
+                            itemPositionId: itemId);
+                        lines.Add(line);
+                    }
 
-            //        // Массовое добавление Lines
-            //        await _lineRepository.AddBatchAsync(lines);
-            //        _logger.LogInformation("Добавлено {Count} строк для назначения {AssignmentId}", lines.Count, assignmentId);
+                    // Массовое добавление Lines
+                    await _lineRepository.AddBatchAsync(lines);
+                    _logger.LogInformation("Добавлено {Count} строк для назначения {AssignmentId}", lines.Count, assignmentId);
 
-            //        // Создать Statistics
-            //        var statistics = new InventoryStatistics(
-            //            inventoryAssignmentId: assignmentId,
-            //            totalPositions: lines.Count);
+                    // Создать Statistics
+                    var statistics = new InventoryStatistics(
+                        inventoryAssignmentId: assignmentId,
+                        totalPositions: lines.Count);
 
-            //        await _statisticsRepository.AddAsync(statistics);
-            //        _logger.LogInformation("Статистика создана для назначения {AssignmentId}", assignmentId);
-            //    }
+                    await _statisticsRepository.AddAsync(statistics);
+                    _logger.LogInformation("Статистика создана для назначения {AssignmentId}", assignmentId);
+                }
 
-            //    _logger.LogInformation(
-            //        "Инвентаризация успешно создана и распределена между {WorkerCount} работниками",
-            //        assignmentIds.Count);
+                _logger.LogInformation(
+                    "Инвентаризация успешно создана и распределена между {WorkerCount} работниками",
+                    assignmentIds.Count);
 
-            //    return new CompleteInventoryDto
-            //    {
-            //        InventoryAssignmentId = assignmentIds.FirstOrDefault(),
-            //        CompletedAt = DateTime.UtcNow,
-            //        Message = $"Инвентаризация создана и распределена между {assignmentIds.Count} работниками"
-            //    };
-            //}
-            //catch (Exception ex)
-            //{
-            //    _logger.LogError(ex, "Ошибка при создании инвентаризации");
-            //    throw;
-            //}
+                return new CompleteInventoryDto
+                {
+                    InventoryAssignmentId = assignmentIds.FirstOrDefault(),
+                    CompletedAt = DateTime.UtcNow,
+                    Message = $"Инвентаризация создана и распределена между {assignmentIds.Count} работниками"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при создании инвентаризации");
+                throw;
+            }
         }
 
         /// <summary>

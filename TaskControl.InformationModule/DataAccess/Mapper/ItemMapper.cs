@@ -17,7 +17,9 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
 
             return new ItemModel
             {
+
                 ItemId = entity.ItemId,
+                Name = entity.Name,
                 Weight = entity.Weight.Kilograms,
                 Length = entity.Length.Millimeters,
                 Width = entity.Width.Millimeters,
@@ -33,6 +35,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             return new Item
             {
                 ItemId = model.ItemId,
+                Name = model.Name,
                 Weight = Mass.FromGrams(model.Weight),
                 Length = Length.FromMillimeters(model.Length),
                 Width = Length.FromMillimeters(model.Width),

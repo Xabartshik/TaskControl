@@ -11,6 +11,7 @@ namespace TaskControl.InformationModule.DataAccess.Model
     public class ItemModel
     {
         [Column("item_id")][PrimaryKey][Identity] public int ItemId { get; set; }
+        [Column("name")][NotNull] public string Name { get; set; }
         [Column("weight")][NotNull] public double Weight { get; set; }
         [Column("length")][NotNull] public double Length { get; set; }
         [Column("width")][NotNull] public double Width { get; set; }

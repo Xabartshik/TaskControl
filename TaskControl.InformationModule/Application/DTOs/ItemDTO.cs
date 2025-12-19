@@ -20,6 +20,13 @@ namespace TaskControl.InformationModule.Application.DTOs
         public int ItemId { get; init; }
 
         /// <summary>
+        /// Название товара
+        /// </summary>
+        [Required(ErrorMessage = "Название товара обязательно для заполнения")]
+        [StringLength(100, ErrorMessage = "Название товара не может превышать 100 символов")]
+        public string Name { get; set; }
+
+        /// <summary>
         /// Вес в граммах
         /// </summary>
         [Required(ErrorMessage = "Укажите вес товара")]
@@ -49,6 +56,7 @@ namespace TaskControl.InformationModule.Application.DTOs
         public static ItemDto ToDto(Item entity) => new()
         {
             ItemId = entity.ItemId,
+            Name = entity.Name,
             Weight = entity.Weight,
             Length = entity.Length,
             Width = entity.Width,
@@ -61,6 +69,7 @@ namespace TaskControl.InformationModule.Application.DTOs
         public static Item FromDto(ItemDto dto) => new()
         {
             ItemId = dto.ItemId,
+            Name = dto.Name,
             Weight = dto.Weight,
             Length = dto.Length,
             Width = dto.Width,

@@ -30,6 +30,7 @@ CREATE INDEX idx_branches_type ON branches (branch_type);
 -- Создание таблицы товаров
 CREATE TABLE IF NOT EXISTS items (
     item_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
     weight DOUBLE PRECISION NOT NULL CHECK (weight > 0),
     length DOUBLE PRECISION NOT NULL CHECK (length > 0),
     width DOUBLE PRECISION NOT NULL CHECK (width > 0),
@@ -211,11 +212,11 @@ VALUES
     ('Сидоров', 'Алексей', NULL, 'Грузчик');
 
 -- 3. Вставка товаров
-INSERT INTO items (weight, length, width, height)
+INSERT INTO items (name, weight, length, width, height)
 VALUES
-    (1.5, 20, 15, 10),
-    (0.8, 10, 10, 5),
-    (5.0, 50, 30, 20);
+    ('Телефон No Kia', 1.5, 20, 15, 10),
+    ('Плашка ОЗУ', 0.8, 10, 10, 5),
+    ('Видеокарта ХХХ6090',5.0, 50, 30, 20);
 
 -- 4. Вставка складских позиций
 INSERT INTO positions (
