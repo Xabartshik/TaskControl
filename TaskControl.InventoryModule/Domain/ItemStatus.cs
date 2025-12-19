@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TaskControl.OrderModule.Domain
+namespace TaskControl.InventoryModule.Domain
 {
     /// <summary>
     /// Статус товарной позиции

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 //TODO: Доработать сущность OrderPosition
-namespace TaskControl.OrderModule.Domain
+namespace TaskControl.InventoryModule.Domain
 {
     /// <summary>
     /// Связь заказа с позицией на складе

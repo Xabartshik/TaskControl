@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
@@ -12,8 +13,6 @@ using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
 using TaskControl.TaskModule.Presentation.Interface;
-
-//TODO: Вынести методы перевода в Dto и обратно, пересмотреть 
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -26,6 +25,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IInventoryAssignmentLineRepository _lineRepository;
         private readonly IInventoryDiscrepancyRepository _discrepancyRepository;
         private readonly IInventoryStatisticsRepository _statisticsRepository;
+        //private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
 
         public InventoryProcessService(
@@ -33,12 +33,14 @@ namespace TaskControl.TaskModule.Application.Services
             IInventoryAssignmentLineRepository lineRepository,
             IInventoryDiscrepancyRepository discrepancyRepository,
             IInventoryStatisticsRepository statisticsRepository,
+            //ActiveEmployeeService activeEmployeeService,
             ILogger<InventoryProcessService> logger)
         {
             _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
             _lineRepository = lineRepository ?? throw new ArgumentNullException(nameof(lineRepository));
             _discrepancyRepository = discrepancyRepository ?? throw new ArgumentNullException(nameof(discrepancyRepository));
             _statisticsRepository = statisticsRepository ?? throw new ArgumentNullException(nameof(statisticsRepository));
+            //_activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -110,6 +112,7 @@ namespace TaskControl.TaskModule.Application.Services
                     var lines = new List<InventoryAssignmentLine>();
                     foreach (var itemId in zoneItems)
                     {
+                        //Нужно добавить получение следующего:
 //                        int positionId,
 //PositionCode positionCode,
 //            int expectedQuantity)
