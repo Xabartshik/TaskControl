@@ -28,65 +28,9 @@ namespace TaskControl.InformationModule.Application.Services
             _logger = logger;
         }
 
-        /// <summary>
-        /// Получить активных сотрудников филиала (те, кто отметился как "в работе")
-        /// </summary>
-        public async Task<IEnumerable<ActiveEmployeeDto>> GetActiveEmployeesByBranchAsync(int branchId)
-        {
-            try
-            {
-                _logger.LogInformation("Получение активных сотрудников филиала {BranchId}", branchId);
-
-                // 1. Получить все check-in/out записи для филиала за текущий день
-                var allChecks = await _checkIORepository.GetAllAsync();
-                var today = DateTime.UtcNow.Date;
-
-                var checksToday = allChecks
-                    .Where(c => c.BranchId == branchId && c.CheckTimeStamp.Date == today)
-                    .GroupBy(c => c.EmployeeId)
-                    .Select(g => g.OrderByDescending(c => c.CheckTimeStamp).First()) // Последняя запись
-                    .Where(c => c.IsCheckIn()) // Только те, кто вошел (не вышел)
-                    .ToList();
-
-                if (!checksToday.Any())
-                {
-                    _logger.LogInformation("Активных сотрудников не найдено для филиала {BranchId}", branchId);
-                    return Enumerable.Empty<ActiveEmployeeDto>();
-                }
-
-                // 2. Получить информацию о сотрудниках
-                var activeEmployeeIds = checksToday.Select(c => c.EmployeeId).ToList();
-                var allEmployees = await _employeeRepository.GetAllAsync();
-                var activeEmployees = allEmployees
-                    .Where(e => activeEmployeeIds.Contains(e.EmployeesId))
-                    .ToDictionary(e => e.EmployeesId);
-
-                // 3. Комбинировать данные
-                var result = checksToday
-                    .Select(check => new ActiveEmployeeDto
-                    {
-                        EmployeeId = check.EmployeeId,
-                        Surname = activeEmployees[check.EmployeeId].Surname,
-                        Name = activeEmployees[check.EmployeeId].Name,
-                        MiddleName = activeEmployees[check.EmployeeId].MiddleName,
-                        Role = activeEmployees[check.EmployeeId].Role,
-                        CheckInTime = check.CheckTimeStamp,
-                        IsCheckedOut = false
-                    })
-                    .ToList();
-
-                _logger.LogInformation("Найдено активных сотрудников: {Count}", result.Count);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении активных сотрудников филиала {BranchId}", branchId);
-                throw;
-            }
-        }
 
         /// <summary>
-        /// Альтернативный вариант: только те, кто вошел ДО выхода (более точно)
+        ///  Получить активных сотрудников филиала (те, кто отметился как "в работе")
         /// </summary>
         public async Task<IEnumerable<ActiveEmployeeDto>> GetWorkingEmployeesByBranchAsync(int branchId)
         {
