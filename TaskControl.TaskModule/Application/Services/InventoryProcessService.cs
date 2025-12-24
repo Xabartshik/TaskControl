@@ -104,12 +104,30 @@ namespace TaskControl.TaskModule.Application.Services
                 var positionDetails = await _positionDetailsService.GetPositionDetailsByBranchAsync(dto.BranchId);
                 var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
 
+                var invalidItemPositions = itemPositionDict.Values
+                    .Where(ip => !positionDetailsDict.ContainsKey(ip.PositionId))
+                    .Select(ip => new { ip.Id, ip.PositionId })
+                    .ToList();
+
+                if (invalidItemPositions.Any())
+                {
+                    var msg =
+                        "Невозможно создать инвентаризацию: в списке есть позиции товара, " +
+                        "которые не относятся к выбранному филиалу или по ним нет данных о ячейке. " +
+                        $"BranchId={dto.BranchId}. " +
+                        "Проблемные ItemPositionId/PositionId: " +
+                        string.Join(", ", invalidItemPositions.Select(x => $"{x.Id}/{x.PositionId}"));
+
+                    _logger.LogError(msg);
+                    throw new ArgumentException(msg);
+                }
                 // 3. Создать BaseTask для инвентаризации
                 // Вместо конструктора:
                 var baseTask = new BaseTask
                 {
                     Title = $"Инвентаризация филиала {dto.BranchId}",
                     Description = dto.Description ?? "Автоматически созданная задача инвентаризации",
+                    BranchId = dto.BranchId,
                     Type = "inventory",
                     Priority = dto.Priority,
                     CreatedAt = DateTime.UtcNow,

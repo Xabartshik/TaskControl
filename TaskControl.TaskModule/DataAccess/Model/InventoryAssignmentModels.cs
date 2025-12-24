@@ -6,6 +6,7 @@ namespace TaskControl.TaskModule.DataAccess.Models;
 public class InventoryAssignmentModel
 {
     [PrimaryKey, Identity]
+    [Column("id")]
     public int Id { get; set; }
 
     [Column("task_id"), NotNull]
@@ -31,6 +32,7 @@ public class InventoryAssignmentModel
 public class InventoryAssignmentLineModel
 {
     [PrimaryKey, Identity]
+    [Column("id")]
     public int Id { get; set; }
 
     [Column("inventory_assignment_id"), NotNull]

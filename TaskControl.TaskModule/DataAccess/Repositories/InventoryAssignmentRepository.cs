@@ -143,7 +143,9 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
         try
         {
             var model = assignment.ToModel();
-            return await _db.InsertAsync(model);
+            model.Id = 0;
+            var newId = await _db.InsertWithInt32IdentityAsync(model);
+            return newId;
         }
         catch (Exception ex)
         {
@@ -266,7 +268,9 @@ public class InventoryAssignmentLineRepository : IInventoryAssignmentLineReposit
         try
         {
             var model = line.ToModel();
-            return await _db.InsertAsync(model);
+            model.Id = 0;
+            var newId = await _db.InsertWithInt32IdentityAsync(model);
+            return newId;
         }
         catch (Exception ex)
         {
@@ -301,10 +305,19 @@ public class InventoryAssignmentLineRepository : IInventoryAssignmentLineReposit
             throw new ArgumentException("Список строк не может быть пустым");
 
         _logger.LogInformation("Массовое добавление {Count} строк инвентаризации", lines.Count);
+
         try
         {
             var models = lines.Select(l => l.ToModel()).ToList();
-            return await _db.InsertAsync(models);
+
+            foreach (var m in models)
+                m.Id = 0;
+
+            var inserted = 0;
+            foreach (var m in models)
+                inserted += await _db.InsertWithInt32IdentityAsync(m); // InsertAsync возвращает int [file:30]
+
+            return inserted; // обычно будет = models.Count
         }
         catch (Exception ex)
         {
@@ -312,4 +325,5 @@ public class InventoryAssignmentLineRepository : IInventoryAssignmentLineReposit
             throw;
         }
     }
+
 }
