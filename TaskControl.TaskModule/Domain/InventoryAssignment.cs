@@ -151,14 +151,13 @@ namespace TaskControl.TaskModule.Domain
         public int CountedLines => _lines.Count(l => l.IsCounted);
         public bool IsCompleted => Status == InventoryAssignmentStatus.Completed;
 
-        internal InventoryAssignment() { }
+        public InventoryAssignment() { }
 
         public InventoryAssignment(
             int id,
             int taskId,
             int assignedToUserId,
             int branchId,
-            string? zoneCode,
             DateTime assignedAtUtc,
             IEnumerable<InventoryAssignmentLine> lines)
         {
@@ -179,7 +178,6 @@ namespace TaskControl.TaskModule.Domain
             TaskId = taskId;
             AssignedToUserId = assignedToUserId;
             BranchId = branchId;
-            ZoneCode = zoneCode;
             AssignedAt = assignedAtUtc;
             Status = InventoryAssignmentStatus.Assigned;
 
@@ -190,7 +188,6 @@ namespace TaskControl.TaskModule.Domain
             int taskId,
             int assignedToUserId,
             int branchId,
-            string? zoneCode,
             DateTime assignedAtUtc = default)
         {
             if (taskId <= 0) throw new ArgumentOutOfRangeException(nameof(taskId));
@@ -200,7 +197,6 @@ namespace TaskControl.TaskModule.Domain
             TaskId = taskId;
             AssignedToUserId = assignedToUserId;
             BranchId = branchId;
-            ZoneCode = zoneCode;
             AssignedAt = assignedAtUtc == default ? DateTime.UtcNow : assignedAtUtc;
             Status = InventoryAssignmentStatus.Assigned;
         }

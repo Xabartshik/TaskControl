@@ -28,9 +28,8 @@ namespace TaskControl.TaskModule.DataAccess.Model
         [Column("completed_at")]
         public DateTime? CompletedAt { get; set; }
 
-        // Храним как INT в БД, но работаем как с enum в коде
         [Column("status"), NotNull]
-        public int Status { get; set; }
+        public string Status { get; set; }
 
         [Column("priority"), NotNull]
         public int Priority { get; set; }

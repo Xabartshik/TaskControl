@@ -123,7 +123,6 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<ITaskAssignationRepository, TaskAssignationRepository>();
             services.AddScoped<IService<TaskAssignationDto>, TaskAssignationService>();
 
-            // Program.cs
             services.AddScoped<IInventoryProcessService, InventoryProcessService>();
             services.AddScoped<IDiscrepancyManagementService, DiscrepancyManagementService>();
             services.AddScoped<IInventoryReportService, InventoryReportService>();
@@ -132,6 +131,9 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IInventoryAssignmentLineRepository, InventoryAssignmentLineRepository>();
             services.AddScoped<IInventoryDiscrepancyRepository, InventoryDiscrepancyRepository>();
             services.AddScoped<IInventoryStatisticsRepository, InventoryStatisticsRepository>();
+
+            services.AddScoped<IPositionCellRepository, PositionCellRepository>();
+            services.AddScoped<PositionDetailsService>();
 
 
             return services;

@@ -80,5 +80,7 @@ namespace TaskControl.TaskModule.Domain
         /// </summary>
         public bool IsActive() => Status != TaskStatus.Completed
             && Status != TaskStatus.Cancelled;
+
+
     }
 }

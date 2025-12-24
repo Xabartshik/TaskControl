@@ -96,7 +96,7 @@ CREATE INDEX idx_base_tasks_completed ON base_tasks(completed_at);
 -- Создание таблицы назначенных задач
 CREATE TABLE IF NOT EXISTS active_assigned_tasks (
     id SERIAL PRIMARY KEY,
-    task_id INT NOT NULL REFERENCES active_tasks(task_id),
+    task_id INT NOT NULL REFERENCES base_tasks(task_id),
     user_id INT NOT NULL REFERENCES employees(employees_id),
     assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -541,10 +541,9 @@ VALUES
 -- Создание таблицы назначений инвентаризации
 CREATE TABLE IF NOT EXISTS inventory_assignments (
     id SERIAL PRIMARY KEY,
-    task_id INT NOT NULL REFERENCES active_tasks(task_id),
+    task_id INT NOT NULL REFERENCES base_tasks(task_id),
     assigned_to_user_id INT NOT NULL REFERENCES employees(employees_id),
     branch_id INT NOT NULL REFERENCES branches(branch_id),
-    zone_code VARCHAR(10),
     status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
     assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP
@@ -554,7 +553,6 @@ CREATE TABLE IF NOT EXISTS inventory_assignments (
 CREATE INDEX idx_inventory_assignments_task ON inventory_assignments(task_id);
 CREATE INDEX idx_inventory_assignments_user ON inventory_assignments(assigned_to_user_id);
 CREATE INDEX idx_inventory_assignments_branch ON inventory_assignments(branch_id);
-CREATE INDEX idx_inventory_assignments_zone ON inventory_assignments(zone_code);
 CREATE INDEX idx_inventory_assignments_status ON inventory_assignments(status);
 
 -- Создание таблицы строк инвентаризации
@@ -619,3 +617,20 @@ CREATE INDEX idx_statistics_assignment ON inventory_statistics(inventory_assignm
 CREATE INDEX idx_statistics_started ON inventory_statistics(started_at);
 CREATE INDEX idx_statistics_completed ON inventory_statistics(completed_at);
 
+
+-- ДЛЯ ТЕСТОВ
+
+-- Удалить старые отметки check-out для тестовых работников
+DELETE FROM check_io_employees 
+WHERE employee_id IN (1, 2, 3) 
+  AND check_type = 'out' 
+  AND check_timestamp > NOW() - INTERVAL '1 day';
+
+-- Добавить работников на смену в филиале 1 (Центральный склад)
+INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
+VALUES
+    (1, 1, 'in', NOW() - INTERVAL '2 hours'),  -- Иванов пришёл 2 часа назад
+    (2, 1, 'in', NOW() - INTERVAL '1 hour'),   -- Петрова пришла час назад
+    (3, 1, 'in', NOW() - INTERVAL '30 minutes'); -- Сидоров пришёл 30 минут назад
+
+-- НЕ добавляем 'out', чтобы они считались на смене

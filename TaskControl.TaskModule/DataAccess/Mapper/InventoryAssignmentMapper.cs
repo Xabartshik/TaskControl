@@ -16,7 +16,6 @@ public static class InventoryAssignmentMapper
             taskId: model.TaskId,
             assignedToUserId: model.AssignedToUserId,
             branchId: model.BranchId,
-            zoneCode: model.ZoneCode,
             assignedAtUtc: model.AssignedAt,
             lines: new List<InventoryAssignmentLine>())
         {
@@ -36,7 +35,6 @@ public static class InventoryAssignmentMapper
             TaskId = domain.TaskId,
             AssignedToUserId = domain.AssignedToUserId,
             BranchId = domain.BranchId,
-            ZoneCode = domain.ZoneCode,
             Status = (int)domain.Status,
             AssignedAt = domain.AssignedAt,
             CompletedAt = domain.CompletedAt

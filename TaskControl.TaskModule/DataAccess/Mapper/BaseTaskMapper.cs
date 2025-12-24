@@ -24,7 +24,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Type = entity.Type,
                 CreatedAt = entity.CreatedAt,
                 CompletedAt = entity.CompletedAt,
-                Status = (int)entity.Status,  // Enum → INT для БД
+                Status = entity.Status.ToString(),  // Enum → INT для БД
                 Priority = entity.Priority
             };
         }
@@ -46,7 +46,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Type = model.Type,
                 CreatedAt = model.CreatedAt,
                 CompletedAt = model.CompletedAt,
-                Status = (TaskStatus)model.Status,  // INT → Enum из БД
+                Status = Enum.Parse<TaskStatus>(model.Status),
                 Priority = model.Priority
             };
         }

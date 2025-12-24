@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InventoryModule.Application.Services;
+using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
@@ -14,6 +15,7 @@ using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
 using TaskControl.TaskModule.Presentation.Interface;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -26,6 +28,9 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IInventoryAssignmentLineRepository _lineRepository;
         private readonly IInventoryDiscrepancyRepository _discrepancyRepository;
         private readonly IInventoryStatisticsRepository _statisticsRepository;
+        private readonly IActiveTaskRepository _baseTaskRepository;
+        private readonly IItemPositionRepository _itemPositionRepository;
+        private readonly PositionDetailsService _positionDetailsService;
         private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
 
@@ -34,21 +39,33 @@ namespace TaskControl.TaskModule.Application.Services
             IInventoryAssignmentLineRepository lineRepository,
             IInventoryDiscrepancyRepository discrepancyRepository,
             IInventoryStatisticsRepository statisticsRepository,
+            IActiveTaskRepository baseTaskRepository,
+            IItemPositionRepository itemPositionRepository,
+            PositionDetailsService positionDetailsService,
             ActiveEmployeeService activeEmployeeService,
             ILogger<InventoryProcessService> logger)
         {
-            _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
-            _lineRepository = lineRepository ?? throw new ArgumentNullException(nameof(lineRepository));
-            _discrepancyRepository = discrepancyRepository ?? throw new ArgumentNullException(nameof(discrepancyRepository));
-            _statisticsRepository = statisticsRepository ?? throw new ArgumentNullException(nameof(statisticsRepository));
-            _activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _assignmentRepository = assignmentRepository
+                ?? throw new ArgumentNullException(nameof(assignmentRepository));
+            _lineRepository = lineRepository
+                ?? throw new ArgumentNullException(nameof(lineRepository));
+            _discrepancyRepository = discrepancyRepository
+                ?? throw new ArgumentNullException(nameof(discrepancyRepository));
+            _statisticsRepository = statisticsRepository
+                ?? throw new ArgumentNullException(nameof(statisticsRepository));
+            _baseTaskRepository = baseTaskRepository
+                ?? throw new ArgumentNullException(nameof(baseTaskRepository));
+            _itemPositionRepository = itemPositionRepository
+                ?? throw new ArgumentNullException(nameof(itemPositionRepository));
+            _positionDetailsService = positionDetailsService
+                ?? throw new ArgumentNullException(nameof(positionDetailsService));
+            _activeEmployeeService = activeEmployeeService
+                ?? throw new ArgumentNullException(nameof(activeEmployeeService));
+            _logger = logger
+                ?? throw new ArgumentNullException(nameof(logger));
         }
 
         //TODO: Поработать над этой частью
-        /// <summary>
-        /// Создать новую инвентаризацию и распределить товары между работниками
-        /// </summary>
         /// <summary>
         /// Создать новую инвентаризацию и распределить товары между работниками
         /// </summary>
@@ -88,12 +105,17 @@ namespace TaskControl.TaskModule.Application.Services
                 var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
 
                 // 3. Создать BaseTask для инвентаризации
-                var baseTask = new BaseTask(
-                    title: $"Инвентаризация филиала {dto.BranchId}",
-                    description: dto.Description ?? "Автоматически созданная задача инвентаризации",
-                    taskType: TaskType.Inventory,
-                    priority: dto.Priority,
-                    deadline: dto.DeadlineDate);
+                // Вместо конструктора:
+                var baseTask = new BaseTask
+                {
+                    Title = $"Инвентаризация филиала {dto.BranchId}",
+                    Description = dto.Description ?? "Автоматически созданная задача инвентаризации",
+                    Type = "inventory",
+                    Priority = dto.Priority,
+                    CreatedAt = DateTime.UtcNow,
+                    Status = TaskStatus.New
+                };
+
 
                 var taskId = await _baseTaskRepository.AddAsync(baseTask);
                 _logger.LogInformation("BaseTask создан с ID: {TaskId}", taskId);
@@ -105,21 +127,29 @@ namespace TaskControl.TaskModule.Application.Services
                 var assignments = new List<InventoryAssignment>();
 
                 // 5. Создать InventoryAssignment для каждого работника
-                for (int i = 0; i < zones.Count && i < availableWorkers.Count; i++)
+                for (int zoneIndex = 0; zoneIndex < zones.Count; zoneIndex++)
                 {
-                    var zoneCode = GetZoneCode(i);
+                    if (zoneIndex >= availableWorkers.Count)
+                    {
+                        _logger.LogWarning("Недостаточно работников для зоны {ZoneIndex}", zoneIndex);
+                        break;
+                    }
+
+                    var workerId = availableWorkers[zoneIndex];
+                    var itemsInZone = zones[zoneIndex];
+
                     var assignment = new InventoryAssignment(
                         taskId: taskId,
-                        assignedToUserId: availableWorkers[i],
-                        branchId: dto.BranchId,
-                        zoneCode: zoneCode);
+                        assignedToUserId: workerId,
+                        branchId: dto.BranchId);
 
                     assignments.Add(assignment);
 
                     _logger.LogInformation(
-                        "Назначение создано: работник {UserId}, зона {Zone}",
-                        availableWorkers[i], zoneCode);
+                        "Зона {ZoneCode}: работник {UserId}, товаров {Count}",
+                        zoneIndex, workerId, itemsInZone.Count);
                 }
+
 
                 // 6. Сохранить назначения
                 var assignmentIds = new List<int>();
@@ -156,7 +186,7 @@ namespace TaskControl.TaskModule.Application.Services
                         }
 
                         // Парсим PositionCode из строки
-                        var positionCode = PositionCode.Parse(positionDetail.PositionCode);
+                        var positionCode = PositionCode.FromString(positionDetail.PositionCode);
 
                         var line = new InventoryAssignmentLine(
                             inventoryAssignmentId: assignmentId,

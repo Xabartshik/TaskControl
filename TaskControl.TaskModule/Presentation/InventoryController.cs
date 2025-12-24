@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
@@ -24,17 +25,20 @@ namespace TaskControl.TaskModule.Presentation
     {
         private readonly IInventoryProcessService _processService;
         private readonly IDiscrepancyManagementService _discrepancyService;
+        private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly IInventoryReportService _reportService;
         private readonly ILogger<InventoryController> _logger;
 
         public InventoryController(
             IInventoryProcessService processService,
             IDiscrepancyManagementService discrepancyService,
+            ActiveEmployeeService activeEmployeeService,
             IInventoryReportService reportService,
             ILogger<InventoryController> logger)
         {
             _processService = processService ?? throw new ArgumentNullException(nameof(processService));
             _discrepancyService = discrepancyService ?? throw new ArgumentNullException(nameof(discrepancyService));
+            _activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
             _reportService = reportService ?? throw new ArgumentNullException(nameof(reportService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -76,12 +80,9 @@ namespace TaskControl.TaskModule.Presentation
                     dto.BranchId, dto.Priority, dto.ItemPositionIds.Count);
 
                 // TODO: Получить доступных работников по филиалу (заменить на метод)
-                // Для примера используем hardcoded список 
-                var availableWorkers = new List<int> { 10, 11, 12 };
-
-                var result = await _processService.CreateAndDistributeInventoryAsync(
-                    dto,
-                    availableWorkers);
+                var availableWorkers = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(dto.BranchId);
+                var workerIds = availableWorkers.Select(w => w.EmployeeId).ToList();
+                var result = await _processService.CreateAndDistributeInventoryAsync(dto, workerIds);
 
                 return Ok(result);
             }

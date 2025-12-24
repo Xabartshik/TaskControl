@@ -17,9 +17,6 @@ public class InventoryAssignmentModel
     [Column("branch_id"), NotNull]
     public int BranchId { get; set; }
 
-    [Column("zone_code")]
-    public string ZoneCode { get; set; }
-
     [Column("status"), NotNull]
     public int Status { get; set; }
 

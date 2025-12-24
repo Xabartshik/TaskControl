@@ -162,11 +162,10 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _logger.LogInformation("Получение задач со статусом: {Status}", status);
             try
             {
-                // Конвертируем enum в int для фильтрации в БД
-                var statusInt = (int)status;
+                var statusString = status.ToString();
 
                 var tasks = await _db.ActiveTasks
-                    .Where(t => t.Status == statusInt)
+                    .Where(t => t.Status == statusString)
                     .ToListAsync();
 
                 _logger.LogInformation("Найдено {Count} задач со статусом: {Status}", tasks.Count, status);
@@ -187,8 +186,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _logger.LogInformation("Получение активных задач");
             try
             {
-                var completedStatus = (int)TaskStatus.Completed;
-                var cancelledStatus = (int)TaskStatus.Cancelled;
+                var completedStatus = TaskStatus.Completed.ToString(); 
+                var cancelledStatus = TaskStatus.Cancelled.ToString(); 
 
                 var tasks = await _db.ActiveTasks
                     .Where(t => t.Status != completedStatus && t.Status != cancelledStatus)
@@ -256,10 +255,10 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _logger.LogInformation("Получение задач филиала ID: {BranchId} со статусом: {Status}", branchId, status);
             try
             {
-                var statusInt = (int)status;
+                var statusString = status.ToString();
 
                 var tasks = await _db.ActiveTasks
-                    .Where(t => t.BranchId == branchId && t.Status == statusInt)
+                    .Where(t => t.BranchId == branchId && t.Status == statusString)
                     .ToListAsync();
 
                 _logger.LogInformation("Найдено {Count} задач для филиала ID: {BranchId} со статусом: {Status}",
@@ -316,7 +315,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     return false;
                 }
 
-                task.Status = (int)newStatus;
+                task.Status = newStatus.ToString();
 
                 // Если задача завершена или отменена, устанавливаем дату завершения
                 if (newStatus == TaskStatus.Completed || newStatus == TaskStatus.Cancelled)
