@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {

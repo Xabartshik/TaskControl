@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
+using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
@@ -25,7 +26,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IInventoryAssignmentLineRepository _lineRepository;
         private readonly IInventoryDiscrepancyRepository _discrepancyRepository;
         private readonly IInventoryStatisticsRepository _statisticsRepository;
-        //private readonly ActiveEmployeeService _activeEmployeeService;
+        private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
 
         public InventoryProcessService(
@@ -33,14 +34,14 @@ namespace TaskControl.TaskModule.Application.Services
             IInventoryAssignmentLineRepository lineRepository,
             IInventoryDiscrepancyRepository discrepancyRepository,
             IInventoryStatisticsRepository statisticsRepository,
-            //ActiveEmployeeService activeEmployeeService,
+            ActiveEmployeeService activeEmployeeService,
             ILogger<InventoryProcessService> logger)
         {
             _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
             _lineRepository = lineRepository ?? throw new ArgumentNullException(nameof(lineRepository));
             _discrepancyRepository = discrepancyRepository ?? throw new ArgumentNullException(nameof(discrepancyRepository));
             _statisticsRepository = statisticsRepository ?? throw new ArgumentNullException(nameof(statisticsRepository));
-            //_activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
+            _activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -48,11 +49,13 @@ namespace TaskControl.TaskModule.Application.Services
         /// <summary>
         /// Создать новую инвентаризацию и распределить товары между работниками
         /// </summary>
+        /// <summary>
+        /// Создать новую инвентаризацию и распределить товары между работниками
+        /// </summary>
         public async Task<CompleteInventoryDto> CreateAndDistributeInventoryAsync(
             CreateInventoryTaskDto dto,
             List<int> availableWorkers)
         {
-            //throw new NotImplementedException();
             try
             {
                 _logger.LogInformation(
@@ -67,17 +70,41 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var workerCount = Math.Min(dto.WorkerCount, availableWorkers.Count);
 
-                // Разделить товары на зоны в зависимости от стратегии
+                // 1. Получить данные о всех ItemPosition
+                var itemPositions = await _itemPositionRepository.GetAllAsync();
+                var itemPositionDict = itemPositions
+                    .Where(ip => dto.ItemPositionIds.Contains(ip.Id))
+                    .ToDictionary(ip => ip.Id);
+
+                if (itemPositionDict.Count != dto.ItemPositionIds.Count)
+                {
+                    var missingIds = dto.ItemPositionIds.Except(itemPositionDict.Keys).ToList();
+                    _logger.LogWarning("Некоторые ItemPosition не найдены: {MissingIds}", string.Join(", ", missingIds));
+                }
+
+                // 2. Получить детальную информацию о позициях
+                var positionIds = itemPositionDict.Values.Select(ip => ip.PositionId).Distinct().ToList();
+                var positionDetails = await _positionDetailsService.GetPositionDetailsByBranchAsync(dto.BranchId);
+                var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
+
+                // 3. Создать BaseTask для инвентаризации
+                var baseTask = new BaseTask(
+                    title: $"Инвентаризация филиала {dto.BranchId}",
+                    description: dto.Description ?? "Автоматически созданная задача инвентаризации",
+                    taskType: TaskType.Inventory,
+                    priority: dto.Priority,
+                    deadline: dto.DeadlineDate);
+
+                var taskId = await _baseTaskRepository.AddAsync(baseTask);
+                _logger.LogInformation("BaseTask создан с ID: {TaskId}", taskId);
+
+                // 4. Разделить товары на зоны в зависимости от стратегии
                 var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
-
                 _logger.LogInformation("Товары разделены на {ZoneCount} зон", zones.Count);
-
-                // Создать BaseTask
-                var taskId = 1; // TODO: Интегрировать с IRepository<BaseTask>
 
                 var assignments = new List<InventoryAssignment>();
 
-                // Создать InventoryAssignment для каждого работника (id не задается, оно будет задано после добавления объекта в БД)
+                // 5. Создать InventoryAssignment для каждого работника
                 for (int i = 0; i < zones.Count && i < availableWorkers.Count; i++)
                 {
                     var zoneCode = GetZoneCode(i);
@@ -86,13 +113,15 @@ namespace TaskControl.TaskModule.Application.Services
                         assignedToUserId: availableWorkers[i],
                         branchId: dto.BranchId,
                         zoneCode: zoneCode);
+
                     assignments.Add(assignment);
+
                     _logger.LogInformation(
                         "Назначение создано: работник {UserId}, зона {Zone}",
                         availableWorkers[i], zoneCode);
                 }
 
-                // Сохранить назначения
+                // 6. Сохранить назначения
                 var assignmentIds = new List<int>();
                 foreach (var assignment in assignments)
                 {
@@ -102,30 +131,53 @@ namespace TaskControl.TaskModule.Application.Services
 
                 _logger.LogInformation("Назначения сохранены: {Count}", assignmentIds.Count);
 
-                // Создать Lines и Statistics для каждого назначения
+                // 7. Создать Lines и Statistics для каждого назначения
                 for (int i = 0; i < assignmentIds.Count; i++)
                 {
                     var assignmentId = assignmentIds[i];
-                    var zoneItems = zones[i];
+                    var zoneItemPositionIds = zones[i];
 
-                    // Создать Lines
+                    // Создать Lines с полными данными
                     var lines = new List<InventoryAssignmentLine>();
-                    foreach (var itemId in zoneItems)
+
+                    foreach (var itemPositionId in zoneItemPositionIds)
                     {
-                        //Нужно добавить получение следующего:
-//                        int positionId,
-//PositionCode positionCode,
-//            int expectedQuantity)
+                        if (!itemPositionDict.TryGetValue(itemPositionId, out var itemPosition))
+                        {
+                            _logger.LogWarning("ItemPosition {ItemPositionId} не найден, пропускаем", itemPositionId);
+                            continue;
+                        }
+
+                        if (!positionDetailsDict.TryGetValue(itemPosition.PositionId, out var positionDetail))
+                        {
+                            _logger.LogWarning("PositionDetails для PositionId {PositionId} не найдены, пропускаем",
+                                itemPosition.PositionId);
+                            continue;
+                        }
+
+                        // Парсим PositionCode из строки
+                        var positionCode = PositionCode.Parse(positionDetail.PositionCode);
 
                         var line = new InventoryAssignmentLine(
                             inventoryAssignmentId: assignmentId,
-                            itemPositionId: itemId);
+                            itemPositionId: itemPositionId,
+                            positionId: itemPosition.PositionId,
+                            positionCode: positionCode,
+                            expectedQuantity: itemPosition.Quantity);
+
                         lines.Add(line);
+                    }
+
+                    if (lines.Count == 0)
+                    {
+                        _logger.LogWarning("Для назначения {AssignmentId} не создано ни одной строки", assignmentId);
+                        continue;
                     }
 
                     // Массовое добавление Lines
                     await _lineRepository.AddBatchAsync(lines);
-                    _logger.LogInformation("Добавлено {Count} строк для назначения {AssignmentId}", lines.Count, assignmentId);
+                    _logger.LogInformation("Добавлено {Count} строк для назначения {AssignmentId}",
+                        lines.Count, assignmentId);
 
                     // Создать Statistics
                     var statistics = new InventoryStatistics(
@@ -153,7 +205,6 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
-
         /// <summary>
         /// Получить текущий прогресс выполнения инвентаризации
         /// </summary>

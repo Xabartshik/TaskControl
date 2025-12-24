@@ -22,7 +22,7 @@ namespace TaskControl.InformationModule.DAL.Repositories
             _logger = logger;
         }
 
-        public async Task<Item?> GetByIdAsync(int id)
+        public async Task<Item> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск товара по ID: {id}", id);
             try
@@ -52,9 +52,30 @@ namespace TaskControl.InformationModule.DAL.Repositories
             }
         }
 
+        public async Task<IEnumerable<Item>> GetByIdsAsync(IEnumerable<int> ids)
+        {
+            _logger.LogInformation("Поиск товаров по списку ID: {ids}", string.Join(", ", ids));
+            try
+            {
+                if (ids == null || !ids.Any())
+                    return Enumerable.Empty<Item>();
+
+                var items = await _db.Items
+                    .Where(i => ids.Contains(i.ItemId))
+                    .ToListAsync();
+
+                return items.Select(i => i.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении товаров по списку ID");
+                throw;
+            }
+        }
+
         public async Task<int> AddAsync(Item entity)
         {
-            _logger.LogInformation("Добавление нового товара ID: {id}", entity.ItemId);
+            _logger.LogInformation("Добавление нового товара: {name}", entity.Name);
             try
             {
                 if (entity == null)
@@ -65,7 +86,7 @@ namespace TaskControl.InformationModule.DAL.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при добавлении товара ID: {id}", entity?.ItemId);
+                _logger.LogError(ex, "Ошибка при добавлении товара: {name}", entity?.Name);
                 throw;
             }
         }

@@ -10,6 +10,17 @@ using System.Threading.Tasks;
 
 namespace TaskControl.TaskModule.Domain
 {
+    public enum TaskStatus
+    {
+        New = 0,
+        Assigned = 1,
+        InProgress = 2,
+        Completed = 3,
+        Cancelled = 4,
+        OnHold = 5,
+        Blocked = 6
+    }
+
     /// <summary>
     /// Активная задача в системе
     /// </summary>
@@ -21,6 +32,13 @@ namespace TaskControl.TaskModule.Domain
         [Required]
         public int TaskId { get; set; }
 
+        [Required(ErrorMessage = "Название задачи обязательно")]
+        [StringLength(200, ErrorMessage = "Название не может превышать 200 символов")]
+        public string Title { get; set; }
+
+
+        [StringLength(2000, ErrorMessage = "Описание не может превышать 2000 символов")]
+        public string? Description { get; set; }
         /// <summary>
         /// Идентификатор филиала
         /// </summary>
@@ -48,10 +66,11 @@ namespace TaskControl.TaskModule.Domain
         /// Статус задачи
         /// </summary>
         [Required]
-        [RegularExpression("^(New|InProgress|Completed|Cancelled)$",
-            ErrorMessage = "Недопустимый статус задачи")]
-        public string Status { get; set; } = "New";
+        public TaskStatus Status { get; set; } = TaskStatus.New;
 
+
+        [Range(0, 10)]
+        public int Priority { get; set; } = 5;
         /// <summary>
         /// Дополнительные параметры задачи в формате JSON были удалены, так как являются частью БД, а не бизнес-сущности
         /// </summary>
@@ -59,6 +78,7 @@ namespace TaskControl.TaskModule.Domain
         /// <summary>
         /// Проверяет, является ли задача активной
         /// </summary>
-        public bool IsActive() => Status != "Completed" && Status != "Cancelled";
+        public bool IsActive() => Status != TaskStatus.Completed
+            && Status != TaskStatus.Cancelled;
     }
 }

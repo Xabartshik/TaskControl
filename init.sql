@@ -72,22 +72,26 @@ CREATE INDEX idx_raw_events_service ON raw_events (source_service);
 CREATE INDEX idx_raw_events_event_time ON raw_events (event_time);
 CREATE INDEX idx_raw_events_params ON raw_events USING GIN (json_params);
 
--- Создание таблицы активных задач
-CREATE TABLE IF NOT EXISTS active_tasks (
+-- Создание таблицы базовых задач
+CREATE TABLE IF NOT EXISTS base_tasks (
     task_id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(2000),
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'InProgress', 'Completed', 'Cancelled')),
-    json_params JSONB
+    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Assigned', 'InProgress', 'Completed', 'Cancelled', 'OnHold', 'Blocked')) DEFAULT 'New',
+    priority INT NOT NULL CHECK (priority >= 0 AND priority <= 10) DEFAULT 5
 );
 
 -- Индексы для задач
-CREATE INDEX idx_active_tasks_branch ON active_tasks (branch_id);
-CREATE INDEX idx_active_tasks_status ON active_tasks (status);
-CREATE INDEX idx_active_tasks_type ON active_tasks (type);
-CREATE INDEX idx_active_tasks_created ON active_tasks (created_at);
+CREATE INDEX idx_base_tasks_branch ON base_tasks(branch_id);
+CREATE INDEX idx_base_tasks_status ON base_tasks(status);
+CREATE INDEX idx_base_tasks_type ON base_tasks(type);
+CREATE INDEX idx_base_tasks_priority ON base_tasks(priority);
+CREATE INDEX idx_base_tasks_created ON base_tasks(created_at);
+CREATE INDEX idx_base_tasks_completed ON base_tasks(completed_at);
 
 -- Создание таблицы назначенных задач
 CREATE TABLE IF NOT EXISTS active_assigned_tasks (
@@ -273,11 +277,139 @@ VALUES
     );
 
 -- 10. Вставка активных задач
-INSERT INTO active_tasks (branch_id, type, status, json_params)
+-- Очистка существующих данных (опционально)
+-- TRUNCATE TABLE base_tasks RESTART IDENTITY CASCADE;
+
+-- Вставка тестовых задач
+INSERT INTO base_tasks (title, description, branch_id, type, status, priority, created_at, completed_at)
 VALUES
-    (1, 'Переучет', 'InProgress', '{"zone": "A"}'),
-    (2, 'Приемка', 'New', '{"supplier": "ООО Поставщик"}'),
-    (1, 'Комплектация', 'Completed', '{"order_id": 1}');
+    -- Активные задачи
+    (
+        'Инвентаризация зоны A',
+        'Провести полную инвентаризацию складской зоны A с подсчетом всех товаров',
+        1,
+        'Inventory',
+        'InProgress',
+        8,
+        '2025-12-20 09:00:00',
+        NULL
+    ),
+    (
+        'Приемка товара от поставщика ООО "Снабжение"',
+        'Принять и разместить партию товаров согласно накладной № 12345',
+        1,
+        'Receipt',
+        'Assigned',
+        7,
+        '2025-12-21 10:30:00',
+        NULL
+    ),
+    (
+        'Комплектация заказа №1001',
+        'Собрать товары для заказа клиента согласно спецификации',
+        2,
+        'Picking',
+        'New',
+        6,
+        '2025-12-22 08:15:00',
+        NULL
+    ),
+    (
+        'Перемещение товаров между зонами',
+        'Переместить товары из зоны B в зону C для оптимизации хранения',
+        1,
+        'Movement',
+        'OnHold',
+        4,
+        '2025-12-22 14:00:00',
+        NULL
+    ),
+    (
+        'Срочная отгрузка для VIP-клиента',
+        'Подготовить и отгрузить заказ для приоритетного клиента',
+        3,
+        'Shipping',
+        'InProgress',
+        10,
+        '2025-12-23 07:00:00',
+        NULL
+    ),
+    
+    -- Завершенные задачи
+    (
+        'Инвентаризация зоны B',
+        'Завершена инвентаризация зоны B, обнаружено 3 расхождения',
+        1,
+        'Inventory',
+        'Completed',
+        7,
+        '2025-12-15 09:00:00',
+        '2025-12-15 16:30:00'
+    ),
+    (
+        'Упаковка заказа №998',
+        'Упаковать товары для отправки',
+        2,
+        'Packing',
+        'Completed',
+        5,
+        '2025-12-18 11:20:00',
+        '2025-12-18 12:45:00'
+    ),
+    (
+        'Маркировка новых поступлений',
+        'Нанести штрих-коды на новые товары',
+        1,
+        'Labeling',
+        'Completed',
+        3,
+        '2025-12-19 10:00:00',
+        '2025-12-19 14:30:00'
+    ),
+    
+    -- Отмененные задачи
+    (
+        'Инвентаризация зоны D',
+        'Отменена из-за технических работ в зоне',
+        3,
+        'Inventory',
+        'Cancelled',
+        5,
+        '2025-12-17 08:00:00',
+        '2025-12-17 09:15:00'
+    ),
+    (
+        'Приемка товара от ООО "Торг"',
+        'Поставщик не доставил товар в срок',
+        2,
+        'Receipt',
+        'Cancelled',
+        6,
+        '2025-12-16 13:00:00',
+        '2025-12-16 15:00:00'
+    ),
+    
+    -- Заблокированные задачи
+    (
+        'Выгрузка на транспорт',
+        'Ожидание прибытия транспортного средства',
+        1,
+        'Loading',
+        'Blocked',
+        7,
+        '2025-12-23 06:00:00',
+        NULL
+    ),
+    (
+        'Ревизия зоны C',
+        'Нет доступа к зоне из-за ремонта оборудования',
+        2,
+        'Audit',
+        'Blocked',
+        5,
+        '2025-12-22 15:30:00',
+        NULL
+    );
 
 -- 11. Вставка назначенных задач
 INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
@@ -322,18 +454,6 @@ VALUES
     ('login', '{"user_id": 3, "device": "desktop"}', '2025-07-18 08:30:00', 'AuthService'),
     ('movement', '{"from": "A-01", "to": "B-05", "items": 5}', '2025-07-18 11:20:00', 'WMS'),
     ('alert', '{"type": "low_stock", "position": "C-12"}', '2025-07-18 15:40:00', 'Monitoring');
-
--- Дополнительные активные задачи (8 записей)
-INSERT INTO active_tasks (branch_id, type, status, json_params, created_at, completed_at)
-VALUES
-    (1, 'Инвентаризация', 'New', '{"zone": "B"}', '2025-07-17 09:00:00', NULL),
-    (2, 'Перемещение', 'InProgress', '{"target_branch": 1}', '2025-07-17 10:30:00', NULL),
-    (3, 'Приемка', 'New', '{"supplier": "ООО Снабжение"}', '2025-07-17 11:45:00', NULL),
-    (1, 'Упаковка', 'Completed', '{"order_id": 3}', '2025-07-16 13:20:00', '2025-07-16 15:40:00'),
-    (2, 'Выгрузка', 'InProgress', '{"truck": "A123BC"}', '2025-07-18 08:15:00', NULL),
-    (1, 'Маркировка', 'New', '{"items_count": 50}', '2025-07-18 10:00:00', NULL),
-    (3, 'Резервирование', 'Completed', '{"order_id": 2}', '2025-07-17 14:30:00', '2025-07-17 16:00:00'),
-    (2, 'Комплектация', 'InProgress', '{"order_id": 5}', '2025-07-18 09:30:00', NULL);
 
 -- Дополнительные назначения задач (8 записей)
 INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
