@@ -32,5 +32,7 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
         public ITable<InventoryAssignmentLineModel> InventoryAssignmentLines => this.GetTable<InventoryAssignmentLineModel>();
 
         public ITable<InventoryAssignmentModel> InventoryAssignments => this.GetTable<InventoryAssignmentModel>();
+
+        public ITable<MobileAppUserModel> MobileAppUsers => this.GetTable<MobileAppUserModel>();
     }
 }

@@ -135,6 +135,9 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IPositionCellRepository, PositionCellRepository>();
             services.AddScoped<PositionDetailsService>();
 
+            services.AddScoped<IMobileAppUserRepository, MobileAppUserRepository>();
+            services.AddScoped<IMobileAppUserService, MobileAppUserService>();
+
 
             return services;
         }

@@ -18,5 +18,6 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         ITable<InventoryDiscrepancyModel> InventoryDiscrepancies { get; }
         ITable<InventoryAssignmentLineModel> InventoryAssignmentLines { get; }
         ITable<InventoryAssignmentModel> InventoryAssignments { get; }
+        ITable<MobileAppUserModel> MobileAppUsers { get; }
     }
 }
