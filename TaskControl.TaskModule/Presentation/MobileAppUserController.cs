@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
@@ -6,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Services;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -18,13 +20,16 @@ namespace TaskControl.TaskModule.Presentation
     public class MobileAppUserController : ControllerBase
     {
         private readonly IMobileAppUserService _service;
+        private readonly IJwtTokenService _jwt;
         private readonly ILogger<MobileAppUserController> _logger;
 
         public MobileAppUserController(
             IMobileAppUserService service,
+            IJwtTokenService jwt,
             ILogger<MobileAppUserController> logger)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
+            _jwt = jwt ?? throw new ArgumentNullException(nameof(jwt));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -340,49 +345,93 @@ namespace TaskControl.TaskModule.Presentation
             }
         }
 
+        ///// <summary>
+        ///// Проверить учетные данные пользователя
+        ///// </summary>
+        ///// <remarks>
+        ///// Пример запроса:
+        ///// POST /api/v1/mobileappuser/validate
+        ///// {
+        /////     "username": "1001",
+        /////     "password": "securePassword123"
+        ///// }
+        ///// 
+        ///// Ответ 200 OK:
+        ///// {
+        /////     "id": 1,
+        /////     "employeeId": 1001,
+        /////     "role": "Admin",
+        /////     "isActive": true
+        ///// }
+        ///// </remarks>
+        //[HttpPost("validate")]
+        //[ProducesResponseType(typeof(MobileAppUserDto), StatusCodes.Status200OK)]
+        //[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        //public async Task<IActionResult> ValidateCredentials([FromBody] ValidateCredentialsDto dto)
+        //{
+        //    if (!ModelState.IsValid)
+        //        return BadRequest(ModelState);
+
+        //    try
+        //    {
+        //        _logger.LogInformation("Запрос на проверку учетных данных для пользователя: {username}", dto.Username);
+        //        var user = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
+        //        return Ok(user);
+        //    }
+        //    catch (InvalidOperationException ex)
+        //    {
+        //        return Unauthorized();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Ошибка при проверке учетных данных для пользователя: {username}", dto.Username);
+        //        return BadRequest(new { error = ex.Message });
+        //    }
+        //}
+
         /// <summary>
-        /// Проверить учетные данные пользователя
+        /// Логин: проверка employeeId/password и выдача JWT.
+        /// Пример:
+        /// POST /api/v1/mobileappuser/login
+        /// { "username": "1001", "password": "secret" }
         /// </summary>
-        /// <remarks>
-        /// Пример запроса:
-        /// POST /api/v1/mobileappuser/validate
-        /// {
-        ///     "username": "1001",
-        ///     "password": "securePassword123"
-        /// }
-        /// 
-        /// Ответ 200 OK:
-        /// {
-        ///     "id": 1,
-        ///     "employeeId": 1001,
-        ///     "role": "Admin",
-        ///     "isActive": true
-        /// }
-        /// </remarks>
-        [HttpPost("validate")]
-        [ProducesResponseType(typeof(MobileAppUserDto), StatusCodes.Status200OK)]
+        [AllowAnonymous]
+        [HttpPost("login")]
+        [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> ValidateCredentials([FromBody] ValidateCredentialsDto dto)
+        public async Task<IActionResult> Login([FromBody] ValidateCredentialsDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
             try
             {
-                _logger.LogInformation("Запрос на проверку учетных данных для пользователя: {username}", dto.Username);
+                _logger.LogInformation("Запрос входа для пользователя: {username}", dto.Username);
+
+                // 1) Валидируем учётные данные существующим сервисом
                 var user = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
-                return Ok(user);
+
+                // 2) Генерируем JWT
+                var token = _jwt.CreateToken(user.EmployeeId, user.Role);
+
+                // 3) Отдаём токен + user (удобно для мобильного клиента)
+                return Ok(new LoginResponseDto
+                {
+                    AccessToken = token,
+                    User = user
+                });
             }
-            catch (InvalidOperationException ex)
+            catch (InvalidOperationException)
             {
                 return Unauthorized();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при проверке учетных данных для пользователя: {username}", dto.Username);
+                _logger.LogError(ex, "Ошибка входа для пользователя: {username}", dto.Username);
                 return BadRequest(new { error = ex.Message });
             }
         }
+
 
         /// <summary>
         /// Получить статистику пользователей
@@ -515,5 +564,12 @@ namespace TaskControl.TaskModule.Presentation
     {
         public int EmployeeId { get; init; }
         public string NewPassword { get; init; } = null!;
+    }
+
+    public record LoginResponseDto
+    {
+        public string AccessToken { get; init; } = null!;
+        public string TokenType { get; init; } = "Bearer";
+        public MobileAppUserDto User { get; init; } = null!;
     }
 }

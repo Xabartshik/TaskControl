@@ -36,7 +36,7 @@ namespace TaskControl.Web
 
 
             //builder.Services.AddScoped<IInventoryDataConnection, InventoryDataConnection>();
-            builder.Services.AddServicesGroup();
+            builder.Services.AddServicesGroup(builder.Configuration);
 
 
 

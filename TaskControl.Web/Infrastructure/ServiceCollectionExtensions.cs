@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -41,7 +43,7 @@ namespace TaskControl.Core.Infrastructure
 {
     public static class ServiceCollectionExtensions
     {
-        public static IServiceCollection AddServicesGroup(this IServiceCollection services)
+        public static IServiceCollection AddServicesGroup(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddServicesInfoModule();
             services.AddServicesInvModule();
@@ -49,8 +51,11 @@ namespace TaskControl.Core.Infrastructure
             services.AddServicesReportsModule();
             services.AddServicesTaskModule();
 
+            services.AddAuthenticationServices(configuration);
+
             return services;
         }
+
 
         private static IServiceCollection AddServicesInfoModule(this IServiceCollection services)
         {
@@ -137,9 +142,35 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IMobileAppUserRepository, MobileAppUserRepository>();
             services.AddScoped<IMobileAppUserService, MobileAppUserService>();
-
+            services.AddScoped<IJwtTokenService, JwtTokenService>();
 
             return services;
         }
+
+        private static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration cfg)
+        {
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    var jwt = cfg.GetSection("Jwt");
+                    var key = Encoding.UTF8.GetBytes(jwt["Key"]!);
+
+                    options.TokenValidationParameters = new()
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwt["Issuer"],
+                        ValidateAudience = true,
+                        ValidAudience = jwt["Audience"],
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(key),
+                        ValidateLifetime = true,
+                        ClockSkew = TimeSpan.FromSeconds(30)
+                    };
+                });
+
+            services.AddAuthorization();
+            return services;
+        }
+
     }
 }
