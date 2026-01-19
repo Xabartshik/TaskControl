@@ -19,6 +19,11 @@ namespace TaskControl.TaskModule.Application.DTOs
         [StringLength(30)]
         public string Role { get; init; } = null!;
 
+        public string FirstName { get; set; } = null!;
+        public string LastName { get; set; } = null!;
+
+        public string FullName => $"{FirstName} {LastName}";
+
         public bool IsActive { get; init; }
 
         public DateTime CreatedAt { get; init; }
@@ -74,10 +79,10 @@ namespace TaskControl.TaskModule.Application.DTOs
         [Required]
         public string Password { get; init; } = null!;
 
-        public static void ApplyTo(MobileAppUser entity, UpdateMobileUserPasswordDto dto, string passwordHash)
-        {
-            // Логика обновления пароля будет в доменном объекте или сервисе
-        }
+        //public static void ApplyTo(MobileAppUser entity, UpdateMobileUserPasswordDto dto, string passwordHash)
+        //{
+        //    // Логика обновления пароля будет в доменном объекте или сервисе
+        //}
     }
 
     public record UpdateMobileUserRoleDto

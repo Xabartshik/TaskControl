@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
+using TaskControl.TaskModule.Application.Interfaces;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
@@ -11,14 +13,18 @@ namespace TaskControl.TaskModule.Presentation.Controllers
     {
         private readonly IService<BaseTaskDto> _service;
         private readonly ILogger<BaseTasksController> _logger;
+        private readonly IInventarizationQueryService _inventarizationQueryService;
 
         public BaseTasksController(
             IService<BaseTaskDto> service,
+            IInventarizationQueryService inventarizationQueryService,
             ILogger<BaseTasksController> logger)
         {
             _service = service;
+            _inventarizationQueryService = inventarizationQueryService;
             _logger = logger;
         }
+
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BaseTaskDto>>> GetAll()
@@ -78,6 +84,23 @@ namespace TaskControl.TaskModule.Presentation.Controllers
                 return NotFound();
             }
             return NoContent();
+        }
+        ////////////////////////////////////////////////////////////////////////////Блок Инвентаризации
+        /// <summary>
+        /// Детали инвентаризации (товары, ожидаемое количество, позиции)
+        /// </summary>
+        [HttpGet("inventarization/{taskId:int}/details")]
+        public async Task<ActionResult<InventoryTaskDetailsDto>> GetInventarizationDetails(int taskId)
+        {
+            var details = await _inventarizationQueryService.GetInventoryTaskDetailsAsync(taskId);
+
+            if (details == null)
+            {
+                _logger.LogWarning("Детали инвентаризации не найдены для задачи ID: {TaskId}", taskId);
+                return NotFound();
+            }
+
+            return Ok(details);
         }
     }
 }

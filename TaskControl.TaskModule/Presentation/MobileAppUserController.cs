@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
@@ -22,15 +23,18 @@ namespace TaskControl.TaskModule.Presentation
         private readonly IMobileAppUserService _service;
         private readonly IJwtTokenService _jwt;
         private readonly ILogger<MobileAppUserController> _logger;
+        private readonly IEmployeeRepository _employeeRepository;
 
         public MobileAppUserController(
             IMobileAppUserService service,
             IJwtTokenService jwt,
-            ILogger<MobileAppUserController> logger)
+            ILogger<MobileAppUserController> logger,
+            IEmployeeRepository employeeRepository)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _jwt = jwt ?? throw new ArgumentNullException(nameof(jwt));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _employeeRepository = employeeRepository ?? throw new ArgumentNullException(nameof(employeeRepository));
         }
 
         /// <summary>
@@ -411,6 +415,8 @@ namespace TaskControl.TaskModule.Presentation
                 // 1) Валидируем учётные данные существующим сервисом
                 var user = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
 
+                var employee = await _employeeRepository.GetByIdAsync(user.EmployeeId);
+
                 // 2) Генерируем JWT
                 var token = _jwt.CreateToken(user.EmployeeId, user.Role);
 
@@ -418,7 +424,18 @@ namespace TaskControl.TaskModule.Presentation
                 return Ok(new LoginResponseDto
                 {
                     AccessToken = token,
-                    User = user
+                    TokenType = "Bearer",
+                    User = new MobileAppUserDto
+                    {
+                        Id = user.Id,
+                        EmployeeId = user.EmployeeId,
+                        FirstName = employee.Name,        
+                        LastName = employee.Surname,      
+                        Role = employee.Role,
+                        IsActive = user.IsActive,
+                        CreatedAt = user.CreatedAt,
+                        UpdatedAt = user.UpdatedAt
+                    }
                 });
             }
             catch (InvalidOperationException)
