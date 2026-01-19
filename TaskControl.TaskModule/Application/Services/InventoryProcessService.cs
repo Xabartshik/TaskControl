@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
+using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Model;
@@ -15,6 +16,7 @@ using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
 using TaskControl.TaskModule.Presentation.Interface;
+using UnitsNet;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Application.Services
@@ -33,6 +35,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly PositionDetailsService _positionDetailsService;
         private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
+        private readonly IItemRepository _itemRepository;
 
         public InventoryProcessService(
             IInventoryAssignmentRepository assignmentRepository,
@@ -43,6 +46,7 @@ namespace TaskControl.TaskModule.Application.Services
             IItemPositionRepository itemPositionRepository,
             PositionDetailsService positionDetailsService,
             ActiveEmployeeService activeEmployeeService,
+            IItemRepository itemRepository,
             ILogger<InventoryProcessService> logger)
         {
             _assignmentRepository = assignmentRepository
@@ -61,6 +65,8 @@ namespace TaskControl.TaskModule.Application.Services
                 ?? throw new ArgumentNullException(nameof(positionDetailsService));
             _activeEmployeeService = activeEmployeeService
                 ?? throw new ArgumentNullException(nameof(activeEmployeeService));
+            _itemRepository = itemRepository 
+                ?? throw new ArgumentNullException(nameof(itemRepository));
             _logger = logger
                 ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -253,6 +259,152 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
+
+        public async Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int inventoryTaskId)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Получение деталей задачи инвентаризации {TaskId} для пользователя {UserId}",
+                    inventoryTaskId, userId);
+
+                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
+
+                var assignment = assignments.FirstOrDefault(a =>
+                    a.TaskId == inventoryTaskId &&
+                    (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Completed &&
+                    (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled);
+
+                if (assignment == null)
+                    throw new InvalidOperationException(
+                        $"Активное назначение для задачи {inventoryTaskId} и пользователя {userId} не найдено");
+
+                var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
+
+                var itemPositions = await _itemPositionRepository.GetAllAsync();
+                var itemPositionIds = lines.Select(l => l.ItemPositionId).Distinct().ToList();
+
+                var itemPositionDict = itemPositions
+                    .Where(ip => itemPositionIds.Contains(ip.Id))
+                    .ToDictionary(ip => ip.Id);
+
+                var positionDetails = await _positionDetailsService.GetPositionDetailsByBranchAsync(assignment.BranchId);
+                var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
+
+                var itemIds = itemPositionDict.Values
+                    .Select(ip => ip.ItemId)
+                    .Distinct()
+                    .ToList();
+
+                var items = await _itemRepository.GetByIdsAsync(itemIds);
+                var itemsDict = items.ToDictionary(i => i.ItemId);
+                // --- /НОВОЕ ---
+
+                var dto = new InventoryTaskDetailsDto
+                {
+                    TaskId = inventoryTaskId,
+                    ZoneCode = assignment.ZoneCode,
+                    InitiatedAt = assignment.AssignedAt,
+                    Items = new List<InventoryItemDto>()
+                };
+
+                foreach (var line in lines)
+                {
+                    itemPositionDict.TryGetValue(line.ItemPositionId, out var itemPosition);
+                    var itemId = itemPosition?.ItemId ?? 0;
+
+                    itemsDict.TryGetValue(itemId, out var item);
+
+                    var positionId = itemPosition != null ? itemPosition.PositionId : 0;
+
+                    var positionCode = positionDetailsDict.TryGetValue(positionId, out var pd)
+                        ? pd.PositionCode
+                        : (line.PositionCode?.ToString() ?? string.Empty);
+
+                    dto.Items.Add(new InventoryItemDto
+                    {
+                        ItemId = itemId,
+                        ItemName = item?.Name ?? $"Item {itemId}",
+                        Weight = (item?.Weight ?? UnitsNet.Mass.Zero).Kilograms,
+                        Length = (item?.Length ?? UnitsNet.Length.Zero).Millimeters,
+                        Width = (item?.Width ?? UnitsNet.Length.Zero).Millimeters,
+                        Height = (item?.Height ?? UnitsNet.Length.Zero).Millimeters,
+                        PositionId = positionId,
+                        PositionCode = positionCode,
+
+                        ExpectedQuantity = line.ExpectedQuantity,
+                        Status = line.ActualQuantity.HasValue ? "Counted" : "Available"
+                    });
+                }
+
+                dto.TotalExpectedCount = dto.Items.Sum(i => i.ExpectedQuantity);
+
+                _logger.LogInformation(
+                    "Детали задачи {TaskId} сформированы: строк {LineCount}, ожидаемое кол-во {TotalExpectedCount}",
+                    inventoryTaskId, dto.Items.Count, dto.TotalExpectedCount);
+
+                return dto;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Ошибка при получении деталей задачи {TaskId} для пользователя {UserId}",
+                    inventoryTaskId, userId);
+                throw;
+            }
+        }
+
+
+        public async Task<List<InventoryAssignmentDetailedDto>> GetNewAssignmentsForWorkerAsync(int userId)
+        {
+            try
+            {
+                _logger.LogInformation("Получение новых задач инвентаризации для пользователя {UserId}", userId);
+
+                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
+
+                // "Новые/активные": не завершены и не отменены
+                var activeAssignments = assignments
+                    .Where(a =>
+                        (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Completed &&
+                        (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled)
+                    .ToList();
+
+                var result = new List<InventoryAssignmentDetailedDto>();
+
+                foreach (var assignment in activeAssignments)
+                {
+                    var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignment.Id);
+                    var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
+
+                    result.Add(new InventoryAssignmentDetailedDto
+                    {
+                        Id = assignment.Id,
+                        TaskId = assignment.TaskId,
+                        AssignedToUserId = assignment.AssignedToUserId,
+                        BranchId = assignment.BranchId,
+                        ZoneCode = assignment.ZoneCode,
+                        Status = (InventoryAssignmentStatus)assignment.Status,
+                        AssignedAt = assignment.AssignedAt,
+                        CompletedAt = assignment.CompletedAt,
+                        Statistics = statistics != null ? MapStatisticsToDto(statistics) : null,
+                        Lines = lines.Select(MapLineToDto).ToList()
+                    });
+                }
+
+                _logger.LogInformation(
+                    "Найдено {Count} новых/активных назначений для пользователя {UserId}",
+                    result.Count, userId);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении новых задач для пользователя {UserId}", userId);
+                throw;
+            }
+        }
+
         /// <summary>
         /// Получить текущий прогресс выполнения инвентаризации
         /// </summary>

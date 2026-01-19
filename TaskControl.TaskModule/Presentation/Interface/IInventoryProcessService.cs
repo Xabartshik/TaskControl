@@ -24,6 +24,10 @@ namespace TaskControl.TaskModule.Presentation.Interface
             CreateInventoryTaskDto dto,
             List<int> availableWorkers);
 
+        Task<List<InventoryAssignmentDetailedDto>> GetNewAssignmentsForWorkerAsync(int userId);
+        Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int inventoryTaskId);
+
+
         /// <summary>
         /// Получить текущий прогресс выполнения инвентаризации
         /// </summary>
@@ -229,4 +233,6 @@ namespace TaskControl.TaskModule.Presentation.Interface
         /// </summary>
         Json = 3
     }
+
+
 }

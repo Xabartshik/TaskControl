@@ -93,6 +93,60 @@ namespace TaskControl.TaskModule.Presentation
             }
         }
 
+        [HttpGet("worker/{userId}/new-tasks")]
+        [ProducesResponseType(typeof(List<InventoryAssignmentDetailedDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetNewWorkerTasks(int userId)
+        {
+            try
+            {
+                _logger.LogInformation("Получение новых задач для работника {UserId}", userId);
+
+                var tasks = await _processService.GetNewAssignmentsForWorkerAsync(userId);
+                return Ok(tasks);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении новых задач для работника {UserId}", userId);
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("worker/{userId}/tasks/{inventoryTaskId}/details")]
+        [ProducesResponseType(typeof(InventoryTaskDetailsDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetInventoryTaskDetails(int userId, int inventoryTaskId)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Получение деталей задачи инвентаризации {TaskId} для работника {UserId}",
+                    inventoryTaskId, userId);
+
+                var dto = await _processService.GetInventoryTaskDetailsForWorkerAsync(userId, inventoryTaskId);
+                return Ok(dto);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Ошибка при получении деталей задачи инвентаризации {TaskId} для работника {UserId}",
+                    inventoryTaskId, userId);
+
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+
+
+
         /// <summary>
         /// Обработать сканирование товара (установить фактическое количество)
         /// </summary>
@@ -462,5 +516,47 @@ namespace TaskControl.TaskModule.Presentation
                 return BadRequest(new { error = ex.Message });
             }
         }
+
+        [HttpGet("check-new")]
+        [ProducesResponseType(typeof(TaskCheckResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> CheckForNewTasks([FromQuery] DateTime? since = null)
+        {
+            try
+            {
+                var allTasks = await _processService.GetActiveInventoriesAsync();
+
+                IEnumerable<InventoryAssignmentDetailedDto> newTasks = allTasks;
+
+                if (since.HasValue)
+                    newTasks = allTasks.Where(t => t.AssignedAt > since.Value);
+
+                var response = new TaskCheckResponse
+                {
+                    HasNewTasks = newTasks.Any(),
+                    NewTaskCount = newTasks.Count(),
+                    LatestTaskTime = newTasks.Any() ? newTasks.Max(t => t.AssignedAt) : (DateTime?)null,
+                    LastChecked = DateTime.UtcNow
+                };
+
+                _logger.LogInformation("Есть новые задачи: {HasNewTasks}, Количество: {Count}", response.HasNewTasks, response.NewTaskCount);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка во время проверки наличия новых задач");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Ошибка проверки наличия новых задач");
+            }
+        }
+
+
+
+    }
+
+    public class TaskCheckResponse
+    {
+        public bool HasNewTasks { get; set; }
+        public int NewTaskCount { get; set; }
+        public DateTime? LatestTaskTime { get; set; }
+        public DateTime LastChecked { get; set; }
     }
 }
