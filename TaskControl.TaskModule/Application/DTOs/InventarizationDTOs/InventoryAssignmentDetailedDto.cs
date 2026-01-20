@@ -21,7 +21,6 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
         public InventoryAssignmentStatus Status { get; set; }
         public DateTime AssignedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
-        public InventoryStatisticsDto? Statistics { get; set; }
         public List<InventoryAssignmentLineDto> Lines { get; set; } = new();
     }
 

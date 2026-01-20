@@ -40,6 +40,27 @@ public static class InventoryAssignmentMapper
             CompletedAt = domain.CompletedAt
         };
     }
+
+    public static InventoryAssignment ToDomainWithLines(
+    this InventoryAssignmentModel model,
+    List<InventoryAssignmentLine> lines)
+    {
+        if (model is null)
+            return null;
+
+        return new InventoryAssignment(
+            id: model.Id,
+            taskId: model.TaskId,
+            assignedToUserId: model.AssignedToUserId,
+            branchId: model.BranchId,
+            assignedAtUtc: model.AssignedAt,
+            lines: lines ?? new List<InventoryAssignmentLine>())
+        {
+            CompletedAt = model.CompletedAt,
+            Status = (InventoryAssignmentStatus)model.Status
+        };
+    }
+
 }
 
 public static class InventoryAssignmentLineMapper

@@ -27,6 +27,8 @@ namespace TaskControl.TaskModule.Presentation.Interface
         Task<List<InventoryAssignmentDetailedDto>> GetNewAssignmentsForWorkerAsync(int userId);
         Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int inventoryTaskId);
 
+        Task<bool> HasNewTasksForWorkerAsync(int userId, DateTime? since = null);
+
 
         /// <summary>
         /// Получить текущий прогресс выполнения инвентаризации

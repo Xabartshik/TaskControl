@@ -6,6 +6,7 @@ namespace TaskControl.TaskModule.DataAccess.Models;
 public class InventoryDiscrepancyModel
 {
     [PrimaryKey, Identity]
+    [Column("id")]
     public int Id { get; set; }
 
     [Column("inventory_assignment_line_id"), NotNull]

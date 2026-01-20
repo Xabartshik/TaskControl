@@ -374,7 +374,6 @@ namespace TaskControl.TaskModule.Application.Services
 
                 foreach (var assignment in activeAssignments)
                 {
-                    var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignment.Id);
                     var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
 
                     result.Add(new InventoryAssignmentDetailedDto
@@ -387,7 +386,6 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Statistics = statistics != null ? MapStatisticsToDto(statistics) : null,
                         Lines = lines.Select(MapLineToDto).ToList()
                     });
                 }
@@ -404,6 +402,43 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
+
+        public async Task<bool> HasNewTasksForWorkerAsync(int userId, DateTime? since = null)
+        {
+            try
+            {
+                _logger.LogInformation("Проверка новых задач для пользователя {UserId}, since={Since}", userId, since);
+
+                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
+
+                foreach (var assignment in assignments)
+                {
+                    if ((InventoryAssignmentStatus)assignment.Status == InventoryAssignmentStatus.Completed ||
+                        (InventoryAssignmentStatus)assignment.Status == InventoryAssignmentStatus.Cancelled)
+                        continue;
+
+                    if (since.HasValue && assignment.AssignedAt <= since.Value)
+                        continue;
+                    var baseTask = await _baseTaskRepository.GetByIdAsync(assignment.TaskId);
+                    if (baseTask == null)
+                        continue;
+
+                    if (baseTask.Status == TaskStatus.Completed || baseTask.Status == TaskStatus.Cancelled)
+                        continue;
+                    if (!string.Equals(baseTask.Type, "inventory", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    return true; // нашли хотя бы одну “новую/активную” задачу
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при проверке новых задач для пользователя {UserId}", userId);
+                throw;
+            }
+        }
+
 
         /// <summary>
         /// Получить текущий прогресс выполнения инвентаризации
@@ -628,7 +663,6 @@ namespace TaskControl.TaskModule.Application.Services
 
                 foreach (var assignment in assignments)
                 {
-                    var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignment.Id);
                     var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
 
                     result.Add(new InventoryAssignmentDetailedDto
@@ -641,7 +675,6 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Statistics = statistics != null ? MapStatisticsToDto(statistics) : null,
                         Lines = lines.Select(MapLineToDto).ToList()
                     });
                 }
@@ -674,7 +707,6 @@ namespace TaskControl.TaskModule.Application.Services
                 var result = new List<InventoryAssignmentDetailedDto>();
                 foreach (var assignment in assignments)
                 {
-                    var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignment.Id);
                     var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
 
                     result.Add(new InventoryAssignmentDetailedDto
@@ -687,7 +719,6 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Statistics = statistics != null ? MapStatisticsToDto(statistics) : null,
                         Lines = lines.Select(MapLineToDto).ToList()
                     });
                 }
@@ -730,7 +761,6 @@ namespace TaskControl.TaskModule.Application.Services
                 var result = new List<InventoryAssignmentDetailedDto>();
                 foreach (var assignment in assignments)
                 {
-                    var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignment.Id);
                     var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
 
                     result.Add(new InventoryAssignmentDetailedDto
@@ -743,7 +773,6 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Statistics = statistics != null ? MapStatisticsToDto(statistics) : null,
                         Lines = lines.Select(MapLineToDto).ToList()
                     });
                 }
@@ -1174,14 +1203,14 @@ namespace TaskControl.TaskModule.Application.Services
         private InventoryAssignmentLineDto MapLineToDto(InventoryAssignmentLine line) =>
             new()
             {
-                //Id = line.Id,
-                //InventoryAssignmentId = line.InventoryAssignmentId,
-                //ItemPositionId = line.ItemPositionId,
-                //ExpectedQuantity = line.ExpectedQuantity,
-                //ActualQuantity = line.ActualQuantity,
-                //ZoneCode = line.ZoneCode,
-                //FirstLevelStorageType = line.FirstLevelStorageType,
-                //FlsNumber = line.FlsNumber
+                Id = line.Id,
+                InventoryAssignmentId = line.InventoryAssignmentId,
+                ItemPositionId = line.ItemPositionId,
+                ExpectedQuantity = line.ExpectedQuantity,
+                ActualQuantity = line.ActualQuantity,
+                ZoneCode = line.PositionCode.ToString(),
+                FirstLevelStorageType = line.PositionCode.FirstLevelStorageType,
+                FlsNumber = int.TryParse(line.PositionCode?.FLSNumber, out var fls) ? fls : null
             };
 
         private DiscrepancyDto MapDiscrepancyToDto(InventoryDiscrepancy d) =>

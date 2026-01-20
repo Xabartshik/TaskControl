@@ -72,7 +72,28 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
             var assignments = await _db.InventoryAssignments
                 .Where(a => a.AssignedToUserId == userId)
                 .ToListAsync();
-            return assignments.Select(a => a.ToDomain()).ToList();
+
+            var result = new List<InventoryAssignment>();
+
+            foreach (var model in assignments)
+            {
+                var lines = await _db.InventoryAssignmentLines
+                    .Where(l => l.InventoryAssignmentId == model.Id)
+                    .ToListAsync();
+
+                // Пропускаем assignment'ы БЕЗ строк (они невалидны по домену)
+                if (lines.Count == 0)
+                {
+                    _logger.LogWarning("Assignment {AssignmentId} has no lines, skipping", model.Id);
+                    continue;
+                }
+
+                var domainLines = lines.Select(l => l.ToDomain()).ToList();
+                var domain = model.ToDomainWithLines(domainLines);
+                result.Add(domain);
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
@@ -80,6 +101,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
             throw;
         }
     }
+
 
     public async Task<List<InventoryAssignment>> GetByBranchIdAsync(int branchId)
     {

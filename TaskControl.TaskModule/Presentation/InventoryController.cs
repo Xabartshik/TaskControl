@@ -516,35 +516,27 @@ namespace TaskControl.TaskModule.Presentation
                 return BadRequest(new { error = ex.Message });
             }
         }
-
-        [HttpGet("check-new")]
-        [ProducesResponseType(typeof(TaskCheckResponse), StatusCodes.Status200OK)]
-        public async Task<IActionResult> CheckForNewTasks([FromQuery] DateTime? since = null)
+        //TODO: Перекинуть логику проверки на новые задачи ко всем задачам в целом. Пока что есть только для инвентаризации
+        [HttpGet("worker/{userId}/check-new")]
+        [ProducesResponseType(typeof(WorkerTaskCheckResponse), StatusCodes.Status200OK)]
+        public async Task<IActionResult> CheckForNewTasks(
+            int userId,
+            [FromQuery] DateTime? since = null)
         {
             try
             {
-                var allTasks = await _processService.GetActiveInventoriesAsync();
+                var hasNewTasks = await _processService.HasNewTasksForWorkerAsync(userId, since);
 
-                IEnumerable<InventoryAssignmentDetailedDto> newTasks = allTasks;
-
-                if (since.HasValue)
-                    newTasks = allTasks.Where(t => t.AssignedAt > since.Value);
-
-                var response = new TaskCheckResponse
+                return Ok(new WorkerTaskCheckResponse
                 {
-                    HasNewTasks = newTasks.Any(),
-                    NewTaskCount = newTasks.Count(),
-                    LatestTaskTime = newTasks.Any() ? newTasks.Max(t => t.AssignedAt) : (DateTime?)null,
+                    HasNewTasks = hasNewTasks,
                     LastChecked = DateTime.UtcNow
-                };
-
-                _logger.LogInformation("Есть новые задачи: {HasNewTasks}, Количество: {Count}", response.HasNewTasks, response.NewTaskCount);
-                return Ok(response);
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка во время проверки наличия новых задач");
-                return StatusCode(StatusCodes.Status500InternalServerError, "Ошибка проверки наличия новых задач");
+                _logger.LogError(ex, "Ошибка при проверке новых задач инвентаризации (UserId={UserId})", userId);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error checking tasks");
             }
         }
 
@@ -557,6 +549,12 @@ namespace TaskControl.TaskModule.Presentation
         public bool HasNewTasks { get; set; }
         public int NewTaskCount { get; set; }
         public DateTime? LatestTaskTime { get; set; }
+        public DateTime LastChecked { get; set; }
+    }
+
+    public class WorkerTaskCheckResponse
+    {
+        public bool HasNewTasks { get; set; }
         public DateTime LastChecked { get; set; }
     }
 }

@@ -6,6 +6,7 @@ namespace TaskControl.TaskModule.DataAccess.Models;
 public class InventoryStatisticsModel
 {
     [PrimaryKey, Identity]
+    [Column("id")]
     public int Id { get; set; }
 
     [Column("inventory_assignment_id"), NotNull]
