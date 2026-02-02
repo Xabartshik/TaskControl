@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 using TaskControl.InformationModule.Domain;
 using UnitsNet;
 
@@ -30,25 +25,25 @@ namespace TaskControl.InformationModule.Application.DTOs
         /// Вес в граммах
         /// </summary>
         [Required(ErrorMessage = "Укажите вес товара")]
-        public Mass Weight { get; init; }
+        public double Weight { get; init; }
 
         /// <summary>
         /// Длина в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите длину товара")]
-        public Length Length { get; init; }
+        public double Length { get; init; }
 
         /// <summary>
         /// Ширина в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите ширину товара")]
-        public Length Width { get; init; }
+        public double Width { get; init; }
 
         /// <summary>
         /// Высота в миллиметрах
         /// </summary>
         [Required(ErrorMessage = "Укажите высоту товара")]
-        public Length Height { get; init; }
+        public double Height { get; init; }
 
         /// <summary>
         /// Преобразует сущность в DTO
@@ -57,10 +52,10 @@ namespace TaskControl.InformationModule.Application.DTOs
         {
             ItemId = entity.ItemId,
             Name = entity.Name,
-            Weight = entity.Weight,
-            Length = entity.Length,
-            Width = entity.Width,
-            Height = entity.Height
+            Weight = entity.Weight.Grams,
+            Length = entity.Length.Millimeters,
+            Width = entity.Width.Millimeters,
+            Height = entity.Height.Millimeters
         };
 
         /// <summary>
@@ -70,10 +65,10 @@ namespace TaskControl.InformationModule.Application.DTOs
         {
             ItemId = dto.ItemId,
             Name = dto.Name,
-            Weight = dto.Weight,
-            Length = dto.Length,
-            Width = dto.Width,
-            Height = dto.Height
+            Weight = Mass.FromGrams(dto.Weight),
+            Length = UnitsNet.Length.FromMillimeters(dto.Length),
+            Width = UnitsNet.Length.FromMillimeters(dto.Width),
+            Height = UnitsNet.Length.FromMillimeters(dto.Height)
         };
     }
 }

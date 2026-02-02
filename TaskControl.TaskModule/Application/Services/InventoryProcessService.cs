@@ -1,14 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Interface;
-using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
@@ -354,8 +349,75 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
+        /// <summary>
+        /// Обогащение строк назначения данными о товарах из ItemRepository
+        /// </summary>
+        private async Task<List<InventoryAssignmentLineWithItemDto>> EnrichLinesWithItemDataAsync(
+            IEnumerable<InventoryAssignmentLine> lines)
+        {
+            var lineList = lines.ToList();
+            if (lineList.Count == 0)
+                return new List<InventoryAssignmentLineWithItemDto>();
 
-        public async Task<List<InventoryAssignmentDetailedDto>> GetNewAssignmentsForWorkerAsync(int userId)
+            // Шаг 1: Получить все ItemPosition для этих строк
+            var itemPositionIds = lineList.Select(l => l.ItemPositionId).Distinct().ToList();
+            var itemPositions = await _itemPositionRepository.GetByIdsAsync(itemPositionIds);
+
+            // Шаг 2: Получить все Item для этих позиций
+            var itemIds = itemPositions
+                .Select(ip => ip.ItemId)
+                .Distinct()
+                .ToList();
+
+            var items = itemIds.Count > 0
+                ? await _itemRepository.GetByIdsAsync(itemIds)
+                : new List<Item>();
+
+            // Создаём словари для быстрого поиска
+            var itemPositionDict = itemPositions.ToDictionary(ip => ip.Id);
+            var itemDict = items.ToDictionary(i => i.ItemId);
+
+            // Шаг 3: Маппинг со связыванием данных
+            var result = lineList.Select(line =>
+            {
+                var dto = MapLineToExtendedDto(line);
+
+                // Ищем ItemPosition для этой строки
+                // Ищем ItemPosition для этой строки
+                if (itemPositionDict.TryGetValue(line.ItemPositionId, out var itemPosition) &&
+                    itemDict.TryGetValue(itemPosition.ItemId, out var item))
+                {
+                    dto.ItemId = item.ItemId;
+                    dto.ItemName = item.Name;
+                }
+
+
+                return dto;
+            }).ToList();
+
+            return result;
+        }
+
+        /// <summary>
+        /// Маппинг доменной строки назначения в расширенное DTO (для передачи на клиент с товарами)
+        /// </summary>
+        private InventoryAssignmentLineWithItemDto MapLineToExtendedDto(InventoryAssignmentLine line)
+        {
+            return new InventoryAssignmentLineWithItemDto
+            {
+                Id = line.Id,
+                InventoryAssignmentId = line.InventoryAssignmentId,
+                ItemPositionId = line.ItemPositionId,
+                PositionId = line.PositionId,
+                PositionCode = line.PositionCode,  
+                ExpectedQuantity = line.ExpectedQuantity,
+                ActualQuantity = line.ActualQuantity,
+                ItemId = 0,  // Будет заполнено в EnrichLinesWithItemDataAsync
+                ItemName = null  // Будет заполнено в EnrichLinesWithItemDataAsync
+            };
+        }
+
+        public async Task<List<InventoryAssignmentDetailedWithItemDto>> GetNewAssignmentsForWorkerAsync(int userId)
         {
             try
             {
@@ -370,13 +432,14 @@ namespace TaskControl.TaskModule.Application.Services
                         (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled)
                     .ToList();
 
-                var result = new List<InventoryAssignmentDetailedDto>();
+                var result = new List<InventoryAssignmentDetailedWithItemDto>();
 
                 foreach (var assignment in activeAssignments)
                 {
                     var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
+                    var enrichedLines = await EnrichLinesWithItemDataAsync(lines);
 
-                    result.Add(new InventoryAssignmentDetailedDto
+                    result.Add(new InventoryAssignmentDetailedWithItemDto
                     {
                         Id = assignment.Id,
                         TaskId = assignment.TaskId,
@@ -386,7 +449,7 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(MapLineToDto).ToList()
+                        Lines = enrichedLines.Select(line => line).ToList()
                     });
                 }
 
@@ -466,7 +529,7 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     AssignmentId = assignmentId,
                     CurrentStatistics = statisticsDto,
-                    RemainingItems = uncountedItems.Select(MapLineToDto).ToList(),
+                    RemainingItems = uncountedItems.Select(x => x.ToDto()).ToList(),
                     Status = (InventoryAssignmentStatus)assignment.Status,
                     TimeSpentMinutes = CalculateTimeSpent(statistics.StartedAt),
                     EstimatedTimeRemainingMinutes = EstimateRemainingTime(statistics, uncountedItems.Count)
@@ -675,7 +738,7 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(MapLineToDto).ToList()
+                        Lines = lines.Select(x => x.ToDto()).ToList()
                     });
                 }
 
@@ -719,7 +782,7 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(MapLineToDto).ToList()
+                        Lines = lines.Select(x => x.ToDto()).ToList()
                     });
                 }
 
@@ -773,7 +836,7 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = (InventoryAssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(MapLineToDto).ToList()
+                        Lines = lines.Select(x => x.ToDto()).ToList()
                     });
                 }
 
@@ -924,7 +987,7 @@ namespace TaskControl.TaskModule.Application.Services
             try
             {
                 var uncounted = await _lineRepository.GetUncountedAsync(assignmentId);
-                return uncounted.Select(MapLineToDto).ToList();
+                return uncounted.Select(x => x.ToDto()).ToList();
             }
             catch (Exception ex)
             {
@@ -1200,18 +1263,6 @@ namespace TaskControl.TaskModule.Application.Services
                 CompletedAt = stats.CompletedAt
             };
 
-        private InventoryAssignmentLineDto MapLineToDto(InventoryAssignmentLine line) =>
-            new()
-            {
-                Id = line.Id,
-                InventoryAssignmentId = line.InventoryAssignmentId,
-                ItemPositionId = line.ItemPositionId,
-                ExpectedQuantity = line.ExpectedQuantity,
-                ActualQuantity = line.ActualQuantity,
-                ZoneCode = line.PositionCode.ToString(),
-                FirstLevelStorageType = line.PositionCode.FirstLevelStorageType,
-                FlsNumber = int.TryParse(line.PositionCode?.FLSNumber, out var fls) ? fls : null
-            };
 
         private DiscrepancyDto MapDiscrepancyToDto(InventoryDiscrepancy d) =>
             new()

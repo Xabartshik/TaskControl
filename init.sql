@@ -95,10 +95,18 @@ CREATE INDEX idx_base_tasks_completed ON base_tasks(completed_at);
 
 -- Создание таблицы назначенных задач
 CREATE TABLE IF NOT EXISTS active_assigned_tasks (
-    id SERIAL PRIMARY KEY,
-    task_id INT NOT NULL REFERENCES base_tasks(task_id),
-    user_id INT NOT NULL REFERENCES employees(employees_id),
-    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id           SERIAL PRIMARY KEY,
+    task_id       INT NOT NULL REFERENCES base_tasks(task_id),
+    user_id       INT NOT NULL REFERENCES employees(employees_id),
+    assigned_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at    TIMESTAMP NULL,
+    completed_at  TIMESTAMP NULL,
+
+    CONSTRAINT chk_aat_started_after_assigned
+        CHECK (started_at IS NULL OR started_at >= assigned_at),
+
+    CONSTRAINT chk_aat_completed_after_started
+        CHECK (completed_at IS NULL OR (started_at IS NOT NULL AND completed_at >= started_at))
 );
 
 -- Составной индекс для назначений
@@ -634,3 +642,29 @@ VALUES
     (3, 1, 'in', NOW() - INTERVAL '30 minutes'); -- Сидоров пришёл 30 минут назад
 
 -- НЕ добавляем 'out', чтобы они считались на смене
+
+-- =====================================================
+-- ПОЛЬЗОВАТЕЛИ МОБИЛЬНОГО ПРИЛОЖЕНИЯ
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS mobile_app_users (
+  id SERIAL PRIMARY KEY,
+
+  -- Логин = employee_id (уникальный номер работника)
+  employee_id INT NOT NULL UNIQUE REFERENCES employees(employees_id),
+
+  -- Хэш пароля, который задаёт администратор
+  password_hash TEXT NOT NULL,
+
+  -- Роль пользователя в приложении (например: Worker/Admin)
+  role VARCHAR(30) NOT NULL,
+
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+CREATE INDEX idx_mobile_app_users_employee ON mobile_app_users(employee_id);
+CREATE INDEX idx_mobile_app_users_role ON mobile_app_users(role);
+CREATE INDEX idx_mobile_app_users_active ON mobile_app_users(is_active);

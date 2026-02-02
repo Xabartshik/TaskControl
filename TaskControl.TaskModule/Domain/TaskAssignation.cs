@@ -35,5 +35,15 @@ namespace TaskControl.TaskModule.Domain
         /// </summary>
         [Required]
         public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Дата начала выполнения назначения
+        /// </summary>
+        public DateTime? StartedAt { get; set; }
+
+        /// <summary>
+        /// Дата завершения назначения
+        /// </summary>
+        public DateTime? CompletedAt { get; set; }
     }
 }
