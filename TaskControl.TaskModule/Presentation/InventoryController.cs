@@ -10,7 +10,7 @@ using TaskControl.InformationModule.Application.Services;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
-using TaskControl.TaskModule.Presentation.Interface;
+using TaskControl.TaskModule.Application.Services;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -113,6 +113,37 @@ namespace TaskControl.TaskModule.Presentation
             {
                 _logger.LogError(ex, "Ошибка при получении новых задач для работника {UserId}", userId);
                 return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Завершить задание инвентаризации для сотрудника
+        /// </summary>
+        [HttpPost("complete-assignment")]
+        public async Task<ActionResult<CompleteAssignmentResultDto>> CompleteAssignment(
+            [FromBody] CompleteAssignmentDto dto)
+        {
+            try
+            {
+                if (dto.AssignmentId <= 0)
+                    return BadRequest(new { message = "Некорректный AssignmentId" });
+
+                if (dto.WorkerId <= 0)
+                    return BadRequest(new { message = "Некорректный WorkerId" });
+
+                var result = await _processService.CompleteAssignmentAsync(dto);
+
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Ошибка валидации при завершении инвентаризации");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Внутренняя ошибка при завершении инвентаризации");
+                return StatusCode(500, new { message = "Внутренняя ошибка сервера" });
             }
         }
 

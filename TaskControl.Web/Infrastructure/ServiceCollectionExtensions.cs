@@ -37,7 +37,6 @@ using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
-using TaskControl.TaskModule.Presentation.Interface;
 
 namespace TaskControl.Core.Infrastructure
 {

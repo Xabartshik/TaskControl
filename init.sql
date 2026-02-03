@@ -594,6 +594,7 @@ CREATE TABLE IF NOT EXISTS inventory_discrepancies (
     type INT NOT NULL CHECK (type IN (0, 1, 2)), -- None(0), Surplus(1), Shortage(2)
     note TEXT,
     identified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
     resolution_status INT NOT NULL CHECK (resolution_status IN (0, 1, 2, 3)), -- Pending(0), Resolved(1), UnderInvestigation(2), WrittenOff(3)
     CONSTRAINT positive_variance CHECK ((actual_quantity - expected_quantity) IS NOT NULL)
 );

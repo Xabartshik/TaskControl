@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 
-namespace TaskControl.TaskModule.Presentation.Interface
+namespace TaskControl.TaskModule.Application.Interface
 {
     /// <summary>
     /// Интерфейс основного сервиса обработки инвентаризации
@@ -197,6 +197,11 @@ namespace TaskControl.TaskModule.Presentation.Interface
         /// <returns>Метрики производительности</returns>
         Task<Dictionary<string, object>> GetPerformanceMetricsAsync(
             int assignmentId);
+
+        /// <summary>
+        /// Завершает задание инвентаризации для конкретного сотрудника
+        /// </summary>
+        Task<CompleteAssignmentResultDto> CompleteAssignmentAsync(CompleteAssignmentDto dto);
 
         /// <summary>
         /// Экспортировать результаты инвентаризации в различные форматы

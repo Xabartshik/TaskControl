@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <Folder Include="Domain\TaskTypes\" />
+    <Folder Include="Presentation\Interface\" />
   </ItemGroup>
 
 </Project>

@@ -3,14 +3,15 @@ using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.Application.Services;
+using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
+using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
-using TaskControl.TaskModule.Presentation.Interface;
 using UnitsNet;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
@@ -31,6 +32,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
         private readonly IItemRepository _itemRepository;
+        private readonly IPositionCellRepository _positionCellRepository;
 
         public InventoryProcessService(
             IInventoryAssignmentRepository assignmentRepository,
@@ -42,6 +44,7 @@ namespace TaskControl.TaskModule.Application.Services
             PositionDetailsService positionDetailsService,
             ActiveEmployeeService activeEmployeeService,
             IItemRepository itemRepository,
+            IPositionCellRepository positionCellRepository,
             ILogger<InventoryProcessService> logger)
         {
             _assignmentRepository = assignmentRepository
@@ -60,10 +63,380 @@ namespace TaskControl.TaskModule.Application.Services
                 ?? throw new ArgumentNullException(nameof(positionDetailsService));
             _activeEmployeeService = activeEmployeeService
                 ?? throw new ArgumentNullException(nameof(activeEmployeeService));
-            _itemRepository = itemRepository 
+            _itemRepository = itemRepository
                 ?? throw new ArgumentNullException(nameof(itemRepository));
+            _positionCellRepository = positionCellRepository
+                ?? throw new ArgumentNullException(nameof(positionCellRepository));
             _logger = logger
                 ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        /// <summary>
+        /// Завершает задание инвентаризации для конкретного сотрудника
+        /// </summary>
+        public async Task<CompleteAssignmentResultDto> CompleteAssignmentAsync(CompleteAssignmentDto dto)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Начало завершения инвентаризации. AssignmentId={AssignmentId}, WorkerId={WorkerId}, LineCount={LineCount}",
+                    dto.AssignmentId, dto.WorkerId, dto.Lines.Count);
+
+                // ===== 1. ВАЛИДАЦИЯ =====
+
+                var assignment = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
+                if (assignment == null)
+                    throw new InvalidOperationException($"Assignment {dto.AssignmentId} не найден");
+
+                if (assignment.AssignedToUserId != dto.WorkerId)
+                    throw new InvalidOperationException(
+                        $"Assignment {dto.AssignmentId} не принадлежит работнику {dto.WorkerId}");
+
+                if (assignment.Status == InventoryAssignmentStatus.Completed)
+                    throw new InvalidOperationException("Задание уже завершено");
+
+                if (assignment.Status == InventoryAssignmentStatus.Cancelled)
+                    throw new InvalidOperationException("Задание отменено");
+
+                // Загрузка всех существующих линий
+                var existingLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
+
+                _logger.LogInformation(
+                    "Загружено {Count} существующих линий для assignment {AssignmentId}",
+                    existingLines.Count, dto.AssignmentId);
+
+                // ===== 2. ОБНОВЛЕНИЕ ФАКТИЧЕСКИХ КОЛИЧЕСТВ ДЛЯ СУЩЕСТВУЮЩИХ ЛИНИЙ =====
+
+                var updatedLines = new List<InventoryAssignmentLine>();
+                var processedLineIds = new HashSet<int>();
+
+                // Обрабатываем линии с LineId (существующие товары)
+                foreach (var lineDto in dto.Lines.Where(l => l.LineId.HasValue))
+                {
+                    var existingLine = existingLines.FirstOrDefault(l => l.Id == lineDto.LineId.Value);
+
+                    if (existingLine == null)
+                    {
+                        _logger.LogWarning("Линия {LineId} не найдена, пропускаем", lineDto.LineId.Value);
+                        continue;
+                    }
+
+                    // Проверка принадлежности линии к этому assignment
+                    if (existingLine.InventoryAssignmentId != dto.AssignmentId)
+                    {
+                        _logger.LogWarning(
+                            "Линия {LineId} не принадлежит assignment {AssignmentId}",
+                            lineDto.LineId.Value, dto.AssignmentId);
+                        continue;
+                    }
+
+                    // Обновляем фактическое количество для существующей линии
+                    existingLine.SetActualQuantity(lineDto.ActualQuantity ?? 0);
+                    updatedLines.Add(existingLine);
+                    processedLineIds.Add(existingLine.Id);
+
+                    _logger.LogInformation(
+                        "Обновлена линия {LineId}: ItemPositionId={ItemPositionId}, ExpectedQty={Expected}, ActualQty={Actual}",
+                        existingLine.Id, existingLine.ItemPositionId, existingLine.ExpectedQuantity, lineDto.ActualQuantity);
+                }
+
+                // Обновляем существующие линии в БД
+                foreach (var line in updatedLines)
+                {
+                    await _lineRepository.UpdateAsync(line);
+                }
+
+                _logger.LogInformation("Обновлено {Count} существующих линий", updatedLines.Count);
+
+                // Устанавливаем actual_quantity = 0 для непроверенных линий
+                var uncheckedLines = existingLines
+                    .Where(l => !processedLineIds.Contains(l.Id))
+                    .ToList();
+
+                foreach (var uncheckedLine in uncheckedLines)
+                {
+                    uncheckedLine.SetActualQuantity(0);
+                    await _lineRepository.UpdateAsync(uncheckedLine);
+
+                    _logger.LogInformation(
+                        "Линия {LineId} (ItemPositionId={ItemPositionId}) не была проверена, установлен ActualQuantity=0",
+                        uncheckedLine.Id, uncheckedLine.ItemPositionId);
+                }
+
+                // ===== 3. ДОБАВЛЕНИЕ НОВЫХ ЛИНИЙ ДЛЯ НЕОЖИДАННЫХ ТОВАРОВ =====
+
+                var newLinesToAdd = new List<InventoryAssignmentLine>();
+
+                // Определяем неожиданные товары: те, у которых LineId == null
+                var unexpectedItems = dto.Lines.Where(l => !l.LineId.HasValue).ToList();
+
+                if (unexpectedItems.Count > 0)
+                {
+                    _logger.LogInformation(
+                        "Обнаружено {Count} неожиданных товаров (LineId == null)",
+                        unexpectedItems.Count);
+
+                    foreach (var lineDto in unexpectedItems)
+                    {
+                        _logger.LogInformation(
+                            "Обнаружен неожиданный товар. ItemId={ItemId}, PositionCode={PositionCode}, Quantity={Quantity}",
+                            lineDto.ItemId, lineDto.PositionCode, lineDto.ActualQuantity);
+
+                        // Найти или создать ItemPosition для этого товара
+                        var itemPosition = await FindOrCreateItemPositionAsync(
+                            lineDto.ItemId,
+                            lineDto.PositionCode,
+                            assignment.BranchId);
+
+                        if (itemPosition == null)
+                        {
+                            _logger.LogError(
+                                "Не удалось найти/создать ItemPosition для товара {ItemId} в позиции {PositionCode}",
+                                lineDto.ItemId, lineDto.PositionCode);
+                            continue;
+                        }
+
+                        // Парсим PositionCode из строки
+                        var positionCode = PositionCode.FromString(lineDto.PositionCode);
+
+                        if (positionCode == null)
+                        {
+                            _logger.LogError("Не удалось распарсить PositionCode: {PositionCode}", lineDto.PositionCode);
+                            continue;
+                        }
+
+                        // Проверка: может быть, этот товар УЖЕ был в исходных линиях?
+                        var existingLineForThisItem = existingLines.FirstOrDefault(l => l.ItemPositionId == itemPosition.Id);
+
+                        if (existingLineForThisItem != null)
+                        {
+                            _logger.LogWarning(
+                                "Товар ItemPositionId={ItemPositionId} уже существует в линии {LineId}, обновляем вместо добавления",
+                                itemPosition.Id, existingLineForThisItem.Id);
+
+                            existingLineForThisItem.SetActualQuantity(lineDto.ActualQuantity ?? 0);
+                            await _lineRepository.UpdateAsync(existingLineForThisItem);
+                            continue;
+                        }
+
+                        // Создаем новую линию для РЕАЛЬНО неожиданного товара
+                        var newLine = new InventoryAssignmentLine(
+                            inventoryAssignmentId: dto.AssignmentId,
+                            itemPositionId: itemPosition.Id,
+                            positionId: itemPosition.PositionId,
+                            positionCode: positionCode,
+                            expectedQuantity: 0); // Товар не ожидался
+
+                        // Устанавливаем фактическое количество
+                        newLine.SetActualQuantity(lineDto.ActualQuantity ?? 0);
+
+                        newLinesToAdd.Add(newLine);
+                    }
+
+                    // Сохраняем новые линии одним батчем
+                    if (newLinesToAdd.Count > 0)
+                    {
+                        await _lineRepository.AddBatchAsync(newLinesToAdd);
+                        _logger.LogInformation("Добавлено {Count} новых линий для неожиданных товаров", newLinesToAdd.Count);
+                    }
+                }
+
+                // ===== 4. ПЕРЕЗАГРУЗКА ВСЕХ ЛИНИЙ =====
+
+                var allLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
+                _logger.LogInformation("Всего линий после обработки: {Count}", allLines.Count);
+
+                // ===== 5. ОБРАБОТКА РАСХОЖДЕНИЙ =====
+
+                var discrepancies = new List<InventoryDiscrepancy>();
+
+                foreach (var line in allLines)
+                {
+                    if (!line.ActualQuantity.HasValue)
+                        continue;
+
+                    var variance = line.ActualQuantity.Value - line.ExpectedQuantity;
+
+                    if (variance != 0)
+                    {
+                        var discrepancyType = variance > 0
+                            ? DiscrepancyType.Surplus
+                            : DiscrepancyType.Shortage;
+
+                        var discrepancy = new InventoryDiscrepancy(
+                            inventoryAssignmentLineId: line.Id,
+                            itemPositionId: line.ItemPositionId,
+                            expectedQuantity: line.ExpectedQuantity,
+                            actualQuantity: line.ActualQuantity.Value,
+                            note: null);
+
+                        discrepancies.Add(discrepancy);
+
+                        _logger.LogInformation(
+                            "Расхождение: Line={LineId}, ItemPosition={ItemPositionId}, Type={Type}, Variance={Variance}",
+                            line.Id, line.ItemPositionId, discrepancyType, variance);
+                    }
+                }
+
+                // Сохраняем расхождения
+                if (discrepancies.Count > 0)
+                {
+                    _logger.LogInformation("Сохранение {Count} расхождений", discrepancies.Count);
+
+                    foreach (var discrepancy in discrepancies)
+                    {
+                        await _discrepancyRepository.AddAsync(discrepancy);
+                    }
+
+                    _logger.LogInformation("Расхождения сохранены");
+                }
+
+                // ===== 6. ОБНОВЛЕНИЕ СТАТИСТИКИ =====
+
+                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(dto.AssignmentId);
+                if (statistics == null)
+                {
+                    throw new InvalidOperationException($"Статистика для assignment {dto.AssignmentId} не найдена");
+                }
+
+                var finalDiscrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(dto.AssignmentId);
+
+                statistics.TotalPositions = allLines.Count;
+                statistics.CountedPositions = allLines.Count(l => l.ActualQuantity.HasValue);
+                statistics.DiscrepancyCount = finalDiscrepancies.Count;
+                statistics.SurplusCount = finalDiscrepancies.Count(d => d.Type == DiscrepancyType.Surplus);
+                statistics.ShortageCount = finalDiscrepancies.Count(d => d.Type == DiscrepancyType.Shortage);
+                statistics.TotalSurplusQuantity = finalDiscrepancies
+                    .Where(d => d.Type == DiscrepancyType.Surplus)
+                    .Sum(d => d.Variance);
+                statistics.TotalShortageQuantity = finalDiscrepancies
+                    .Where(d => d.Type == DiscrepancyType.Shortage)
+                    .Sum(d => Math.Abs(d.Variance));
+                statistics.CompletedAt = DateTime.UtcNow;
+
+                await _statisticsRepository.UpdateAsync(statistics);
+
+                _logger.LogInformation(
+                    "Обновление статистики для назначения: {AssignmentId}, учтено: {Counted}/{Total} ({Percentage:F1}%)",
+                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions,
+                    statistics.TotalPositions > 0 ? (decimal)statistics.CountedPositions / statistics.TotalPositions * 100 : 0);
+
+                // ===== 7. ОБНОВЛЕНИЕ СТАТУСА ЗАДАНИЯ =====
+
+                assignment.Complete(DateTime.UtcNow);
+                await _assignmentRepository.UpdateAsync(assignment);
+
+                _logger.LogInformation("Обновление назначения инвентаризации ID {AssignmentId}, новый статус Completed", dto.AssignmentId);
+
+                // ===== 8. ФОРМИРОВАНИЕ РЕЗУЛЬТАТА =====
+
+                var statisticsDto = MapStatisticsToDto(statistics);
+                var discrepancyReport = new DiscrepancyReportDto
+                {
+                    InventoryAssignmentId = dto.AssignmentId,
+                    TotalDiscrepancies = finalDiscrepancies.Count,
+                    SurplusCount = statistics.SurplusCount,
+                    ShortageCount = statistics.ShortageCount,
+                    DiscrepancyPercentage = statistics.TotalPositions > 0
+                        ? (decimal)finalDiscrepancies.Count / statistics.TotalPositions * 100
+                        : 0,
+                    Discrepancies = finalDiscrepancies.Select(MapDiscrepancyToDto).ToList()
+                };
+
+                string successMessage = $"✅ Инвентаризация завершена";
+                if (newLinesToAdd.Count > 0)
+                    successMessage += $"\nДобавлено неожиданных товаров: {newLinesToAdd.Count}";
+                if (finalDiscrepancies.Count > 0)
+                    successMessage += $"\nОбнаружено расхождений: {finalDiscrepancies.Count}";
+
+                _logger.LogInformation(
+                    "Инвентаризация завершена. AssignmentId={AssignmentId}, " +
+                    "Counted={Counted}/{Total}, Discrepancies={Discrepancies}, NewItems={NewItems}",
+                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions,
+                    finalDiscrepancies.Count, newLinesToAdd.Count);
+
+                return new CompleteAssignmentResultDto
+                {
+                    Success = true,
+                    Message = successMessage,
+                    Statistics = statisticsDto,
+                    DiscrepancyReport = discrepancyReport
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при завершении инвентаризации AssignmentId={AssignmentId}", dto.AssignmentId);
+                throw;
+            }
+        }
+
+
+        /// <summary>
+        /// Найти или создать ItemPosition для товара в указанной позиции
+        /// </summary>
+        private async Task<ItemPosition?> FindOrCreateItemPositionAsync(
+            int itemId,
+            string positionCodeString,
+            int branchId)
+        {
+            try
+            {
+                // Парсим PositionCode
+                var positionCode = PositionCode.FromString(positionCodeString);
+                if (positionCode == null)
+                {
+                    _logger.LogError("Некорректный PositionCode: {PositionCode}", positionCodeString);
+                    return null;
+                }
+
+                // Получаем все PositionCell для филиала
+                var positionCells = await _positionCellRepository.GetByBranchAsync(branchId);
+                var positionCell = positionCells.FirstOrDefault(pc => pc.Code.ToString() == positionCodeString);
+
+                if (positionCell == null)
+                {
+                    _logger.LogError("Позиция с кодом {PositionCode} не найдена в филиале {BranchId}",
+                        positionCodeString, branchId);
+                    return null;
+                }
+
+                // Проверяем, существует ли уже ItemPosition для этого товара в этой позиции
+                var allItemPositions = await _itemPositionRepository.GetAllAsync();
+                var existingItemPosition = allItemPositions.FirstOrDefault(ip =>
+                    ip.ItemId == itemId && ip.PositionId == positionCell.PositionId);
+
+                if (existingItemPosition != null)
+                {
+                    _logger.LogInformation(
+                        "ItemPosition уже существует: ItemId={ItemId}, PositionId={PositionId}, ItemPositionId={ItemPositionId}",
+                        itemId, positionCell.PositionId, existingItemPosition.Id);
+                    return existingItemPosition;
+                }
+
+                // Создаем новый ItemPosition
+                var newItemPosition = new ItemPosition
+                {
+                    ItemId = itemId,
+                    PositionId = positionCell.PositionId,
+                    Quantity = 0  // Будет обновлено после инвентаризации
+                };
+
+                var newItemPositionId = await _itemPositionRepository.AddAsync(newItemPosition);
+                newItemPosition.Id = newItemPositionId;
+
+                _logger.LogInformation(
+                    "Создан новый ItemPosition: ItemId={ItemId}, PositionId={PositionId}, ItemPositionId={ItemPositionId}",
+                    itemId, positionCell.PositionId, newItemPositionId);
+
+                return newItemPosition;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Ошибка при поиске/создании ItemPosition для ItemId={ItemId}, PositionCode={PositionCode}",
+                    itemId, positionCodeString);
+                return null;
+            }
         }
 
         //TODO: Поработать над этой частью
@@ -293,7 +666,6 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var items = await _itemRepository.GetByIdsAsync(itemIds);
                 var itemsDict = items.ToDictionary(i => i.ItemId);
-                // --- /НОВОЕ ---
 
                 var dto = new InventoryTaskDetailsDto
                 {
@@ -319,6 +691,7 @@ namespace TaskControl.TaskModule.Application.Services
                     dto.Items.Add(new InventoryItemDto
                     {
                         ItemId = itemId,
+                        LineId = line.Id,
                         ItemName = item?.Name ?? $"Item {itemId}",
                         Weight = (item?.Weight ?? UnitsNet.Mass.Zero).Kilograms,
                         Length = (item?.Length ?? UnitsNet.Length.Zero).Millimeters,
@@ -326,7 +699,6 @@ namespace TaskControl.TaskModule.Application.Services
                         Height = (item?.Height ?? UnitsNet.Length.Zero).Millimeters,
                         PositionId = positionId,
                         PositionCode = positionCode,
-
                         ExpectedQuantity = line.ExpectedQuantity,
                         Status = line.ActualQuantity.HasValue ? "Counted" : "Available"
                     });
@@ -409,7 +781,7 @@ namespace TaskControl.TaskModule.Application.Services
                 InventoryAssignmentId = line.InventoryAssignmentId,
                 ItemPositionId = line.ItemPositionId,
                 PositionId = line.PositionId,
-                PositionCode = line.PositionCode,  
+                PositionCode = line.PositionCode,
                 ExpectedQuantity = line.ExpectedQuantity,
                 ActualQuantity = line.ActualQuantity,
                 ItemId = 0,  // Будет заполнено в EnrichLinesWithItemDataAsync

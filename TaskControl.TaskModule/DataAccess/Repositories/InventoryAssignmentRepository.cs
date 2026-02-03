@@ -32,14 +32,37 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
         _logger = logger;
     }
 
-    public async Task<InventoryAssignment> GetByIdAsync(int id)
+    public async Task<InventoryAssignment?> GetByIdAsync(int id)
     {
         _logger.LogInformation("Получение назначения инвентаризации по ID: {AssignmentId}", id);
         try
         {
             var assignment = await _db.InventoryAssignments
                 .FirstOrDefaultAsync(a => a.Id == id);
-            return assignment?.ToDomain();
+
+            if (assignment == null)
+            {
+                _logger.LogWarning("Назначение с ID {AssignmentId} не найдено", id);
+                return null;
+            }
+
+            var lines = await _db.InventoryAssignmentLines
+                .Where(l => l.InventoryAssignmentId == id)
+                .ToListAsync();
+
+            if (lines.Count == 0)
+            {
+                _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", id);
+                return null;
+            }
+
+            var domainLines = lines.Select(l => l.ToDomain()).ToList();
+            var domain = assignment.ToDomainWithLines(domainLines);
+
+            _logger.LogInformation("Назначение ID {AssignmentId} загружено с {LineCount} линиями",
+                id, domainLines.Count);
+
+            return domain;
         }
         catch (Exception ex)
         {
@@ -48,14 +71,37 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
         }
     }
 
-    public async Task<InventoryAssignment> GetByTaskIdAsync(int taskId)
+    public async Task<InventoryAssignment?> GetByTaskIdAsync(int taskId)
     {
         _logger.LogInformation("Получение назначения инвентаризации по TaskID: {TaskId}", taskId);
         try
         {
             var assignment = await _db.InventoryAssignments
                 .FirstOrDefaultAsync(a => a.TaskId == taskId);
-            return assignment?.ToDomain();
+
+            if (assignment == null)
+            {
+                _logger.LogWarning("Назначение с TaskID {TaskId} не найдено", taskId);
+                return null;
+            }
+
+            var lines = await _db.InventoryAssignmentLines
+                .Where(l => l.InventoryAssignmentId == assignment.Id)
+                .ToListAsync();
+
+            if (lines.Count == 0)
+            {
+                _logger.LogWarning("Assignment для TaskID {TaskId} не имеет линий, skipping", taskId);
+                return null;
+            }
+
+            var domainLines = lines.Select(l => l.ToDomain()).ToList();
+            var domain = assignment.ToDomainWithLines(domainLines);
+
+            _logger.LogInformation("Назначение для TaskID {TaskId} загружено с {LineCount} линиями",
+                taskId, domainLines.Count);
+
+            return domain;
         }
         catch (Exception ex)
         {
@@ -84,7 +130,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
                 // Пропускаем assignment'ы БЕЗ строк (они невалидны по домену)
                 if (lines.Count == 0)
                 {
-                    _logger.LogWarning("Assignment {AssignmentId} has no lines, skipping", model.Id);
+                    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
                     continue;
                 }
 
