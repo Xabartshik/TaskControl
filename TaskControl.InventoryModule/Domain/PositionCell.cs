@@ -57,7 +57,7 @@ namespace TaskControl.InventoryModule.Domain
         }
 
         // Пример ожидаемого формата:
-        // "1-ZA-RACK-A1-S1-C3"
+        // "1-ZA-RACK-A1-S1-С99"
         public static PositionCode FromString(string code)
         {
             if (string.IsNullOrWhiteSpace(code))

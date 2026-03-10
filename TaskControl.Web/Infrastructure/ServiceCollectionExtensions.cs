@@ -130,6 +130,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IInventoryProcessService, InventoryProcessService>();
             services.AddScoped<IDiscrepancyManagementService, DiscrepancyManagementService>();
             services.AddScoped<IInventoryReportService, InventoryReportService>();
+            services.AddScoped<IBossPanelService, BossPanelService>();
 
             services.AddScoped<IInventoryAssignmentRepository, InventoryAssignmentRepository>();
             services.AddScoped<IInventoryAssignmentLineRepository, InventoryAssignmentLineRepository>();
