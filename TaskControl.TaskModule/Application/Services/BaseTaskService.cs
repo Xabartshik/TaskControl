@@ -4,22 +4,33 @@ using System.Text.Json;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
+using TaskControl.TaskModule.Application.Interface;
+using TaskControl.InformationModule.Application.Services;
+using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Repositories;
 
 namespace TaskControl.TaskModule.Application.Services
 {
-    public class BaseTaskService : IService<BaseTaskDto>
+    public class BaseTaskService : IBaseTaskService
     {
         private readonly IActiveTaskRepository _repository;
+        private readonly ActiveEmployeeService _employeeService;
+        private readonly IInventoryAssignmentRepository _assignmentRepository;
         private readonly ILogger<BaseTaskService> _logger;
         private readonly AppSettings _appSettings;
 
         public BaseTaskService(
             IActiveTaskRepository repository,
+            ActiveEmployeeService employeeService,
+            IInventoryAssignmentRepository assignmentRepository,
             ILogger<BaseTaskService> logger,
             IOptions<AppSettings> options)
         {
             _repository = repository;
+            _employeeService = employeeService;
+            _assignmentRepository = assignmentRepository;
             _logger = logger;
             _appSettings = options.Value;
         }
@@ -161,6 +172,33 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogError(ex, "Ошибка обновления активной задачи ID: {TaskId}", dto.TaskId);
                 throw;
             }
+        }
+
+        public async Task<IEnumerable<int>> GetAutoSelectedEmployeesAsync(int branchId, int requiredCount)
+        {
+            _logger.LogInformation("Запуск умного автоподбора {Count} сотрудников для филиала {BranchId}", requiredCount, branchId);
+            
+            var employees = await _employeeService.GetWorkingEmployeesByBranchAsync(branchId);
+            if (!employees.Any())
+                return new List<int>();
+
+            var workLoads = new List<(int EmployeeId, int ActiveCount)>();
+
+            foreach (var emp in employees)
+            {
+                var assignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var activeCount = assignments.Count(a => a.Status != Domain.InventoryAssignmentStatus.Completed && a.Status != Domain.InventoryAssignmentStatus.Cancelled);
+                workLoads.Add((emp.EmployeeId, activeCount));
+            }
+
+            // Сортируем: сначала те, у кого меньше всего активных задач, и берем нужное количество
+            var selectedIds = workLoads
+                .OrderBy(w => w.ActiveCount)
+                .Take(requiredCount)
+                .Select(w => w.EmployeeId)
+                .ToList();
+
+            return selectedIds;
         }
     }
 }

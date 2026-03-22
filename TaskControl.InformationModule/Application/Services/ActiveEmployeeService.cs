@@ -72,6 +72,13 @@ namespace TaskControl.InformationModule.Application.Services
                 IsCheckedOut = false
             });
         }
-    }
 
+        /// <summary>
+        /// Получает сотрудника по идентификатору
+        /// </summary>
+        public async Task<TaskControl.InformationModule.Domain.Employee?> GetEmployeeByIdAsync(int employeeId)
+        {
+            return await _employeeRepository.GetByIdAsync(employeeId);
+        }
+    }
 }

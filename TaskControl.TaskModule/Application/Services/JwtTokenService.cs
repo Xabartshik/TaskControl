@@ -8,7 +8,7 @@ namespace TaskControl.TaskModule.Application.Services;
 
 public interface IJwtTokenService
 {
-    string CreateToken(int employeeId, string role);
+    string CreateToken(int employeeId, string role, int? branchId);
 }
 
 public class JwtTokenService : IJwtTokenService
@@ -17,17 +17,22 @@ public class JwtTokenService : IJwtTokenService
 
     public JwtTokenService(IConfiguration cfg) => _cfg = cfg;
 
-    public string CreateToken(int employeeId, string role)
+    public string CreateToken(int employeeId, string role, int? branchId)
     {
         var jwt = _cfg.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, employeeId.ToString()),
             new Claim(ClaimTypes.Role, role)
         };
+
+        if (branchId.HasValue)
+        {
+            claims.Add(new Claim("BranchId", branchId.Value.ToString()));
+        }
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],

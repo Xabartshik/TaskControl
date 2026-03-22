@@ -1,0 +1,7 @@
+﻿d:\Бэкапы\TaskControl\TaskControl.TaskModule\Application\Services\InventoryProcessService.cs(855,42): error CS0103: Имя "_baseTaskRepository" не существует в текущем контексте. [d:\Бэкапы\TaskControl\TaskControl.TaskModule\TaskControl.TaskModule.csproj]
+
+Ошибка сборки.
+    Предупреждений: 68
+    Ошибок: 1
+
+Прошло времени 00:00:01.60

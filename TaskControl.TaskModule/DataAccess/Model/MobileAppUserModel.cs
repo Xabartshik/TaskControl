@@ -26,4 +26,7 @@ public class MobileAppUserModel
 
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
+
+    [Column("branch_id")]
+    public int? BranchId { get; set; }
 }

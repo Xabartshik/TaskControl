@@ -30,6 +30,8 @@ namespace TaskControl.TaskModule.Application.DTOs
 
         public DateTime? UpdatedAt { get; init; }
 
+        public int? BranchId { get; init; }
+
         public static MobileAppUser FromDto(MobileAppUserDto dto) => new()
         {
             Id = dto.Id,
@@ -39,7 +41,8 @@ namespace TaskControl.TaskModule.Application.DTOs
                    : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role)),
             IsActive = dto.IsActive,
             CreatedAt = dto.CreatedAt,
-            UpdatedAt = dto.UpdatedAt
+            UpdatedAt = dto.UpdatedAt,
+            BranchId = dto.BranchId
         };
 
         public static MobileAppUserDto ToDto(MobileAppUser entity) => new()
@@ -49,7 +52,8 @@ namespace TaskControl.TaskModule.Application.DTOs
             Role = entity.Role.ToString(),
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
+            UpdatedAt = entity.UpdatedAt,
+            BranchId = entity.BranchId
         };
     }
 
@@ -65,12 +69,15 @@ namespace TaskControl.TaskModule.Application.DTOs
         [StringLength(30)]
         public string Role { get; init; } = "Worker";
 
+        public int? BranchId { get; init; }
+
         public static MobileAppUser FromDto(CreateMobileAppUserDto dto, string passwordHash) => new()
         {
             EmployeeId = dto.EmployeeId,
             Role = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsed)
                    ? parsed
-                   : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role))
+                   : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role)),
+            BranchId = dto.BranchId
         };
     }
 

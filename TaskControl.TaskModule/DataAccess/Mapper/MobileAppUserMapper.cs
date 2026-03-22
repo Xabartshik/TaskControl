@@ -22,7 +22,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Role = entity.Role.ToString(),
                 IsActive = entity.IsActive,
                 CreatedAt = entity.CreatedAt,
-                UpdatedAt = entity.UpdatedAt
+                UpdatedAt = entity.UpdatedAt,
+                BranchId = entity.BranchId
             };
         }
 
@@ -42,7 +43,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Role = role,
                 IsActive = model.IsActive,
                 CreatedAt = model.CreatedAt,
-                UpdatedAt = model.UpdatedAt
+                UpdatedAt = model.UpdatedAt,
+                BranchId = model.BranchId
             };
 
             return entity;

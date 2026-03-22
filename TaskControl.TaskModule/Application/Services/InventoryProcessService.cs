@@ -26,7 +26,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IInventoryAssignmentLineRepository _lineRepository;
         private readonly IInventoryDiscrepancyRepository _discrepancyRepository;
         private readonly IInventoryStatisticsRepository _statisticsRepository;
-        private readonly IActiveTaskRepository _baseTaskRepository;
+        private readonly IBaseTaskService _baseTaskService;
         private readonly IItemPositionRepository _itemPositionRepository;
         private readonly PositionDetailsService _positionDetailsService;
         private readonly ActiveEmployeeService _activeEmployeeService;
@@ -39,7 +39,7 @@ namespace TaskControl.TaskModule.Application.Services
             IInventoryAssignmentLineRepository lineRepository,
             IInventoryDiscrepancyRepository discrepancyRepository,
             IInventoryStatisticsRepository statisticsRepository,
-            IActiveTaskRepository baseTaskRepository,
+            IBaseTaskService baseTaskService,
             IItemPositionRepository itemPositionRepository,
             PositionDetailsService positionDetailsService,
             ActiveEmployeeService activeEmployeeService,
@@ -55,8 +55,8 @@ namespace TaskControl.TaskModule.Application.Services
                 ?? throw new ArgumentNullException(nameof(discrepancyRepository));
             _statisticsRepository = statisticsRepository
                 ?? throw new ArgumentNullException(nameof(statisticsRepository));
-            _baseTaskRepository = baseTaskRepository
-                ?? throw new ArgumentNullException(nameof(baseTaskRepository));
+            _baseTaskService = baseTaskService
+                ?? throw new ArgumentNullException(nameof(baseTaskService));
             _itemPositionRepository = itemPositionRepository
                 ?? throw new ArgumentNullException(nameof(itemPositionRepository));
             _positionDetailsService = positionDetailsService
@@ -248,7 +248,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 // ===== 5. ОБРАБОТКА РАСХОЖДЕНИЙ =====
 
-                var discrepancies = new List<InventoryDiscrepancy>();
+                var discrepancies = new List<TaskControl.TaskModule.Domain.InventoryDiscrepancy>();
 
                 foreach (var line in allLines)
                 {
@@ -263,7 +263,7 @@ namespace TaskControl.TaskModule.Application.Services
                             ? DiscrepancyType.Surplus
                             : DiscrepancyType.Shortage;
 
-                        var discrepancy = new InventoryDiscrepancy(
+                        var discrepancy = new TaskControl.TaskModule.Domain.InventoryDiscrepancy(
                             inventoryAssignmentLineId: line.Id,
                             itemPositionId: line.ItemPositionId,
                             expectedQuantity: line.ExpectedQuantity,
@@ -496,8 +496,7 @@ namespace TaskControl.TaskModule.Application.Services
                     throw new ArgumentException(msg);
                 }
                 // 3. Создать BaseTask для инвентаризации
-                // Вместо конструктора:
-                var baseTask = new BaseTask
+                var baseTaskDto = new TaskControl.TaskModule.Application.DTOs.BaseTaskDto
                 {
                     Title = $"Инвентаризация филиала {dto.BranchId}",
                     Description = dto.Description ?? "Автоматически созданная задача инвентаризации",
@@ -508,9 +507,8 @@ namespace TaskControl.TaskModule.Application.Services
                     Status = TaskStatus.New
                 };
 
-
-                var taskId = await _baseTaskRepository.AddAsync(baseTask);
-                _logger.LogInformation("BaseTask создан с ID: {TaskId}", taskId);
+                var taskId = await _baseTaskService.Add(baseTaskDto);
+                _logger.LogInformation("BaseTask создан через IBaseTaskService с ID: {TaskId}", taskId);
 
                 // 4. Разделить товары на зоны в зависимости от стратегии
                 var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
@@ -854,7 +852,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                     if (since.HasValue && assignment.AssignedAt <= since.Value)
                         continue;
-                    var baseTask = await _baseTaskRepository.GetByIdAsync(assignment.TaskId);
+                    var baseTask = await _baseTaskService.GetById(assignment.TaskId);
                     if (baseTask == null)
                         continue;
 

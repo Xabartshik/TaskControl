@@ -79,7 +79,8 @@ namespace TaskControl.TaskModule.Application.Services
                            ? parsedRole
                            : MobileUserRole.Worker,
                     IsActive = true,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    BranchId = dto.BranchId
                 };
 
                 // Проверка существования пользователя с таким EmployeeId

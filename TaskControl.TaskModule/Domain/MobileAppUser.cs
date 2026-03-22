@@ -34,6 +34,11 @@ public class MobileAppUser
     public MobileUserRole Role { get; set; }
 
     /// <summary>
+    /// Идентификатор филиала.
+    /// </summary>
+    public int? BranchId { get; set; }
+
+    /// <summary>
     /// Признак активного пользователя.
     /// Неактивный не может войти.
     /// </summary>
@@ -55,6 +60,7 @@ public class MobileAppUser
         int employeeId,
         string passwordHash,
         MobileUserRole role,
+        int? branchId = null,
         DateTime? createdAtUtc = null)
     {
         if (employeeId <= 0)
@@ -65,6 +71,7 @@ public class MobileAppUser
         EmployeeId = employeeId;
         PasswordHash = passwordHash;
         Role = role;
+        BranchId = branchId;
         IsActive = true;
         CreatedAt = createdAtUtc ?? DateTime.UtcNow;
         UpdatedAt = null;

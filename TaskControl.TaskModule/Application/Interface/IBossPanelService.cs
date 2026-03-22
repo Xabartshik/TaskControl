@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
+using TaskControl.InventoryModule.Application.DTOs;
 
 namespace TaskControl.TaskModule.Application.Interface
 {
@@ -25,5 +27,34 @@ namespace TaskControl.TaskModule.Application.Interface
         /// Получить расхождения инвентаризации, если она относится к филиалу начальника
         /// </summary>
         Task<DiscrepancyReportDto> GetBranchInventoryDiscrepanciesAsync(int bossBranchId, int assignmentId);
+
+        /// <summary>
+        /// Получить список доступных зон (префиксов) для инвентаризации
+        /// </summary>
+        Task<IEnumerable<string>> GetAvailableZonesAsync(int bossBranchId);
+
+        /// <summary>
+        /// Создать инвентаризацию на основе выбранных зон (префиксов)
+        /// </summary>
+        Task<CompleteInventoryDto> CreateInventoryByZoneAsync(CreateInventoryByZoneDto dto, int bossBranchId);
+
+        /// <summary>
+        /// Получить статус текущих работников (на смене и их нагрузка)
+        /// </summary>
+        Task<IEnumerable<WorkerStatusDto>> GetActiveWorkersStatusAsync(int bossBranchId);
+
+        /// <summary>
+        /// Получить сгруппированные отчеты по задачам филиала
+        /// </summary>
+        Task<IEnumerable<TaskReportGroupDto>> GetGroupedTaskReportsAsync(int bossBranchId);
+
+        Task<IEnumerable<BossPanelTaskCardDto>> GetActiveTasksAsync(int bossBranchId);
+        Task<IEnumerable<EmployeeWorkloadDto>> GetEmployeeWorkloadAsync(int bossBranchId);
+        Task<IEnumerable<AvailableEmployeeDto>> GetAvailableEmployeesAsync(int bossBranchId);
+
+        /// <summary>
+        /// Получить все позиции филиала для древовидного селектора
+        /// </summary>
+        Task<IEnumerable<PositionCellDto>> GetPositionsAsync(int bossBranchId);
     }
 }

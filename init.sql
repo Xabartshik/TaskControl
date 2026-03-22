@@ -663,7 +663,8 @@ CREATE TABLE IF NOT EXISTS mobile_app_users (
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP
+  updated_at TIMESTAMP,
+  branch_id INTEGER
 );
 
 CREATE INDEX idx_mobile_app_users_employee ON mobile_app_users(employee_id);

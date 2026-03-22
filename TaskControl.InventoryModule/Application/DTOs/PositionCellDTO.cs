@@ -34,9 +34,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [StringLength(30)]
         public string? ThirdLevelStorage { get; init; }
 
-        public Length Length { get; init; }
-        public Length Width { get; init; }
-        public Length Height { get; init; }
+        public double Length { get; init; }
+        public double Width { get; init; }
+        public double Height { get; init; }
 
         public static PositionCell FromDto(PositionCellDto dto) => new()
         {
@@ -51,9 +51,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
                 ThirdLevelStorage = dto.ThirdLevelStorage
             },
             Status = dto.Status,
-            Length = dto.Length,
-            Width = dto.Width,
-            Height = dto.Height
+            Length = UnitsNet.Length.FromMillimeters(dto.Length),
+            Width = UnitsNet.Length.FromMillimeters(dto.Width),
+            Height = UnitsNet.Length.FromMillimeters(dto.Height)
         };
 
         public static PositionCellDto ToDto(PositionCell entity) => new()
@@ -66,9 +66,9 @@ namespace TaskControl.InventoryModule.Application.DTOs
             FLSNumber = entity.Code.FLSNumber,
             SecondLevelStorage = entity.Code.SecondLevelStorage,
             ThirdLevelStorage = entity.Code.ThirdLevelStorage,
-            Length = entity.Length,
-            Width = entity.Width,
-            Height = entity.Height
+            Length = entity.Length.Millimeters,
+            Width = entity.Width.Millimeters,
+            Height = entity.Height.Millimeters
         };
     }
 }

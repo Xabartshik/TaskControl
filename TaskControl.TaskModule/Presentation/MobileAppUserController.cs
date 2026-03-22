@@ -418,7 +418,7 @@ namespace TaskControl.TaskModule.Presentation
                 var employee = await _employeeRepository.GetByIdAsync(user.EmployeeId);
 
                 // 2) Генерируем JWT
-                var token = _jwt.CreateToken(user.EmployeeId, user.Role);
+                var token = _jwt.CreateToken(user.EmployeeId, user.Role, user.BranchId);
 
                 // 3) Отдаём токен + user (удобно для мобильного клиента)
                 return Ok(new LoginResponseDto

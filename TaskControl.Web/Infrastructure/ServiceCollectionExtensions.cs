@@ -122,7 +122,8 @@ namespace TaskControl.Core.Infrastructure
         {
             services.AddScoped<ITaskDataConnection, TaskDataConnection>();
             services.AddScoped<IActiveTaskRepository, ActiveTaskRepository>();
-            services.AddScoped<IService<BaseTaskDto>, BaseTaskService>();
+            services.AddScoped<IBaseTaskService, BaseTaskService>();
+            services.AddScoped<IService<BaseTaskDto>>(sp => sp.GetRequiredService<IBaseTaskService>());
 
             services.AddScoped<ITaskAssignationRepository, TaskAssignationRepository>();
             services.AddScoped<IService<TaskAssignationDto>, TaskAssignationService>();

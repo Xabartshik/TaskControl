@@ -9,8 +9,8 @@ namespace TaskControl.TaskModule.DataAccess.Repositories;
 
 public interface IInventoryAssignmentRepository
 {
-    Task<InventoryAssignment> GetByIdAsync(int id);
-    Task<InventoryAssignment> GetByTaskIdAsync(int taskId);
+    Task<InventoryAssignment?> GetByIdAsync(int id);
+    Task<InventoryAssignment?> GetByTaskIdAsync(int taskId);
     Task<List<InventoryAssignment>> GetByUserIdAsync(int userId);
     Task<List<InventoryAssignment>> GetByBranchIdAsync(int branchId);
     Task<List<InventoryAssignment>> GetByStatusAsync(InventoryAssignmentStatus status);
@@ -157,7 +157,25 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
             var assignments = await _db.InventoryAssignments
                 .Where(a => a.BranchId == branchId)
                 .ToListAsync();
-            return assignments.Select(a => a.ToDomain()).ToList();
+
+            var result = new List<InventoryAssignment>();
+            foreach (var model in assignments)
+            {
+                var lines = await _db.InventoryAssignmentLines
+                    .Where(l => l.InventoryAssignmentId == model.Id)
+                    .ToListAsync();
+
+                if (lines.Count == 0)
+                {
+                    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
+                    continue;
+                }
+
+                var domainLines = lines.Select(l => l.ToDomain()).ToList();
+                result.Add(model.ToDomainWithLines(domainLines));
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
@@ -174,7 +192,25 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
             var assignments = await _db.InventoryAssignments
                 .Where(a => a.Status == (int)status)
                 .ToListAsync();
-            return assignments.Select(a => a.ToDomain()).ToList();
+
+            var result = new List<InventoryAssignment>();
+            foreach (var model in assignments)
+            {
+                var lines = await _db.InventoryAssignmentLines
+                    .Where(l => l.InventoryAssignmentId == model.Id)
+                    .ToListAsync();
+
+                if (lines.Count == 0)
+                {
+                    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
+                    continue;
+                }
+
+                var domainLines = lines.Select(l => l.ToDomain()).ToList();
+                result.Add(model.ToDomainWithLines(domainLines));
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
@@ -191,7 +227,25 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
             var assignments = await _db.InventoryAssignments
                 .Where(a => a.Status != (int)InventoryAssignmentStatus.Completed && a.CompletedAt == null)
                 .ToListAsync();
-            return assignments.Select(a => a.ToDomain()).ToList();
+
+            var result = new List<InventoryAssignment>();
+            foreach (var model in assignments)
+            {
+                var lines = await _db.InventoryAssignmentLines
+                    .Where(l => l.InventoryAssignmentId == model.Id)
+                    .ToListAsync();
+
+                if (lines.Count == 0)
+                {
+                    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
+                    continue;
+                }
+
+                var domainLines = lines.Select(l => l.ToDomain()).ToList();
+                result.Add(model.ToDomainWithLines(domainLines));
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
