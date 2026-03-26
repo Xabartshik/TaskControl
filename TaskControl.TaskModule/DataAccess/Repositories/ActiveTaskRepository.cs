@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -71,7 +71,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     throw new ArgumentException($"Недопустимый приоритет задачи: {entity.Priority}. Должен быть от 0 до 10.");
 
                 var model = entity.ToModel();
-                var taskId = await _db.InsertAsync(model);
+                // InsertWithInt32IdentityAsync возвращает реальный ID новой записи из IDENTITY-колонки
+                var taskId = await _db.InsertWithInt32IdentityAsync(model);
 
                 _logger.LogInformation("Задача '{Title}' успешно добавлена с ID: {TaskId}", entity.Title, taskId);
                 return taskId;
