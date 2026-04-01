@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,5 +19,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         ITable<InventoryAssignmentLineModel> InventoryAssignmentLines { get; }
         ITable<InventoryAssignmentModel> InventoryAssignments { get; }
         ITable<MobileAppUserModel> MobileAppUsers { get; }
+        ITable<OrderAssemblyAssignmentModel> OrderAssemblyAssignments { get; }
+        ITable<OrderAssemblyLineModel> OrderAssemblyLines { get; }
     }
 }

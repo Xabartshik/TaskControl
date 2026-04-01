@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using LinqToDB.Data;
 using LinqToDB.DataProvider.PostgreSQL;
 using Microsoft.Extensions.Configuration;
@@ -34,5 +34,8 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
         public ITable<InventoryAssignmentModel> InventoryAssignments => this.GetTable<InventoryAssignmentModel>();
 
         public ITable<MobileAppUserModel> MobileAppUsers => this.GetTable<MobileAppUserModel>();
+        
+        public ITable<OrderAssemblyAssignmentModel> OrderAssemblyAssignments => this.GetTable<OrderAssemblyAssignmentModel>();
+        public ITable<OrderAssemblyLineModel> OrderAssemblyLines => this.GetTable<OrderAssemblyLineModel>();
     }
 }

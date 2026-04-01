@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS orders (
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     delivery_date TIMESTAMP,
     type VARCHAR(20) NOT NULL CHECK (type IN ('Online', 'Offline', 'Wholesale')),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Processing', 'Shipped', 'Delivered', 'Cancelled')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Processing', 'Assembling', 'Assembled', 'Shipped', 'Delivered', 'Cancelled')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -134,7 +134,7 @@ CREATE INDEX idx_orders_delivery_date ON orders (delivery_date);
 CREATE TABLE IF NOT EXISTS positions (
     position_id SERIAL PRIMARY KEY,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Inactive', 'Maintenance')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Reserved', 'Inactive', 'Maintenance')),
     zone_code VARCHAR(10) NOT NULL,
     first_level_storage_type VARCHAR(30) NOT NULL,
     fls_number VARCHAR(20) NOT NULL,
@@ -643,6 +643,47 @@ VALUES
     (3, 1, 'in', NOW() - INTERVAL '30 minutes'); -- Сидоров пришёл 30 минут назад
 
 -- НЕ добавляем 'out', чтобы они считались на смене
+
+-- =====================================================
+-- ТАБЛИЦЫ ДЛЯ СБОРКИ ЗАКАЗОВ
+-- =====================================================
+
+-- Создание таблицы назначений сборки
+CREATE TABLE IF NOT EXISTS order_assembly_assignments (
+    id SERIAL PRIMARY KEY,
+    task_id INT NOT NULL REFERENCES base_tasks(task_id),
+    order_id INT NOT NULL REFERENCES orders(order_id),
+    assigned_to_user_id INT NOT NULL REFERENCES employees(employees_id),
+    branch_id INT NOT NULL REFERENCES branches(branch_id),
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
+    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы order_assembly_assignments
+CREATE INDEX idx_order_assembly_assignments_task ON order_assembly_assignments(task_id);
+CREATE INDEX idx_order_assembly_assignments_order ON order_assembly_assignments(order_id);
+CREATE INDEX idx_order_assembly_assignments_user ON order_assembly_assignments(assigned_to_user_id);
+CREATE INDEX idx_order_assembly_assignments_branch ON order_assembly_assignments(branch_id);
+CREATE INDEX idx_order_assembly_assignments_status ON order_assembly_assignments(status);
+
+-- Создание таблицы строк сборки
+CREATE TABLE IF NOT EXISTS order_assembly_lines (
+    id SERIAL PRIMARY KEY,
+    order_assembly_assignment_id INT NOT NULL REFERENCES order_assembly_assignments(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    source_position_id INT NOT NULL REFERENCES positions(position_id),
+    target_position_id INT NOT NULL REFERENCES positions(position_id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)) -- Pending(0), Picked(1), Placed(2), Discrepancy(3)
+);
+
+-- Индексы для таблицы order_assembly_lines
+CREATE INDEX idx_order_assembly_lines_assignment ON order_assembly_lines(order_assembly_assignment_id);
+CREATE INDEX idx_order_assembly_lines_itemposition ON order_assembly_lines(item_position_id);
+CREATE INDEX idx_order_assembly_lines_source ON order_assembly_lines(source_position_id);
+CREATE INDEX idx_order_assembly_lines_target ON order_assembly_lines(target_position_id);
+CREATE INDEX idx_order_assembly_lines_status ON order_assembly_lines(status);
 
 -- =====================================================
 -- ПОЛЬЗОВАТЕЛИ МОБИЛЬНОГО ПРИЛОЖЕНИЯ

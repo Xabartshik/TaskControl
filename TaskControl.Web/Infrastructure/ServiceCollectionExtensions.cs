@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using System;
@@ -144,6 +144,12 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IMobileAppUserRepository, MobileAppUserRepository>();
             services.AddScoped<IMobileAppUserService, MobileAppUserService>();
             services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+            services.AddScoped<IOrderAssemblyAssignmentRepository, OrderAssemblyAssignmentRepository>();
+            services.AddScoped<IOrderAssemblyLineRepository, OrderAssemblyLineRepository>();
+            services.AddScoped<IBoxPackingService, BoxPackingService>();
+            services.AddScoped<IOrderAssemblyExecutionService, OrderAssemblyExecutionService>();
+            services.AddScoped<OrderAssemblyPlannerJob>();
 
             return services;
         }

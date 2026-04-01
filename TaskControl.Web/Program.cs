@@ -11,6 +11,8 @@ using TaskControl.InformationModule.DataAccess.Repositories;
 using TaskControl.InformationModule.Services;
 using TaskControl.InventoryModule.DataAccess.Infrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 namespace TaskControl.Web
 {
@@ -37,8 +39,14 @@ namespace TaskControl.Web
 
             //builder.Services.AddScoped<IInventoryDataConnection, InventoryDataConnection>();
             builder.Services.AddServicesGroup(builder.Configuration);
-
-
+            // Hangfire
+            builder.Services.AddHangfire(configuration => configuration
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UsePostgreSqlStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+            
+            builder.Services.AddHangfireServer();
 
             var app = builder.Build();
             try
@@ -55,6 +63,12 @@ namespace TaskControl.Web
 
                 app.UseAuthorization();
 
+                app.UseHangfireDashboard("/hangfire");
+
+                RecurringJob.AddOrUpdate<TaskControl.TaskModule.Application.Services.OrderAssemblyPlannerJob>(
+                    "order-assembly-planner",
+                    job => job.ExecuteAsync(),
+                    "*/5 * * * *"); // Каждые 5 минут
 
                 app.MapControllers();
                 Log.Information("Приложение настроено и готово к работе на порту {Port}",
