@@ -18,17 +18,20 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IBoxPackingService _packingService;
         private readonly ILogger<OrderAssemblyPlannerJob> _logger;
         private readonly AppSettings _appSettings;
+        private readonly IBaseTaskService _baseTaskService;
 
         public OrderAssemblyPlannerJob(
             ITaskDataConnection db,
             IBoxPackingService packingService,
             ILogger<OrderAssemblyPlannerJob> logger,
-            IOptions<AppSettings> appSettings)
+            IOptions<AppSettings> appSettings,
+            IBaseTaskService baseTaskService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _packingService = packingService ?? throw new ArgumentNullException(nameof(packingService));
             _logger = logger;
             _appSettings = appSettings?.Value ?? new AppSettings();
+            _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
         }
 
         public async Task ExecuteAsync()
@@ -117,12 +120,29 @@ namespace TaskControl.TaskModule.Application.Services
                         new DataParameter("desc", "Автоматически спланированная сборка заказа"),
                         new DataParameter("branch", order.branch_id));
 
-                    // Создаем в БД model_assembly_assignments
+                    // Выбираем наименее загруженного работника через BaseTaskService
+                    var selectedWorkers = await _baseTaskService.GetAutoSelectedEmployeesAsync(order.branch_id, 1);
+                    if (!selectedWorkers.Any())
+                    {
+                        _logger.LogWarning("Нет доступных работников в филиале {BranchId} для заказа {OrderId}. Пропускаем создание задачи", order.branch_id, order.order_id);
+                        // Откатываем резервирование ячеек
+                        foreach (var cellId in packingResult.ItemToCellMap.Values.Distinct())
+                        {
+                            await conn.ExecuteAsync("UPDATE positions SET status = 'Active' WHERE position_id = @id", new DataParameter("id", cellId));
+                        }
+                        // Откатываем вставку base_task
+                        await conn.ExecuteAsync("DELETE FROM base_tasks WHERE task_id = @taskId", new DataParameter("taskId", taskId));
+                        continue;
+                    }
+
+                    var assignedUserId = selectedWorkers.First();
+
+                    // Создаем в БД order_assembly_assignments
                     var assignment = new OrderAssemblyAssignmentModel
                     {
                         TaskId = taskId,
                         OrderId = order.order_id,
-                        AssignedToUserId = 1, // TODO: Распределять на конкретных пользователей или оставлять в пуле (пока пусть userId=1 для тестов)
+                        AssignedToUserId = assignedUserId,
                         BranchId = order.branch_id,
                         Status = 0, // Assigned
                         AssignedAt = DateTime.UtcNow

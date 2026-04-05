@@ -48,4 +48,11 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public int ActiveTasksCount { get; set; }
         public bool IsRecommended { get; set; }
     }
+    public class AvailableOrderDto
+    {
+        public int OrderId { get; set; }
+        public string OrderNumber { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string Type { get; set; }
+    }
 }

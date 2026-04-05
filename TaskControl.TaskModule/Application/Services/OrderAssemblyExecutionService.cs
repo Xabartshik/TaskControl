@@ -40,36 +40,79 @@ namespace TaskControl.TaskModule.Application.Services
             if (_appSettings.EnableDetailedLogging)
                 _logger.LogTrace("Получение задач сборки для работника {UserId}", userId);
 
+            // Получаем основные назначения
             var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
             var activeAssignments = assignments
                 .Where(a => a.Status == OrderAssemblyAssignmentStatus.Assigned || a.Status == OrderAssemblyAssignmentStatus.InProgress)
-                .Select(a => new WorkerAssemblyTaskDto
+                .ToList();
+
+            if (!activeAssignments.Any())
+                return new List<WorkerAssemblyTaskDto>();
+
+            var result = new List<WorkerAssemblyTaskDto>();
+
+            // Используем таблицы из разных модулей (благодаря ProjectReference)
+            // Примечание: ITaskDataConnection может работать с любыми таблицами через GetTable<T>
+            var baseTasks = _db.ActiveTasks; // Это BaseTaskModel из TaskModule
+            var positions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.PositionModel>();
+            var itemPositions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.ItemPositionModel>();
+            var items = _db.GetTable<TaskControl.InformationModule.DataAccess.Model.ItemModel>();
+
+            foreach (var a in activeAssignments)
+            {
+                // Данные из base_tasks
+                var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
+
+                var dto = new WorkerAssemblyTaskDto
                 {
                     AssignmentId = a.Id,
                     TaskId = a.TaskId,
+                    TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}", // Используем Title как номер задания
                     OrderId = a.OrderId,
                     Status = a.Status,
-                    TotalLines = a.TotalLines,
-                    // Группируем товары по целевой ячейке, чтобы работник видел,
-                    // какие товары нужно положить в каждую ячейку PICKUP
-                    CellPlacements = a.Lines
-                        .GroupBy(l => l.TargetPositionId)
-                        .Select(g => new CellPlacementInfoDto
-                        {
-                            TargetPositionId = g.Key,
-                            Items = g.Select(l => new PlacementLineDto
-                            {
-                                LineId = l.Id,
-                                ItemPositionId = l.ItemPositionId,
-                                Quantity = l.Quantity,
-                                Status = l.Status
-                            }).ToList()
-                        })
-                        .ToList()
-                })
-                .ToList();
+                    CreatedDate = taskModel?.CreatedAt,
+                    TotalLines = a.TotalLines
+                };
 
-            return activeAssignments;
+                // Группировка по ячейкам PICKUP
+                var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
+                foreach (var g in cellGroups)
+                {
+                    var targetId = g.Key;
+                    var posModel = await positions.FirstOrDefaultAsync(p => p.PositionId == targetId);
+
+                    var cellDto = new CellPlacementInfoDto
+                    {
+                        TargetPositionId = targetId,
+                        CellCode = posModel?.FLSNumber ?? targetId.ToString(),
+                        CellDisplayName = posModel?.FLSNumber ?? targetId.ToString()
+                    };
+
+                    foreach (var l in g)
+                    {
+                        // Получаем инфо о товаре
+                        var itemInfo = await (from ip in itemPositions
+                                              join i in items on ip.ItemId equals i.ItemId
+                                              where ip.Id == l.ItemPositionId
+                                              select new { i.ItemId, i.Name }).FirstOrDefaultAsync();
+
+                        cellDto.Items.Add(new PlacementLineDto
+                        {
+                            LineId = l.Id,
+                            ItemPositionId = l.ItemPositionId,
+                            ItemId = itemInfo?.ItemId ?? 0,
+                            ItemName = itemInfo?.Name ?? "Неизвестный товар",
+                            Barcode = (itemInfo?.ItemId ?? 0).ToString(), // Fallback штрих-кода
+                            Quantity = l.Quantity,
+                            Status = l.Status
+                        });
+                    }
+                    dto.CellPlacements.Add(cellDto);
+                }
+                result.Add(dto);
+            }
+
+            return result;
         }
 
         public async Task ScanAndPickItem(int lineId, string scannedBarcode)

@@ -1,17 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using TaskControl.InformationModule.Application.Services;
-using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
-using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
-using TaskControl.TaskModule.Application.Interface;
-using TaskControl.TaskModule.DataAccess.Repositories;
-using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
-using TaskControl.InventoryModule.DataAccess.Interface;
-using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Application.DTOs;
+using TaskControl.InventoryModule.DataAccess.Interface;
+using TaskControl.OrderModule.DataAccess.Interface;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
+using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
+using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
+using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Domain;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
+
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -25,9 +25,11 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IDiscrepancyManagementService _discrepancyManagementService;
         private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly IInventoryAssignmentRepository _assignmentRepository;
+        private readonly IOrderAssemblyAssignmentRepository _orderAssemblyRepository;
         private readonly IPositionCellRepository _positionCellRepository;
         private readonly IItemPositionRepository _itemPositionRepository;
         private readonly IActiveTaskRepository _activeTaskRepository;
+        private readonly IOrderRepository _orderRepository;
         private readonly ILogger<BossPanelService> _logger;
 
         public BossPanelService(
@@ -36,9 +38,11 @@ namespace TaskControl.TaskModule.Application.Services
             IDiscrepancyManagementService discrepancyManagementService,
             ActiveEmployeeService activeEmployeeService,
             IInventoryAssignmentRepository assignmentRepository,
+            IOrderAssemblyAssignmentRepository orderAssemblyRepository,
             IPositionCellRepository positionCellRepository,
             IItemPositionRepository itemPositionRepository,
             IActiveTaskRepository activeTaskRepository,
+            IOrderRepository orderRepository,
             ILogger<BossPanelService> logger)
         {
             _inventoryProcessService = inventoryProcessService ?? throw new ArgumentNullException(nameof(inventoryProcessService));
@@ -46,9 +50,11 @@ namespace TaskControl.TaskModule.Application.Services
             _discrepancyManagementService = discrepancyManagementService ?? throw new ArgumentNullException(nameof(discrepancyManagementService));
             _activeEmployeeService = activeEmployeeService ?? throw new ArgumentNullException(nameof(activeEmployeeService));
             _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
+            _orderAssemblyRepository = orderAssemblyRepository ?? throw new ArgumentNullException(nameof(orderAssemblyRepository));
             _positionCellRepository = positionCellRepository ?? throw new ArgumentNullException(nameof(positionCellRepository));
             _itemPositionRepository = itemPositionRepository ?? throw new ArgumentNullException(nameof(itemPositionRepository));
             _activeTaskRepository = activeTaskRepository ?? throw new ArgumentNullException(nameof(activeTaskRepository));
+            _orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -197,8 +203,13 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                var assignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeCount = assignments.Count(a => a.Status != Domain.InventoryAssignmentStatus.Completed && a.Status != Domain.InventoryAssignmentStatus.Cancelled);
+                // Подсчет активных назначений инвентаризации
+                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
+
+                // Подсчет активных назначений сборки заказов
+                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
+                var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
 
                 result.Add(new WorkerStatusDto
                 {
@@ -206,7 +217,7 @@ namespace TaskControl.TaskModule.Application.Services
                     FullName = $"{emp.Surname} {emp.Name}",
                     Role = emp.Role,
                     IsWorking = true,
-                    ActiveTaskCount = activeCount
+                    ActiveTaskCount = invActiveCount + oaActiveCount
                 });
             }
 
@@ -249,39 +260,61 @@ namespace TaskControl.TaskModule.Application.Services
             _logger.LogInformation("Получение активных задач для филиала {BossBranchId}", bossBranchId);
 
             var tasks = await _activeTaskRepository.GetByBranchAsync(bossBranchId);
-            var assignments = await _assignmentRepository.GetByBranchIdAsync(bossBranchId);
+            var invAssignments = await _assignmentRepository.GetByBranchIdAsync(bossBranchId);
 
-            var activeTasks = tasks.Where(t => t.Status != Domain.TaskStatus.Completed && t.Status != Domain.TaskStatus.Cancelled);
+            var activeTasks = tasks.Where(t => t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled);
             var result = new List<BossPanelTaskCardDto>();
 
             foreach(var t in activeTasks)
             {
                 var dict = new Dictionary<int, TaskAssigneeProgressDto>();
-                var taskAssignments = assignments.Where(a => a.TaskId == t.TaskId).ToList();
-                
-                // Здесь в идеале мы должны брать из assignmentRepository AssignedVolume, 
-                // но пока для инвентаризации это просто 1 assignment = 1 сотрудник = x ячеек.
-                // Для простоты, сделаем фейковые объемы на основе статуса.
-                foreach(var a in taskAssignments)
+
+                if (t.Type == "OrderAssembly")
                 {
-                    if(!dict.ContainsKey(a.AssignedToUserId))
+                    // Для задач сборки заказов берём данные из репозитория сборки
+                    var oaAssignment = await _orderAssemblyRepository.GetByTaskIdAsync(t.TaskId);
+                    if (oaAssignment != null)
                     {
-                        var emp = await _activeEmployeeService.GetEmployeeByIdAsync(a.AssignedToUserId);
-                        dict[a.AssignedToUserId] = new TaskAssigneeProgressDto
+                        var emp = await _activeEmployeeService.GetEmployeeByIdAsync(oaAssignment.AssignedToUserId);
+                        int total = oaAssignment.TotalLines;
+                        int completed = oaAssignment.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed);
+
+                        dict[oaAssignment.AssignedToUserId] = new TaskAssigneeProgressDto
                         {
-                            EmployeeId = a.AssignedToUserId,
-                            FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {a.AssignedToUserId}",
-                            AssignedVolume = 1,
-                            CompletedVolume = a.Status == Domain.InventoryAssignmentStatus.Completed ? 1 : 0,
-                            Status = a.Status == Domain.InventoryAssignmentStatus.InProgress ? "В процессе" 
-                                     : a.Status == Domain.InventoryAssignmentStatus.Completed ? "Завершено" : "Ожидается"
+                            EmployeeId = oaAssignment.AssignedToUserId,
+                            FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {oaAssignment.AssignedToUserId}",
+                            AssignedVolume = total,
+                            CompletedVolume = completed,
+                            Status = oaAssignment.Status == OrderAssemblyAssignmentStatus.InProgress ? "В процессе"
+                                     : oaAssignment.Status == OrderAssemblyAssignmentStatus.Completed ? "Завершено" : "Назначено"
                         };
                     }
-                    else
+                }
+                else
+                {
+                    // Для инвентаризации оригинальная логика
+                    var taskAssignments = invAssignments.Where(a => a.TaskId == t.TaskId).ToList();
+                    foreach(var a in taskAssignments)
                     {
-                        dict[a.AssignedToUserId].AssignedVolume += 1;
-                        if(a.Status == Domain.InventoryAssignmentStatus.Completed)
-                            dict[a.AssignedToUserId].CompletedVolume += 1;
+                        if(!dict.ContainsKey(a.AssignedToUserId))
+                        {
+                            var emp = await _activeEmployeeService.GetEmployeeByIdAsync(a.AssignedToUserId);
+                            dict[a.AssignedToUserId] = new TaskAssigneeProgressDto
+                            {
+                                EmployeeId = a.AssignedToUserId,
+                                FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {a.AssignedToUserId}",
+                                AssignedVolume = 1,
+                                CompletedVolume = a.Status == InventoryAssignmentStatus.Completed ? 1 : 0,
+                                Status = a.Status == InventoryAssignmentStatus.InProgress ? "В процессе"
+                                         : a.Status == InventoryAssignmentStatus.Completed ? "Завершено" : "Ожидается"
+                            };
+                        }
+                        else
+                        {
+                            dict[a.AssignedToUserId].AssignedVolume += 1;
+                            if(a.Status == InventoryAssignmentStatus.Completed)
+                                dict[a.AssignedToUserId].CompletedVolume += 1;
+                        }
                     }
                 }
 
@@ -313,11 +346,30 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach(var emp in employees)
             {
-                var assignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeTasks = assignments.Where(a => a.Status != Domain.InventoryAssignmentStatus.Completed && a.Status != Domain.InventoryAssignmentStatus.Cancelled).ToList();
-
                 var activeTaskDtos = new List<ActiveTaskBriefDto>();
-                foreach(var a in activeTasks)
+
+                // Задачи инвентаризации
+                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var activeInv = invAssignments.Where(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled).ToList();
+                foreach(var a in activeInv)
+                {
+                    var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
+                    if(task != null)
+                    {
+                        activeTaskDtos.Add(new ActiveTaskBriefDto
+                        {
+                            TaskId = task.TaskId,
+                            Title = task.Title,
+                            TaskType = task.Type,
+                            Status = a.Status.ToString()
+                        });
+                    }
+                }
+
+                // Задачи сборки заказов
+                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
+                var activeOa = oaAssignments.Where(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled).ToList();
+                foreach(var a in activeOa)
                 {
                     var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
                     if(task != null)
@@ -352,15 +404,20 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                var assignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeCount = assignments.Count(a => a.Status != Domain.InventoryAssignmentStatus.Completed && a.Status != Domain.InventoryAssignmentStatus.Cancelled);
+                // Инвентаризационные назначения
+                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
+
+                // Назначения сборки заказов
+                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
+                var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
 
                 result.Add(new AvailableEmployeeDto
                 {
                     EmployeeId = emp.EmployeeId,
                     FullName = $"{emp.Surname} {emp.Name}",
                     IsAtWork = true,
-                    ActiveTasksCount = activeCount,
+                    ActiveTasksCount = invActiveCount + oaActiveCount,
                     IsRecommended = false
                 });
             }
@@ -377,6 +434,35 @@ namespace TaskControl.TaskModule.Application.Services
             _logger.LogInformation("Получение позиций для дерева филиала {BossBranchId}", bossBranchId);
             var cells = await _positionCellRepository.GetByBranchAsync(bossBranchId);
             return cells.Select(c => PositionCellDto.ToDto(c)).ToList();
+        }
+
+        public async Task<IEnumerable<AvailableOrderDto>> GetAvailableOrdersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение доступных заказов для филиала {BossBranchId}", bossBranchId);
+
+            // Получаем все заказы в статусе Processing для этого филиала
+            var allOrders = await _orderRepository.GetByBranchAsync(bossBranchId);
+            var processingOrders = allOrders.Where(o => o.Status == "Processing").ToList();
+
+            // Исключаем те, для которых уже созданы активные задания сборки
+            var assemblyAssignments = await _orderAssemblyRepository.GetByBranchIdAsync(bossBranchId);
+            var assignedOrderIds = assemblyAssignments
+                .Where(a => a.Status != OrderAssemblyAssignmentStatus.Cancelled && a.Status != OrderAssemblyAssignmentStatus.Completed)
+                .Select(a => a.OrderId)
+                .ToHashSet();
+
+            var availableOrders = processingOrders
+                .Where(o => !assignedOrderIds.Contains(o.OrderId))
+                .Select(o => new AvailableOrderDto
+                {
+                    OrderId = o.OrderId,
+                    OrderNumber = $"ORD-{o.OrderId}",
+                    CreatedAt = o.CreatedAt,
+                    Type = o.Type
+                })
+                .ToList();
+
+            return availableOrders;
         }
     }
 }

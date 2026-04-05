@@ -10,6 +10,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         Task<OrderAssemblyAssignment> GetByTaskIdAsync(int taskId);
         Task<List<OrderAssemblyAssignment>> GetByUserIdAsync(int userId);
         Task<List<OrderAssemblyAssignment>> GetByStatusAsync(OrderAssemblyAssignmentStatus status);
+        Task<List<OrderAssemblyAssignment>> GetByBranchIdAsync(int branchId);
         Task<int> AddAsync(OrderAssemblyAssignment assignment);
         Task<int> UpdateAsync(OrderAssemblyAssignment assignment);
     }

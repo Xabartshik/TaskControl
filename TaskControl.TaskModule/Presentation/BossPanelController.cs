@@ -324,5 +324,27 @@ namespace TaskControl.TaskModule.Presentation
                 return StatusCode(500, new { error = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Получить список заказов, доступных для сборки
+        /// </summary>
+        [HttpGet("orders/available")]
+        [ProducesResponseType(typeof(IEnumerable<AvailableOrderDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAvailableOrders()
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue) return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var orders = await _bossPanelService.GetAvailableOrdersAsync(branchId.Value);
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении доступных заказов");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
     }
 }

@@ -87,6 +87,22 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
             return result;
         }
 
+        public async Task<List<OrderAssemblyAssignment>> GetByBranchIdAsync(int branchId)
+        {
+            var assignments = await _db.OrderAssemblyAssignments.Where(a => a.BranchId == branchId).ToListAsync();
+            var result = new List<OrderAssemblyAssignment>();
+
+            foreach (var model in assignments)
+            {
+                var lines = await _db.OrderAssemblyLines
+                    .Where(l => l.OrderAssemblyAssignmentId == model.Id)
+                    .ToListAsync();
+
+                result.Add(model.ToDomainWithLines(lines.Select(l => l.ToDomain()).ToList()));
+            }
+            return result;
+        }
+
         public async Task<int> AddAsync(OrderAssemblyAssignment assignment)
         {
             var model = assignment.ToModel();

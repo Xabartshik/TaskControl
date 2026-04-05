@@ -56,5 +56,10 @@ namespace TaskControl.TaskModule.Application.Interface
         /// Получить все позиции филиала для древовидного селектора
         /// </summary>
         Task<IEnumerable<PositionCellDto>> GetPositionsAsync(int bossBranchId);
+
+        /// <summary>
+        /// Получить список заказов, доступных для сборки (в статусе Processing и без назначений)
+        /// </summary>
+        Task<IEnumerable<AvailableOrderDto>> GetAvailableOrdersAsync(int bossBranchId);
     }
 }

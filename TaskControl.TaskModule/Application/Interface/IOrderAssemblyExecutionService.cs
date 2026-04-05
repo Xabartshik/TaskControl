@@ -8,8 +8,10 @@ namespace TaskControl.TaskModule.Application.Interface
     {
         public int AssignmentId { get; set; }
         public int TaskId { get; set; }
+        public string? TaskNumber { get; set; }
         public int OrderId { get; set; }
         public OrderAssemblyAssignmentStatus Status { get; set; }
+        public System.DateTime? CreatedDate { get; set; }
         public int TotalLines { get; set; }
         /// <summary>
         /// Список целевых ячеек с их товарами (для отображения кладовщику).
@@ -23,6 +25,8 @@ namespace TaskControl.TaskModule.Application.Interface
     public class CellPlacementInfoDto
     {
         public int TargetPositionId { get; set; }
+        public string? CellCode { get; set; }
+        public string? CellDisplayName { get; set; }
         public List<PlacementLineDto> Items { get; set; } = new();
     }
 
@@ -30,6 +34,9 @@ namespace TaskControl.TaskModule.Application.Interface
     {
         public int LineId { get; set; }
         public int ItemPositionId { get; set; }
+        public int ItemId { get; set; }
+        public string? ItemName { get; set; }
+        public string? Barcode { get; set; }
         public int Quantity { get; set; }
         public OrderAssemblyLineStatus Status { get; set; }
     }
