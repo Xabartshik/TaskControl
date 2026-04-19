@@ -423,7 +423,7 @@ namespace TaskControl.TaskModule.Presentation
                 // 2) Генерируем JWT
                 var token = _jwt.CreateToken(user.EmployeeId, user.Role, user.BranchId);
 
-                // 3) Отдаём токен + user (удобно для мобильного клиента)
+                // 3) Отдаём токен + user 
                 return Ok(new LoginResponseDto
                 {
                     AccessToken = token,

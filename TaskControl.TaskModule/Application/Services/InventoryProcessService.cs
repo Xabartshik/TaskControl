@@ -601,23 +601,23 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
-        public async Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int inventoryTaskId)
+        public async Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int assignmentId)
         {
             try
             {
-                _logger.LogInformation("|   [Inv] запрос деталей задачи {TaskId} (UserId={UserId})",
-                    inventoryTaskId, userId);
+                _logger.LogInformation("|   [Inv] запрос деталей назначения {AssignmentId} (UserId={UserId})",
+                    assignmentId, userId);
 
                 var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
 
                 var assignment = assignments.FirstOrDefault(a =>
-                    a.TaskId == inventoryTaskId &&
+                    a.Id == assignmentId &&
                     (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Completed &&
                     (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled);
 
                 if (assignment == null)
                     throw new InvalidOperationException(
-                        $"Активное назначение для задачи {inventoryTaskId} и пользователя {userId} не найдено");
+                        $"Активное назначение {assignmentId} для пользователя {userId} не найдено");
 
                 var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
 
@@ -641,7 +641,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var dto = new InventoryTaskDetailsDto
                 {
-                    TaskId = inventoryTaskId,
+                    TaskId = assignment.TaskId, 
                     ZoneCode = assignment.ZoneCode,
                     InitiatedAt = assignment.AssignedAt,
                     Items = new List<InventoryItemDto>()
@@ -686,8 +686,8 @@ namespace TaskControl.TaskModule.Application.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Ошибка при получении деталей задачи {TaskId} для пользователя {UserId}",
-                    inventoryTaskId, userId);
+                    "Ошибка при получении деталей назначения задачи {AssignmentId} для пользователя {UserId}",
+                    assignmentId, userId);
                 throw;
             }
         }

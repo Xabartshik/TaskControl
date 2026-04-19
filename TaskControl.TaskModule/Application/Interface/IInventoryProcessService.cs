@@ -25,7 +25,7 @@ namespace TaskControl.TaskModule.Application.Interface
             List<int> availableWorkers);
 
         Task<List<InventoryAssignmentDetailedWithItemDto>> GetNewAssignmentsForWorkerAsync(int userId);
-        Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int inventoryTaskId);
+        Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int assignmentId);
 
         Task<bool> HasNewTasksForWorkerAsync(int userId, DateTime? since = null);
 

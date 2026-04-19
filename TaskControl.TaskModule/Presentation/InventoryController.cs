@@ -147,18 +147,18 @@ namespace TaskControl.TaskModule.Presentation
             }
         }
 
-        [HttpGet("worker/{userId}/tasks/{inventoryTaskId}/details")]
+        [HttpGet("worker/{userId}/assignments/{assignmentId}/details")]
         [ProducesResponseType(typeof(InventoryTaskDetailsDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetInventoryTaskDetails(int userId, int inventoryTaskId)
+        public async Task<IActionResult> GetInventoryTaskDetails(int userId, int assignmentId)
         {
             try
             {
                 _logger.LogInformation(
-                    "Получение деталей задачи инвентаризации {TaskId} для работника {UserId}",
-                    inventoryTaskId, userId);
+                    "Получение деталей назначения инвентаризации {AssignmentId} для работника {UserId}",
+                    assignmentId, userId);
 
-                var dto = await _processService.GetInventoryTaskDetailsForWorkerAsync(userId, inventoryTaskId);
+                var dto = await _processService.GetInventoryTaskDetailsForWorkerAsync(userId, assignmentId);
                 return Ok(dto);
             }
             catch (InvalidOperationException ex)
@@ -168,8 +168,8 @@ namespace TaskControl.TaskModule.Presentation
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Ошибка при получении деталей задачи инвентаризации {TaskId} для работника {UserId}",
-                    inventoryTaskId, userId);
+                    "Ошибка при получении деталей назначения задачи инвентаризации {AssignmentId} для работника {UserId}",
+                    assignmentId, userId);
 
                 return BadRequest(new { error = ex.Message });
             }

@@ -28,7 +28,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
             var tasks = await _inventoryRepo.GetByUserIdAsync(workerId);
-            return tasks.Count(t => t.Status == InventoryAssignmentStatus.InProgress);
+            return tasks.Count(t => t.Status == InventoryAssignmentStatus.Assigned || t.Status == InventoryAssignmentStatus.InProgress);
         }
 
         public async Task<bool> HasNewAssignmentsAsync(int workerId)

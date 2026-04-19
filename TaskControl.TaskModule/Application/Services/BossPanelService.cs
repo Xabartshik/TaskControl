@@ -29,6 +29,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IPositionCellRepository _positionCellRepository;
         private readonly IItemPositionRepository _itemPositionRepository;
         private readonly IActiveTaskRepository _activeTaskRepository;
+        private readonly TaskWorkloadAggregator _aggregator;
         private readonly IOrderRepository _orderRepository;
         private readonly ILogger<BossPanelService> _logger;
 
@@ -42,6 +43,7 @@ namespace TaskControl.TaskModule.Application.Services
             IPositionCellRepository positionCellRepository,
             IItemPositionRepository itemPositionRepository,
             IActiveTaskRepository activeTaskRepository,
+            TaskWorkloadAggregator aggregator,
             IOrderRepository orderRepository,
             ILogger<BossPanelService> logger)
         {
@@ -56,6 +58,7 @@ namespace TaskControl.TaskModule.Application.Services
             _activeTaskRepository = activeTaskRepository ?? throw new ArgumentNullException(nameof(activeTaskRepository));
             _orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
         }
 
 
@@ -203,21 +206,29 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                // Подсчет активных назначений инвентаризации
-                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
+                //// Подсчет активных назначений инвентаризации
+                //var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                //var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
 
-                // Подсчет активных назначений сборки заказов
-                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
+                //// Подсчет активных назначений сборки заказов
+                //var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
+                //var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
 
+                //result.Add(new WorkerStatusDto
+                //{
+                //    EmployeeId = emp.EmployeeId,
+                //    FullName = $"{emp.Surname} {emp.Name}",
+                //    Role = emp.Role,
+                //    IsWorking = true,
+                //    ActiveTaskCount = invActiveCount + oaActiveCount
+                //});
                 result.Add(new WorkerStatusDto
                 {
                     EmployeeId = emp.EmployeeId,
                     FullName = $"{emp.Surname} {emp.Name}",
                     Role = emp.Role,
                     IsWorking = true,
-                    ActiveTaskCount = invActiveCount + oaActiveCount
+                    ActiveTaskCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId)
                 });
             }
 
