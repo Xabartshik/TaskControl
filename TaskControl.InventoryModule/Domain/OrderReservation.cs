@@ -15,9 +15,7 @@ namespace TaskControl.InventoryModule.Domain
         [Range(1, int.MaxValue, ErrorMessage = "Некорректный ID позиции заказа")]
         public int OrderPositionId { get; set; }
 
-        [Required(ErrorMessage = "Не указана позиция на складе")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный ID позиции на складе")]
-        public int ItemPositionId { get; set; }
+        public int? ItemPositionId { get; set; }
 
         [Required(ErrorMessage = "Укажите количество")]
         [Range(0.01, double.MaxValue, ErrorMessage = "Количество должно быть положительным")]

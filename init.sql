@@ -182,7 +182,7 @@ CREATE UNIQUE INDEX idx_item_positions_id ON item_positions (id);
 CREATE TABLE IF NOT EXISTS order_reservations (
     id SERIAL PRIMARY KEY,
     order_position_id INT NOT NULL REFERENCES order_positions(unique_id),
-    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    item_position_id INT REFERENCES item_positions(id),
     quantity INT NOT NULL CHECK (quantity > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

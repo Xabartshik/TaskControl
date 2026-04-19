@@ -16,6 +16,6 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         ITable<ItemStatusModel> ItemStatuses { get; }
         ITable<OrderPositionModel> OrderPositions { get; }
         ITable<PositionModel> PositionCells { get; }
-
+        ITable<OrderReservationModel> OrderReservations { get; }
     }
 }

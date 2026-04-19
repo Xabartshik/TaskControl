@@ -94,6 +94,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderPositionRepository, OrderPositionRepository>();
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
 
+            services.AddScoped<IAllocationService, AllocationService>();
+
             return services;
         }
 
@@ -114,6 +116,8 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IOrderPositionRepository, OrderPositionRepository>();
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
+
+            services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
 
             return services;
         }

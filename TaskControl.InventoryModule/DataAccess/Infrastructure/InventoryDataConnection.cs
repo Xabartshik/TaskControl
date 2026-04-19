@@ -21,5 +21,6 @@ namespace TaskControl.InventoryModule.DataAccess.Infrastructure
         public ITable<ItemStatusModel> ItemStatuses => this.GetTable<ItemStatusModel>();
         public ITable<OrderPositionModel> OrderPositions => this.GetTable<OrderPositionModel>();
         public ITable<PositionModel> PositionCells => this.GetTable<PositionModel>();
+        public ITable<OrderReservationModel> OrderReservations => this.GetTable<OrderReservationModel>();
     }
 }
