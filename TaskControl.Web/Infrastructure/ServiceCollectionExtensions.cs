@@ -151,6 +151,10 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderAssemblyExecutionService, OrderAssemblyExecutionService>();
             services.AddScoped<OrderAssemblyPlannerJob>();
 
+            services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.InventoryWorkloadProvider>();
+            services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.OrderAssemblyWorkloadProvider>();
+            services.AddScoped<TaskWorkloadAggregator>();
+
             return services;
         }
 

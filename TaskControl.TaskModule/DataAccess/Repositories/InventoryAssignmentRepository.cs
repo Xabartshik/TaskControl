@@ -112,7 +112,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
 
     public async Task<List<InventoryAssignment>> GetByUserIdAsync(int userId)
     {
-        _logger.LogInformation("Получение назначений для пользователя: {UserId}", userId);
+        _logger.LogDebug("Получение назначений для пользователя: {UserId}", userId);
         try
         {
             var assignments = await _db.InventoryAssignments

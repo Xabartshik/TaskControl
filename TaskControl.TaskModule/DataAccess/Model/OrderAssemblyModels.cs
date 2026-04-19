@@ -54,6 +54,9 @@ public class OrderAssemblyLineModel
     [Column("quantity"), NotNull]
     public int Quantity { get; set; }
 
+    [Column("picked_quantity"), NotNull]
+    public int PickedQuantity { get; set; }
+
     [Column("status"), NotNull]
     public int Status { get; set; }
 }

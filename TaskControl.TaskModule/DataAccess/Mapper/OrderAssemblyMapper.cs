@@ -66,7 +66,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
         {
             if (model == null) return null;
 
-            return new OrderAssemblyLine(
+            var line = new OrderAssemblyLine(
                 model.Id,
                 model.OrderAssemblyAssignmentId,
                 model.ItemPositionId,
@@ -75,6 +75,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 model.Quantity,
                 (OrderAssemblyLineStatus)model.Status
             );
+            line.SetPickedQuantity(model.PickedQuantity);
+            return line;
         }
 
         public static OrderAssemblyLineModel ToModel(this OrderAssemblyLine domain)
@@ -89,6 +91,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 SourcePositionId = domain.SourcePositionId,
                 TargetPositionId = domain.TargetPositionId,
                 Quantity = domain.Quantity,
+                PickedQuantity = domain.PickedQuantity,
                 Status = (int)domain.Status
             };
         }

@@ -42,6 +42,11 @@ namespace TaskControl.TaskModule.Domain
         /// </summary>
         public int Quantity { get; internal set; }
 
+        /// <summary>
+        /// Фактически собранное количество.
+        /// </summary>
+        public int PickedQuantity { get; internal set; }
+
         public OrderAssemblyLineStatus Status { get; internal set; }
 
         internal OrderAssemblyLine() { }
@@ -72,7 +77,15 @@ namespace TaskControl.TaskModule.Domain
             SourcePositionId = sourcePositionId;
             TargetPositionId = targetPositionId;
             Quantity = quantity;
+            PickedQuantity = 0;
             Status = status;
+        }
+
+        public void SetPickedQuantity(int pickedQuantity)
+        {
+            if (pickedQuantity < 0 || pickedQuantity > Quantity)
+                throw new ArgumentOutOfRangeException(nameof(pickedQuantity));
+            PickedQuantity = pickedQuantity;
         }
 
         public OrderAssemblyLine(
@@ -98,14 +111,27 @@ namespace TaskControl.TaskModule.Domain
             SourcePositionId = sourcePositionId;
             TargetPositionId = targetPositionId;
             Quantity = quantity;
+            PickedQuantity = 0;
             Status = OrderAssemblyLineStatus.Pending;
         }
 
+        /// <summary>
+        /// Отметить предмет как собранный (инкремент).
+        /// </summary>
         public void MarkAsPicked()
         {
-            if (Status != OrderAssemblyLineStatus.Pending)
-                throw new InvalidOperationException("Item can only be picked if it is pending.");
-            Status = OrderAssemblyLineStatus.Picked;
+            if (Status == OrderAssemblyLineStatus.Placed)
+                throw new InvalidOperationException("Item is already placed.");
+            
+            if (PickedQuantity >= Quantity)
+                return; // Уже собрано полностью
+
+            PickedQuantity++;
+
+            if (PickedQuantity >= Quantity)
+            {
+                Status = OrderAssemblyLineStatus.Picked;
+            }
         }
 
         public void MarkAsPlaced()

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -24,17 +24,20 @@ namespace TaskControl.TaskModule.Presentation
         private readonly IJwtTokenService _jwt;
         private readonly ILogger<MobileAppUserController> _logger;
         private readonly IEmployeeRepository _employeeRepository;
+        private readonly TaskWorkloadAggregator _aggregator;
 
         public MobileAppUserController(
             IMobileAppUserService service,
             IJwtTokenService jwt,
             ILogger<MobileAppUserController> logger,
-            IEmployeeRepository employeeRepository)
+            IEmployeeRepository employeeRepository,
+            TaskWorkloadAggregator aggregator)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _jwt = jwt ?? throw new ArgumentNullException(nameof(jwt));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _employeeRepository = employeeRepository ?? throw new ArgumentNullException(nameof(employeeRepository));
+            _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
         }
 
         /// <summary>
@@ -563,6 +566,21 @@ namespace TaskControl.TaskModule.Presentation
                 return BadRequest(new { error = ex.Message });
             }
         }
+
+        [HttpGet("{workerId}/pending-tasks")]
+        public async Task<ActionResult<IEnumerable<TaskControl.TaskModule.Application.DTOs.InventarizationDTOs.MobileBaseTaskDto>>> GetTasks(int workerId)
+        {
+            var tasks = await _aggregator.GetAllPendingTasksAsync(workerId);
+            return Ok(tasks);
+        }
+
+        [HttpPost("start")]
+        public async Task<ActionResult> StartTask([FromBody] StartTaskRequest request)
+        {
+            bool success = await _aggregator.StartTaskAsync(request.TaskId, request.TaskType, request.WorkerId);
+            if (!success) return BadRequest("Не удалось запустить задачу");
+            return Ok();
+        }
     }
 
     /// <summary>
@@ -588,5 +606,12 @@ namespace TaskControl.TaskModule.Presentation
         public string AccessToken { get; init; } = null!;
         public string TokenType { get; init; } = "Bearer";
         public MobileAppUserDto User { get; init; } = null!;
+    }
+
+    public record StartTaskRequest
+    {
+        public int TaskId { get; init; }
+        public string TaskType { get; init; } = null!;
+        public int WorkerId { get; init; }
     }
 }

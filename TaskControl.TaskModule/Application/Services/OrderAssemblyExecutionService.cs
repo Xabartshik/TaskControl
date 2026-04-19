@@ -38,7 +38,7 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
         {
             if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("Получение задач сборки для работника {UserId}", userId);
+                _logger.LogTrace("|   [Exec] получение задач сборки для работника {UserId}", userId);
 
             // Получаем основные назначения
             var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
@@ -80,12 +80,13 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     var targetId = g.Key;
                     var posModel = await positions.FirstOrDefaultAsync(p => p.PositionId == targetId);
+                    var fullCode = GetFullPositionCode(posModel) ?? targetId.ToString();
 
                     var cellDto = new CellPlacementInfoDto
                     {
                         TargetPositionId = targetId,
-                        CellCode = posModel?.FLSNumber ?? targetId.ToString(),
-                        CellDisplayName = posModel?.FLSNumber ?? targetId.ToString()
+                        CellCode = fullCode,
+                        CellDisplayName = fullCode
                     };
 
                     foreach (var l in g)
@@ -104,6 +105,7 @@ namespace TaskControl.TaskModule.Application.Services
                             ItemName = itemInfo?.Name ?? "Неизвестный товар",
                             Barcode = (itemInfo?.ItemId ?? 0).ToString(), // Fallback штрих-кода
                             Quantity = l.Quantity,
+                            PickedQuantity = l.PickedQuantity,
                             Status = l.Status
                         });
                     }
@@ -118,7 +120,7 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task ScanAndPickItem(int lineId, string scannedBarcode)
         {
             if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("Кладовщик взял товар (LineId: {LineId}, Barcode: {Barcode})", lineId, scannedBarcode);
+                _logger.LogTrace("|   [Exec] взят товар: LineId={LineId}, Barcode={Barcode}", lineId, scannedBarcode);
 
             var line = await _lineRepo.GetByIdAsync(lineId);
             if (line == null) throw new ArgumentException("Line not found");
@@ -131,24 +133,37 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode)
         {
             if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("Массовое размещение для задания {AssignmentId}, ячейка {CellCode}", assignmentId, scannedCellCode);
+                _logger.LogTrace("|   [Exec] массовое размещение: AssignmentId={AssignmentId}, CellCode={CellCode}", assignmentId, scannedCellCode);
 
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
             if (assignment == null) throw new ArgumentException("Assignment not found");
 
-            // Находим целевую ячейку по её коду (fls_number)
-            var conn = (DataConnection)_db;
-            var targetPositionId = await conn.ExecuteAsync<int?>(
-                "SELECT position_id FROM positions WHERE fls_number = @code AND zone_code = 'PICKUP' LIMIT 1",
-                new DataParameter("code", scannedCellCode));
+            // Пытаемся найти целевую ячейку по ID (если в QR только число) или по полному коду
+            var positions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.PositionModel>();
+            TaskControl.InventoryModule.DataAccess.Model.PositionModel? targetPosition = null;
 
-            if (targetPositionId == null || targetPositionId == 0)
-                throw new ArgumentException($"Ячейка PICKUP с кодом '{scannedCellCode}' не найдена.");
+            if (int.TryParse(scannedCellCode, out int scannedId))
+            {
+                // Если отсканировано число, ищем напрямую по ID среди всех ячеек
+                targetPosition = await positions.FirstOrDefaultAsync(p => p.PositionId == scannedId);
+            }
+            
+            if (targetPosition == null)
+            {
+                // Запасной вариант: ищем по полному коду среди ячеек PICKUP
+                var allPickupPositions = await positions.Where(p => p.ZoneCode == "PICKUP").ToListAsync();
+                targetPosition = allPickupPositions.FirstOrDefault(p => GetFullPositionCode(p) == scannedCellCode);
+            }
+
+            if (targetPosition == null)
+                throw new ArgumentException($"Ячейка с кодом или ID '{scannedCellCode}' не найдена.");
+
+            var targetPositionId = targetPosition.PositionId;
 
             // Находим все строки этого задания, которые уже были собраны (Picked)
             // и предназначены для отсканированной ячейки
             var linesToPlace = assignment.Lines
-                .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId == targetPositionId.Value)
+                .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId == targetPositionId)
                 .ToList();
 
             if (linesToPlace.Count == 0)
@@ -163,7 +178,7 @@ namespace TaskControl.TaskModule.Application.Services
 
             // Считаем оставшиеся ячейки, в которые ещё нужно разложить товары
             var allPickedForOtherCells = assignment.Lines
-                .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId != targetPositionId.Value)
+                .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId != targetPositionId)
                 .Select(l => l.TargetPositionId)
                 .Distinct()
                 .Count();
@@ -178,7 +193,7 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task ReportMissingItem(int lineId, string reason)
         {
             if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("Репортируем недостачу (LineId: {LineId}, Reason: {Reason})", lineId, reason);
+                _logger.LogTrace("|   ! недостача: LineId={LineId}, Reason={Reason}", lineId, reason);
 
             var line = await _lineRepo.GetByIdAsync(lineId);
             if (line == null) throw new ArgumentException("Line not found");
@@ -192,7 +207,7 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task CompleteAssemblyTask(int assignmentId)
         {
             if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("Завершение задачи сборки {AssignmentId}", assignmentId);
+                _logger.LogTrace("|   * завершение задачи сборки AssignmentId={AssignmentId}", assignmentId);
 
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
             if (assignment == null) throw new ArgumentException("Assignment not found");
@@ -248,6 +263,20 @@ namespace TaskControl.TaskModule.Application.Services
                 await transaction.RollbackAsync();
                 throw;
             }
+        }
+        private string GetFullPositionCode(TaskControl.InventoryModule.DataAccess.Model.PositionModel pos)
+        {
+            if (pos == null) return null;
+
+            var parts = new List<string>();
+            
+            if (!string.IsNullOrEmpty(pos.ZoneCode)) parts.Add(pos.ZoneCode);
+            if (!string.IsNullOrEmpty(pos.FirstLevelStorageType)) parts.Add(pos.FirstLevelStorageType);
+            if (!string.IsNullOrEmpty(pos.FLSNumber)) parts.Add(pos.FLSNumber);
+            if (!string.IsNullOrEmpty(pos.SecondLevelStorage)) parts.Add(pos.SecondLevelStorage);
+            if (!string.IsNullOrEmpty(pos.ThirdLevelStorage)) parts.Add(pos.ThirdLevelStorage);
+
+            return string.Join("-", parts);
         }
     }
 }

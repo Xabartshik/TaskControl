@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
@@ -78,9 +78,8 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation(
-                    "Начало завершения инвентаризации. AssignmentId={AssignmentId}, WorkerId={WorkerId}, LineCount={LineCount}",
-                    dto.AssignmentId, dto.WorkerId, dto.Lines.Count);
+                _logger.LogInformation("+--- [Inv] завершение инвентаризации: AssignmentId={AssignmentId}, WorkerId={WorkerId}",
+                    dto.AssignmentId, dto.WorkerId);
 
                 // ===== 1. ВАЛИДАЦИЯ =====
 
@@ -101,9 +100,7 @@ namespace TaskControl.TaskModule.Application.Services
                 // Загрузка всех существующих линий
                 var existingLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
 
-                _logger.LogInformation(
-                    "Загружено {Count} существующих линий для assignment {AssignmentId}",
-                    existingLines.Count, dto.AssignmentId);
+                _logger.LogInformation("|   > загружено {Count} линий", existingLines.Count);
 
                 // ===== 2. ОБНОВЛЕНИЕ ФАКТИЧЕСКИХ КОЛИЧЕСТВ ДЛЯ СУЩЕСТВУЮЩИХ ЛИНИЙ =====
 
@@ -117,7 +114,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                     if (existingLine == null)
                     {
-                        _logger.LogWarning("Линия {LineId} не найдена, пропускаем", lineDto.LineId.Value);
+                        _logger.LogWarning("|   ! линия {LineId} не найдена, пропуск", lineDto.LineId.Value);
                         continue;
                     }
 
@@ -135,9 +132,8 @@ namespace TaskControl.TaskModule.Application.Services
                     updatedLines.Add(existingLine);
                     processedLineIds.Add(existingLine.Id);
 
-                    _logger.LogInformation(
-                        "Обновлена линия {LineId}: ItemPositionId={ItemPositionId}, ExpectedQty={Expected}, ActualQty={Actual}",
-                        existingLine.Id, existingLine.ItemPositionId, existingLine.ExpectedQuantity, lineDto.ActualQuantity);
+                    _logger.LogInformation("|   > обновлена линия {LineId}: {Expected} -> {Actual}",
+                        existingLine.Id, existingLine.ExpectedQuantity, lineDto.ActualQuantity);
                 }
 
                 // Обновляем существующие линии в БД
@@ -146,7 +142,7 @@ namespace TaskControl.TaskModule.Application.Services
                     await _lineRepository.UpdateAsync(line);
                 }
 
-                _logger.LogInformation("Обновлено {Count} существующих линий", updatedLines.Count);
+                _logger.LogInformation("|   * обновлено {Count} линий", updatedLines.Count);
 
                 // Устанавливаем actual_quantity = 0 для непроверенных линий
                 var uncheckedLines = existingLines
@@ -158,9 +154,7 @@ namespace TaskControl.TaskModule.Application.Services
                     uncheckedLine.SetActualQuantity(0);
                     await _lineRepository.UpdateAsync(uncheckedLine);
 
-                    _logger.LogInformation(
-                        "Линия {LineId} (ItemPositionId={ItemPositionId}) не была проверена, установлен ActualQuantity=0",
-                        uncheckedLine.Id, uncheckedLine.ItemPositionId);
+                    _logger.LogInformation("|   ! линия {LineId} не проверена -> установлен 0", uncheckedLine.Id);
                 }
 
                 // ===== 3. ДОБАВЛЕНИЕ НОВЫХ ЛИНИЙ ДЛЯ НЕОЖИДАННЫХ ТОВАРОВ =====
@@ -172,14 +166,11 @@ namespace TaskControl.TaskModule.Application.Services
 
                 if (unexpectedItems.Count > 0)
                 {
-                    _logger.LogInformation(
-                        "Обнаружено {Count} неожиданных товаров (LineId == null)",
-                        unexpectedItems.Count);
+                    _logger.LogInformation("|   > обнаружено {Count} неожиданных товаров", unexpectedItems.Count);
 
                     foreach (var lineDto in unexpectedItems)
                     {
-                        _logger.LogInformation(
-                            "Обнаружен неожиданный товар. ItemId={ItemId}, PositionCode={PositionCode}, Quantity={Quantity}",
+                        _logger.LogInformation("|     + ItemId={ItemId}, Position={PositionCode}, Qty={Quantity}",
                             lineDto.ItemId, lineDto.PositionCode, lineDto.ActualQuantity);
 
                         // Найти или создать ItemPosition для этого товара
@@ -210,9 +201,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                         if (existingLineForThisItem != null)
                         {
-                            _logger.LogWarning(
-                                "Товар ItemPositionId={ItemPositionId} уже существует в линии {LineId}, обновляем вместо добавления",
-                                itemPosition.Id, existingLineForThisItem.Id);
+                            _logger.LogWarning("|     ! товар {ItemPositionId} уже в списке, обновление вместо добавления", itemPosition.Id);
 
                             existingLineForThisItem.SetActualQuantity(lineDto.ActualQuantity ?? 0);
                             await _lineRepository.UpdateAsync(existingLineForThisItem);
@@ -237,14 +226,14 @@ namespace TaskControl.TaskModule.Application.Services
                     if (newLinesToAdd.Count > 0)
                     {
                         await _lineRepository.AddBatchAsync(newLinesToAdd);
-                        _logger.LogInformation("Добавлено {Count} новых линий для неожиданных товаров", newLinesToAdd.Count);
+                        _logger.LogInformation("|   * добавлено {Count} новых линий", newLinesToAdd.Count);
                     }
                 }
 
                 // ===== 4. ПЕРЕЗАГРУЗКА ВСЕХ ЛИНИЙ =====
 
                 var allLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-                _logger.LogInformation("Всего линий после обработки: {Count}", allLines.Count);
+                _logger.LogInformation("|   > итого линий после обработки: {Count}", allLines.Count);
 
                 // ===== 5. ОБРАБОТКА РАСХОЖДЕНИЙ =====
 
@@ -272,9 +261,8 @@ namespace TaskControl.TaskModule.Application.Services
 
                         discrepancies.Add(discrepancy);
 
-                        _logger.LogInformation(
-                            "Расхождение: Line={LineId}, ItemPosition={ItemPositionId}, Type={Type}, Variance={Variance}",
-                            line.Id, line.ItemPositionId, discrepancyType, variance);
+                        _logger.LogInformation("|   ! расхождение: Line={LineId}, {Variance} ({Type})",
+                            line.Id, variance, discrepancyType);
                     }
                 }
 
@@ -316,9 +304,8 @@ namespace TaskControl.TaskModule.Application.Services
 
                 await _statisticsRepository.UpdateAsync(statistics);
 
-                _logger.LogInformation(
-                    "Обновление статистики для назначения: {AssignmentId}, учтено: {Counted}/{Total} ({Percentage:F1}%)",
-                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions,
+                _logger.LogInformation("|   * статистика: учтено {Counted}/{Total} ({Percentage:F1}%)",
+                    statistics.CountedPositions, statistics.TotalPositions,
                     statistics.TotalPositions > 0 ? (decimal)statistics.CountedPositions / statistics.TotalPositions * 100 : 0);
 
                 // ===== 7. ОБНОВЛЕНИЕ СТАТУСА ЗАДАНИЯ =====
@@ -326,7 +313,7 @@ namespace TaskControl.TaskModule.Application.Services
                 assignment.Complete(DateTime.UtcNow);
                 await _assignmentRepository.UpdateAsync(assignment);
 
-                _logger.LogInformation("Обновление назначения инвентаризации ID {AssignmentId}, новый статус Completed", dto.AssignmentId);
+                _logger.LogInformation("|   * статус назначения -> 'Completed'");
 
                 // ===== 8. ФОРМИРОВАНИЕ РЕЗУЛЬТАТА =====
 
@@ -349,11 +336,8 @@ namespace TaskControl.TaskModule.Application.Services
                 if (finalDiscrepancies.Count > 0)
                     successMessage += $"\nОбнаружено расхождений: {finalDiscrepancies.Count}";
 
-                _logger.LogInformation(
-                    "Инвентаризация завершена. AssignmentId={AssignmentId}, " +
-                    "Counted={Counted}/{Total}, Discrepancies={Discrepancies}, NewItems={NewItems}",
-                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions,
-                    finalDiscrepancies.Count, newLinesToAdd.Count);
+                _logger.LogInformation("=== [Inv] завершена: AssignmentId={AssignmentId}, {Counted}/{Total} учтено, {Discrepancies} расхождений ===",
+                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions, finalDiscrepancies.Count);
 
                 return new CompleteAssignmentResultDto
                 {
@@ -407,9 +391,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 if (existingItemPosition != null)
                 {
-                    _logger.LogInformation(
-                        "ItemPosition уже существует: ItemId={ItemId}, PositionId={PositionId}, ItemPositionId={ItemPositionId}",
-                        itemId, positionCell.PositionId, existingItemPosition.Id);
+                    _logger.LogInformation("|     - ItemPosition {ItemPositionId} уже существует", existingItemPosition.Id);
                     return existingItemPosition;
                 }
 
@@ -424,9 +406,7 @@ namespace TaskControl.TaskModule.Application.Services
                 var newItemPositionId = await _itemPositionRepository.AddAsync(newItemPosition);
                 newItemPosition.Id = newItemPositionId;
 
-                _logger.LogInformation(
-                    "Создан новый ItemPosition: ItemId={ItemId}, PositionId={PositionId}, ItemPositionId={ItemPositionId}",
-                    itemId, positionCell.PositionId, newItemPositionId);
+                _logger.LogInformation("|     + создан ItemPosition {ItemPositionId}", newItemPositionId);
 
                 return newItemPosition;
             }
@@ -449,9 +429,8 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation(
-                    "Создание инвентаризации: филиал {BranchId}, приоритет {Priority}, товаров {ItemCount}, работников {WorkerCount}",
-                    dto.BranchId, dto.Priority, dto.ItemPositionIds.Count, dto.WorkerCount);
+                _logger.LogInformation("+--- [Inv] создание инвентаризации: филиал {BranchId}, товаров {ItemCount}",
+                    dto.BranchId, dto.ItemPositionIds.Count);
 
                 if (dto.ItemPositionIds.Count == 0)
                     throw new ArgumentException("Список товаров не может быть пустым");
@@ -470,7 +449,7 @@ namespace TaskControl.TaskModule.Application.Services
                 if (itemPositionDict.Count != dto.ItemPositionIds.Count)
                 {
                     var missingIds = dto.ItemPositionIds.Except(itemPositionDict.Keys).ToList();
-                    _logger.LogWarning("Некоторые ItemPosition не найдены: {MissingIds}", string.Join(", ", missingIds));
+                    _logger.LogWarning("|   ! не найдены ItemPosition: {MissingIds}", string.Join(", ", missingIds));
                 }
 
                 // 2. Получить детальную информацию о позициях
@@ -508,11 +487,11 @@ namespace TaskControl.TaskModule.Application.Services
                 };
 
                 var taskId = await _baseTaskService.Add(baseTaskDto);
-                _logger.LogInformation("BaseTask создан через IBaseTaskService с ID: {TaskId}", taskId);
+                _logger.LogInformation("|   > создана системная задача TaskId={TaskId}", taskId);
 
                 // 4. Разделить товары на зоны в зависимости от стратегии
                 var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
-                _logger.LogInformation("Товары разделены на {ZoneCount} зон", zones.Count);
+                _logger.LogInformation("|   > разделение на {ZoneCount} зон", zones.Count);
 
                 var assignments = new List<InventoryAssignment>();
 
@@ -521,7 +500,7 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     if (zoneIndex >= availableWorkers.Count)
                     {
-                        _logger.LogWarning("Недостаточно работников для зоны {ZoneIndex}", zoneIndex);
+                        _logger.LogWarning("|   ! не хватило работника для зоны {ZoneIndex}", zoneIndex);
                         break;
                     }
 
@@ -536,7 +515,7 @@ namespace TaskControl.TaskModule.Application.Services
                     assignments.Add(assignment);
 
                     _logger.LogInformation(
-                        "Зона {ZoneCode}: работник {UserId}, товаров {Count}",
+                        "|     - Зона {ZoneIndex}: UserId={UserId}, товаров {Count}",
                         zoneIndex, workerId, itemsInZone.Count);
                 }
 
@@ -549,7 +528,7 @@ namespace TaskControl.TaskModule.Application.Services
                     assignmentIds.Add(id);
                 }
 
-                _logger.LogInformation("Назначения сохранены: {Count}", assignmentIds.Count);
+                _logger.LogInformation("|   * сохранено {Count} назначений", assignmentIds.Count);
 
                 // 7. Создать Lines и Statistics для каждого назначения
                 for (int i = 0; i < assignmentIds.Count; i++)
@@ -570,8 +549,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                         if (!positionDetailsDict.TryGetValue(itemPosition.PositionId, out var positionDetail))
                         {
-                            _logger.LogWarning("PositionDetails для PositionId {PositionId} не найдены, пропускаем",
-                                itemPosition.PositionId);
+                            _logger.LogWarning("|   ! PositionDetails для {PositionId} не найдены", itemPosition.PositionId);
                             continue;
                         }
 
@@ -590,14 +568,13 @@ namespace TaskControl.TaskModule.Application.Services
 
                     if (lines.Count == 0)
                     {
-                        _logger.LogWarning("Для назначения {AssignmentId} не создано ни одной строки", assignmentId);
+                        _logger.LogWarning("|   ! для назначения {AssignmentId} нет строк", assignmentId);
                         continue;
                     }
 
                     // Массовое добавление Lines
                     await _lineRepository.AddBatchAsync(lines);
-                    _logger.LogInformation("Добавлено {Count} строк для назначения {AssignmentId}",
-                        lines.Count, assignmentId);
+                    _logger.LogInformation("|     > добавлено {Count} строк для AssignmentId={AssignmentId}", lines.Count, assignmentId);
 
                     // Создать Statistics
                     var statistics = new InventoryStatistics(
@@ -605,12 +582,10 @@ namespace TaskControl.TaskModule.Application.Services
                         totalPositions: lines.Count);
 
                     await _statisticsRepository.AddAsync(statistics);
-                    _logger.LogInformation("Статистика создана для назначения {AssignmentId}", assignmentId);
+                    _logger.LogInformation("|     > статистика инициализирована");
                 }
 
-                _logger.LogInformation(
-                    "Инвентаризация успешно создана и распределена между {WorkerCount} работниками",
-                    assignmentIds.Count);
+                _logger.LogInformation("=== [Inv] распланирована между {WorkerCount} сотрудниками ===", assignmentIds.Count);
 
                 return new CompleteInventoryDto
                 {
@@ -630,8 +605,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation(
-                    "Получение деталей задачи инвентаризации {TaskId} для пользователя {UserId}",
+                _logger.LogInformation("|   [Inv] запрос деталей задачи {TaskId} (UserId={UserId})",
                     inventoryTaskId, userId);
 
                 var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
@@ -704,9 +678,8 @@ namespace TaskControl.TaskModule.Application.Services
 
                 dto.TotalExpectedCount = dto.Items.Sum(i => i.ExpectedQuantity);
 
-                _logger.LogInformation(
-                    "Детали задачи {TaskId} сформированы: строк {LineCount}, ожидаемое кол-во {TotalExpectedCount}",
-                    inventoryTaskId, dto.Items.Count, dto.TotalExpectedCount);
+                _logger.LogInformation("|   > сформировано: строк {LineCount}, ожидаемо {TotalExpectedCount}",
+                    dto.Items.Count, dto.TotalExpectedCount);
 
                 return dto;
             }
@@ -791,7 +764,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Получение новых задач инвентаризации для пользователя {UserId}", userId);
+                _logger.LogInformation("|   [Inv] запрос новых задач (UserId={UserId})", userId);
 
                 var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
 
@@ -823,9 +796,7 @@ namespace TaskControl.TaskModule.Application.Services
                     });
                 }
 
-                _logger.LogInformation(
-                    "Найдено {Count} новых/активных назначений для пользователя {UserId}",
-                    result.Count, userId);
+                _logger.LogInformation("|   * найдено {Count} активных назначений", result.Count);
 
                 return result;
             }
@@ -840,7 +811,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Проверка новых задач для пользователя {UserId}, since={Since}", userId, since);
+                _logger.LogInformation("|   [Inv] проверка новых задач (UserId={UserId})", userId);
 
                 var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
 
@@ -881,7 +852,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Получение прогресса инвентаризации {AssignmentId}", assignmentId);
+                _logger.LogInformation("|   [Inv] запрос прогресса: AssignmentId={AssignmentId}", assignmentId);
 
                 var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
                 if (assignment == null)
@@ -920,8 +891,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation(
-                    "Обработка сканирования: назначение {AssignmentId}, строка {LineId}, количество {ActualQuantity}",
+                _logger.LogInformation("+--- [Inv] сканирование: AssignmentId={AssignmentId}, LineId={LineId}, Qty={ActualQuantity}",
                     dto.AssignmentId, dto.LineId, dto.ActualQuantity);
 
                 // Получить Line
@@ -949,9 +919,7 @@ namespace TaskControl.TaskModule.Application.Services
                         note: dto.Note);
 
                     await _discrepancyRepository.AddAsync(discrepancy);
-                    _logger.LogInformation(
-                        "Расхождение создано: тип {Type}, дисперсия {Variance}",
-                        discrepancyType, variance);
+                    _logger.LogInformation("|   ! расхождение: {Variance} ({Type})", variance, discrepancyType);
                 }
 
                 // Получить и обновить Statistics
@@ -979,9 +947,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 await _statisticsRepository.UpdateAsync(statistics);
 
-                _logger.LogInformation(
-                    "Сканирование обработано: учтено {Counted}/{Total} позиций",
-                    countedItems, allLines.Count);
+                _logger.LogInformation("|   * учтено {Counted}/{Total} позиций", countedItems, allLines.Count);
 
                 return MapStatisticsToDto(statistics);
             }
@@ -1000,7 +966,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Завершение инвентаризации {AssignmentId}", assignmentId);
+                _logger.LogInformation("+--- [Inv] завершение: AssignmentId={AssignmentId}", assignmentId);
 
                 var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
                 if (assignment == null)
@@ -1032,9 +998,7 @@ namespace TaskControl.TaskModule.Application.Services
                     Discrepancies = discrepancies.Select(MapDiscrepancyToDto).ToList()
                 };
 
-                _logger.LogInformation(
-                    "Инвентаризация завершена: назначение {AssignmentId}, найдено {DiscrepancyCount} расхождений",
-                    assignmentId, discrepancies.Count);
+                _logger.LogInformation("=== [Inv] завершена: {DiscrepancyCount} расхождений ===", discrepancies.Count);
 
                 return new CompleteInventoryDto
                 {
@@ -1061,7 +1025,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Отмена инвентаризации {AssignmentId}, причина: {Reason}", assignmentId, reason ?? "не указана");
+                _logger.LogInformation("|   ! отмена инвентаризации {AssignmentId}, причина: {Reason}", assignmentId, reason ?? "не указана");
 
                 var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
                 if (assignment == null)
@@ -1089,7 +1053,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Получение назначений для пользователя {UserId}", userId);
+                _logger.LogInformation("|   [Inv] запрос назначений (UserId={UserId})", userId);
 
                 var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
                 var result = new List<InventoryAssignmentDetailedDto>();
@@ -1129,7 +1093,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation("Получение активных инвентаризаций, филиал: {BranchId}", branchId);
+                _logger.LogInformation("|   [Inv] запрос активных инвентаризаций (BranchId={BranchId})", branchId);
 
                 var activeStatus = (int)InventoryAssignmentStatus.InProgress;
                 var assignments = await _assignmentRepository.GetByStatusAsync((InventoryAssignmentStatus)activeStatus);
@@ -1175,9 +1139,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             try
             {
-                _logger.LogInformation(
-                    "Получение завершённых инвентаризаций с {StartDate} по {EndDate}, филиал: {BranchId}",
-                    startDate, endDate, branchId);
+                _logger.LogInformation("|   [Inv] запрос завершенных с {StartDate} по {EndDate}", startDate, endDate);
 
                 var completedStatus = (int)InventoryAssignmentStatus.Completed;
                 var assignments = await _assignmentRepository.GetByStatusAsync((InventoryAssignmentStatus)completedStatus);

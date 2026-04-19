@@ -61,11 +61,11 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<CompleteInventoryDto> CreateInventoryTaskAsync(CreateInventoryTaskDto dto, int bossBranchId)
         {
-            _logger.LogInformation("Начальник филиала {BossBranchId} создает инвентаризацию для филиала {DtoBranchId}", bossBranchId, dto.BranchId);
+            _logger.LogInformation("+--- [Boss] создание инвентаризации: начальник {BossBranchId} -> филиал {DtoBranchId}", bossBranchId, dto.BranchId);
 
             if (dto.BranchId != bossBranchId)
             {
-                _logger.LogWarning("Отказ: начальник филиала {BossBranchId} попытался создать задачу для филиала {DtoBranchId}", bossBranchId, dto.BranchId);
+                _logger.LogWarning("|   ! отказ: начальник {BossBranchId} пытался создать задачу для чужого филиала {DtoBranchId}", bossBranchId, dto.BranchId);
                 throw new InvalidOperationException($"Вы не можете создать инвентаризацию для филиала {dto.BranchId}. Доступен только филиал {bossBranchId}.");
             }
 
@@ -82,7 +82,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<IEnumerable<WorkerPerformanceReportDto>> GetBranchWorkersPerformanceAsync(int bossBranchId, DateTime from, DateTime to)
         {
-            _logger.LogInformation("Получение отчетов производительности сотрудников для филиала {BossBranchId} с {From} по {To}", bossBranchId, from, to);
+            _logger.LogInformation("|   [Boss] запрос производительности (филиал {BossBranchId})", bossBranchId);
 
             var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
             var reports = new List<WorkerPerformanceReportDto>();
@@ -96,7 +96,7 @@ namespace TaskControl.TaskModule.Application.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Не удалось получить отчет для сотрудника {EmployeeId}", emp.EmployeeId);
+                    _logger.LogWarning("|   ! ошибка получения отчета для сотрудника {EmployeeId}", emp.EmployeeId);
                 }
             }
 
@@ -105,7 +105,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<DiscrepancyReportDto> GetBranchInventoryDiscrepanciesAsync(int bossBranchId, int assignmentId)
         {
-            _logger.LogInformation("Начальник филиала {BossBranchId} запрашивает расхождения по назначению {AssignmentId}", bossBranchId, assignmentId);
+            _logger.LogInformation("|   [Boss] запрос расхождений по назначению {AssignmentId}", assignmentId);
 
             var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
             if (assignment == null)
@@ -115,7 +115,7 @@ namespace TaskControl.TaskModule.Application.Services
 
             if (assignment.BranchId != bossBranchId)
             {
-                _logger.LogWarning("Отказ: назначение {AssignmentId} относится к филиалу {BranchId}, а не к филиалу начальника {BossBranchId}", assignmentId, assignment.BranchId, bossBranchId);
+                _logger.LogWarning("|   ! отказ: назначение {AssignmentId} не в филиале начальника", assignmentId);
                 throw new InvalidOperationException($"Назначение {assignmentId} не относится к вашему филиалу.");
             }
 
@@ -123,7 +123,7 @@ namespace TaskControl.TaskModule.Application.Services
         }
         public async Task<IEnumerable<string>> GetAvailableZonesAsync(int bossBranchId)
         {
-            _logger.LogInformation("Получение доступных зон для филиала {BossBranchId}", bossBranchId);
+            _logger.LogInformation("|   [Boss] запрос доступных зон (филиал {BossBranchId})", bossBranchId);
 
             var cells = await _positionCellRepository.GetByBranchAsync(bossBranchId);
             
@@ -440,9 +440,11 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("Получение доступных заказов для филиала {BossBranchId}", bossBranchId);
 
-            // Получаем все заказы в статусе Processing для этого филиала
-            var allOrders = await _orderRepository.GetByBranchAsync(bossBranchId);
-            var processingOrders = allOrders.Where(o => o.Status == "Processing").ToList();
+            // Получаем все заказы в статусе New для этого филиала
+            var allOrders = (await _orderRepository.GetByBranchAsync(bossBranchId)).ToList();
+            var newOrders = allOrders.Where(o => o.Status == "New").ToList();
+            
+            _logger.LogInformation("Найдено заказов в филиале: {Total}, из них в статусе New: {NewCount}", allOrders.Count, newOrders.Count);
 
             // Исключаем те, для которых уже созданы активные задания сборки
             var assemblyAssignments = await _orderAssemblyRepository.GetByBranchIdAsync(bossBranchId);
@@ -451,7 +453,9 @@ namespace TaskControl.TaskModule.Application.Services
                 .Select(a => a.OrderId)
                 .ToHashSet();
 
-            var availableOrders = processingOrders
+            _logger.LogInformation("Активных назначений сборки в филиале: {ActiveCount}", assignedOrderIds.Count);
+
+            var availableOrders = newOrders
                 .Where(o => !assignedOrderIds.Contains(o.OrderId))
                 .Select(o => new AvailableOrderDto
                 {
@@ -462,6 +466,7 @@ namespace TaskControl.TaskModule.Application.Services
                 })
                 .ToList();
 
+            _logger.LogInformation("Итого доступно для выбора: {AvailableCount}", availableOrders.Count);
             return availableOrders;
         }
     }

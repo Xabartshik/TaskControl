@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,7 +26,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<DiscrepancyReportDto> GetDiscrepanciesAsync(int inventoryAssignmentId)
         {
-            _logger.LogInformation("Получение расхождений для назначения {AssignmentId}", inventoryAssignmentId);
+            _logger.LogInformation("|   [Discr] получение расхождений: AssignmentId={AssignmentId}", inventoryAssignmentId);
 
             var discrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(inventoryAssignmentId);
 
@@ -52,8 +52,7 @@ namespace TaskControl.TaskModule.Application.Services
             if (resolveDto is null)
                 throw new ArgumentNullException(nameof(resolveDto));
 
-            _logger.LogInformation(
-                "Разрешение расхождения {DiscrepancyId}, новый статус: {Status}",
+            _logger.LogInformation("+--- [Discr] разрешение расхождения {DiscrepancyId} -> {Status}",
                 resolveDto.DiscrepancyId, resolveDto.ResolutionStatus);
 
             var discrepancy = await _discrepancyRepository.GetByIdAsync(resolveDto.DiscrepancyId);
@@ -77,7 +76,7 @@ namespace TaskControl.TaskModule.Application.Services
             }
 
             await _discrepancyRepository.UpdateAsync(discrepancy);
-            _logger.LogInformation("Расхождение {DiscrepancyId} разрешено", resolveDto.DiscrepancyId);
+            _logger.LogInformation("|   * расхождение {DiscrepancyId} разрешено", resolveDto.DiscrepancyId);
 
             return DiscrepancyDto.ToDto(discrepancy);
         }

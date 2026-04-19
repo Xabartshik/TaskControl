@@ -68,7 +68,7 @@ namespace TaskControl.Web
                 RecurringJob.AddOrUpdate<TaskControl.TaskModule.Application.Services.OrderAssemblyPlannerJob>(
                     "order-assembly-planner",
                     job => job.ExecuteAsync(),
-                    "*/5 * * * *"); // Каждые 5 минут
+                    "*/1 * * * *"); // Каждые 5 минут
 
                 app.MapControllers();
                 Log.Information("Приложение настроено и готово к работе на порту {Port}",

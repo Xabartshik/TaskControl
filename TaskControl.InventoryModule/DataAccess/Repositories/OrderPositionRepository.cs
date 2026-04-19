@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Interface;
@@ -126,20 +126,20 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             }
         }
 
-        public async Task<IEnumerable<OrderPosition>> GetByItemPositionIdAsync(int itemPositionId)
+        public async Task<IEnumerable<OrderPosition>> GetByItemIdAsync(int itemId)
         {
-            _logger.LogInformation("Получение заказов для товарной позиции ID: {itemPositionId}", itemPositionId);
+            _logger.LogInformation("Получение позиций заказов для типа товара ID: {itemId}", itemId);
             try
             {
                 var orderPositions = await _db.OrderPositions
-                    .Where(op => op.ItemPositionId == itemPositionId)
+                    .Where(op => op.ItemId == itemId)
                     .ToListAsync();
 
                 return orderPositions.Select(op => op.ToDomain());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при получении заказов для товарной позиции ID: {itemPositionId}", itemPositionId);
+                _logger.LogError(ex, "Ошибка при получении заказов для типа товара ID: {itemId}", itemId);
                 throw;
             }
         }

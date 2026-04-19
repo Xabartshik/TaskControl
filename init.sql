@@ -155,14 +155,14 @@ CREATE INDEX idx_positions_zone ON positions (zone_code);
 CREATE TABLE IF NOT EXISTS order_positions (
     unique_id SERIAL PRIMARY KEY,
     order_id INT NOT NULL REFERENCES orders(order_id),
-    item_position_id INT NOT NULL REFERENCES positions(position_id),
+    item_id INT NOT NULL REFERENCES items(item_id),
     quantity INT NOT NULL CHECK (quantity > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Индекс для быстрого поиска по заказам
 CREATE INDEX idx_order_positions_order ON order_positions (order_id);
-CREATE INDEX idx_order_positions_item ON order_positions (item_position_id);
+CREATE INDEX idx_order_positions_item ON order_positions (item_id);
 
 -- Создание таблицы позиций товара
 CREATE TABLE IF NOT EXISTS item_positions (
@@ -177,6 +177,19 @@ CREATE TABLE IF NOT EXISTS item_positions (
 CREATE INDEX idx_item_positions_position ON item_positions (position_id);
 CREATE INDEX idx_item_positions_item ON item_positions (item_id);
 CREATE UNIQUE INDEX idx_item_positions_id ON item_positions (id);
+
+-- Создание таблицы резервирования товаров под заказы
+CREATE TABLE IF NOT EXISTS order_reservations (
+    id SERIAL PRIMARY KEY,
+    order_position_id INT NOT NULL REFERENCES order_positions(unique_id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для резервирований
+CREATE INDEX idx_order_reservations_order_pos ON order_reservations (order_position_id);
+CREATE INDEX idx_order_reservations_item_pos ON order_reservations (item_position_id);
 
 -- Создание таблицы перемещений товара
 CREATE TABLE IF NOT EXISTS item_movements (
@@ -250,16 +263,25 @@ VALUES
 -- 6. Вставка заказов
 INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
 VALUES
-    (1001, 1, '2025-07-20 14:00:00', 'Online', 'Processing'),
-    (1002, 2, '2025-07-22 10:00:00', 'Offline', 'New'),
+    (1001, 1, '2025-07-20 14:00:00', 'Online', 'New'), -- Заказ для сборки (1 вид товара)
+    (1002, 1, '2025-07-22 10:00:00', 'Offline', 'New'), -- Заказ для сборки (3 вида товара)
     (1003, 1, '2025-07-25 16:00:00', 'Wholesale', 'Shipped');
 
 -- 7. Вставка позиций заказа
-INSERT INTO order_positions (order_id, item_position_id, quantity)
+INSERT INTO order_positions (order_id, item_id, quantity)
 VALUES
-    (1, 1, 2),
-    (1, 2, 1),
-    (2, 3, 3);
+    (1, 1, 2), -- Заказ 1: 2 шт Телефона No Kia (item_id=1)
+    (2, 1, 1), -- Заказ 2: 1 шт Телефона
+    (2, 2, 2), -- Заказ 2: 2 шт Плашки ОЗУ
+    (2, 3, 1); -- Заказ 2: 1 шт Видеокарты
+
+-- 7.1 Вставка резервирований под позиции (order_position_id соответствует автоинкременту)
+INSERT INTO order_reservations (order_position_id, item_position_id, quantity)
+VALUES
+    (1, 1, 2), -- Под order_position 1 (Телефон, 2шт) резервируем 2шт из item_position 1
+    (2, 1, 1), -- Под order_position 2 (Телефон, 1шт) резервируем 1шт из item_position 1
+    (3, 2, 2), -- Под order_position 3 (Плата ОЗУ, 2шт) резервируем 2шт из item_position 2
+    (4, 3, 1); -- Под order_position 4 (Видеокарта, 1шт) резервируем 1шт из item_position 3
 
 -- 8. Вставка отметок сотрудников
 INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
@@ -488,7 +510,7 @@ VALUES
     (1011, 3, '2025-07-30 13:00:00', 'Online', 'Processing');
 
 -- Дополнительные позиции заказов (10 записей)
-INSERT INTO order_positions (order_id, item_position_id, quantity)
+INSERT INTO order_positions (order_id, item_id, quantity)
 VALUES
     (4, 1, 3),
     (4, 3, 1),
@@ -501,7 +523,7 @@ VALUES
     (10, 3, 2),
     (11, 1, 4);
 
--- Дополнительные товарные позиции (8 записей)
+-- Дополнительные товарные позиции (8 записей, id 4..11)
 INSERT INTO item_positions (item_id, position_id, quantity)
 VALUES
     (1, 2, 8),
@@ -512,6 +534,20 @@ VALUES
     (3, 2, 2),
     (1, 1, 5),
     (2, 2, 9);
+
+-- Дополнительные резервирования (ссылаются на item_position id 4..11)
+INSERT INTO order_reservations (order_position_id, item_position_id, quantity)
+VALUES
+    (5,  4, 3),
+    (6,  6, 1),
+    (7,  5, 4),
+    (8,  7, 2),
+    (9,  8, 2),
+    (10, 9, 1),
+    (11, 10, 5),
+    (12, 11, 3),
+    (13, 4, 2),
+    (14, 7, 4);
 
 -- Дополнительные перемещения товара (8 записей)
 INSERT INTO item_movements (
@@ -675,6 +711,7 @@ CREATE TABLE IF NOT EXISTS order_assembly_lines (
     source_position_id INT NOT NULL REFERENCES positions(position_id),
     target_position_id INT NOT NULL REFERENCES positions(position_id),
     quantity INT NOT NULL CHECK (quantity > 0),
+    picked_quantity INT NOT NULL DEFAULT 0,
     status INT NOT NULL CHECK (status IN (0, 1, 2, 3)) -- Pending(0), Picked(1), Placed(2), Discrepancy(3)
 );
 
