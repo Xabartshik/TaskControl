@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TaskControl.Core.Shared.Shared.SharedInfrastructure;
 using TaskControl.Core.Shared.SharedInfrastructure;
+using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.DataAccess.Model;
 
@@ -22,6 +23,7 @@ namespace TaskControl.OrderModule.DataAccess.Infrastructure
         }
 
         public ITable<OrderModel> Orders => this.GetTable<OrderModel>();
+        public ITable<OrderPositionModel> OrderPositions => this.GetTable<OrderPositionModel>();
 
     }
 }

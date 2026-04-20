@@ -4,15 +4,16 @@ using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
 using TaskControl.InventoryModule.Domain;
+using TaskControl.OrderModule.DataAccess.Interface;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
     public class OrderPositionRepository : IRepository<OrderPosition>, IOrderPositionRepository
     {
-        private readonly IInventoryDataConnection _db;
+        private readonly IOrderDataConnection _db;
         private readonly ILogger<OrderPositionRepository> _logger;
 
-        public OrderPositionRepository(IInventoryDataConnection db, ILogger<OrderPositionRepository> logger)
+        public OrderPositionRepository(IOrderDataConnection db, ILogger<OrderPositionRepository> logger)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger;

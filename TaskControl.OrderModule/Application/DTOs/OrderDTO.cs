@@ -32,6 +32,8 @@ namespace TaskControl.OrderModule.Application.DTOs
         [RegularExpression("^(New|Processing|Delivered|Cancelled)$")]
         public string Status { get; init; } = "New";
 
+        public List<OrderPositionDto> Positions { get; set; } = new();
+
         public static Order FromDto(OrderDto dto) => new()
         {
             OrderId = dto.OrderId,

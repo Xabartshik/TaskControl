@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.Domain;
@@ -12,6 +13,7 @@ namespace TaskControl.OrderModule.Application.Services
     {
         private readonly IOrderRepository _repository;
         private readonly ILogger<OrderService> _logger;
+        private readonly IOrderPositionRepository _positionRepository;
         private readonly IEnumerable<IOrderCreatedEventHandler> _orderCreatedHandlers;
         private readonly AppSettings _appSettings;
 
@@ -19,11 +21,13 @@ namespace TaskControl.OrderModule.Application.Services
             IOrderRepository repository,
             ILogger<OrderService> logger,
             IOptions<AppSettings> options,
+            IOrderPositionRepository positionRepository,
             IEnumerable<IOrderCreatedEventHandler> orderCreatedHandlers)
         {
             _repository = repository;
             _logger = logger;
             _appSettings = options.Value;
+            _positionRepository = positionRepository;
             _orderCreatedHandlers = orderCreatedHandlers;
         }
 
@@ -40,6 +44,15 @@ namespace TaskControl.OrderModule.Application.Services
             {
                 var entity = OrderDto.FromDto(dto);
                 var newId = await _repository.AddAsync(entity);
+                if (dto.Positions != null && dto.Positions.Any())
+                {
+                    foreach (var posDto in dto.Positions)
+                    {
+                        var posEntity = OrderPositionDto.FromDto(posDto);
+                        posEntity.OrderId = newId;
+                        await _positionRepository.AddAsync(posEntity);
+                    }
+                }
                 foreach (var handler in _orderCreatedHandlers)
                 {
                     await handler.HandleOrderCreatedAsync(newId, dto.BranchId);

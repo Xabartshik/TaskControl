@@ -39,10 +39,10 @@ namespace TaskControl.InventoryModule.DAL.Repositories
 
         public async Task<decimal> GetReservedQuantityInBranchAsync(int itemId, int branchId)
         {
-            // Используем GetTable<OrderModel>(), так как таблица заказов находится в другом модуле
-            // Приводим Quantity к decimal?, чтобы SumAsync корректно обрабатывал пустые результаты
+            // Используем GetTable<T>() и для OrderPositionModel, и для OrderModel, 
+            // так как обе эти таблицы теперь физически описаны в OrderModule
             var query = from r in _db.GetTable<OrderReservationModel>()
-                        join op in _db.OrderPositions on r.OrderPositionId equals op.UniqueId
+                        join op in _db.GetTable<OrderPositionModel>() on r.OrderPositionId equals op.UniqueId
                         join o in _db.GetTable<OrderModel>() on op.OrderId equals o.OrderId
                         where op.ItemId == itemId && o.BranchId == branchId
                         select (decimal?)r.Quantity;
