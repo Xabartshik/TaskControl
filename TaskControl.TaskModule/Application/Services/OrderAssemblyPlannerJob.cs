@@ -185,7 +185,8 @@ namespace TaskControl.TaskModule.Application.Services
                         ItemId = x.ItemId,
                         Length = x.Length,
                         Width = x.Width,
-                        Height = x.Height
+                        Height = x.Height,
+                        Quantity = x.Quantity
                     }).ToList();
 
                     // Ищем свободные ячейки PICKUP
@@ -206,17 +207,17 @@ namespace TaskControl.TaskModule.Application.Services
                     // Распределяем товары по ячейкам PICKUP
                     var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, availableCells);
 
-                    if (packingResult.ItemToCellMap.Count < itemsToPack.Count)
+                    // Проверяем флаг IsFullyPacked
+                    if (!packingResult.IsFullyPacked)
                     {
-                        _logger.LogWarning("|   ! не удалось распланировать: нужно {Required} ячеек PICKUP, доступно {Available}",
-                            itemsToPack.Count, availableCells.Count);
+                        _logger.LogWarning("|   ! не удалось распланировать весь заказ: недостаточно объема в свободных ячейках PICKUP");
                         await RollbackHardAllocationAsync(order.OrderId, softReservations);
                         skippedCount++;
                         continue;
                     }
 
                     // Резервируем ячейки PICKUP (меняем статус)
-                    var reservedCells = packingResult.ItemToCellMap.Values.Distinct().ToList();
+                    var reservedCells = packingResult.PackedItems.Select(p => p.TargetPositionId).Distinct().ToList();
                     await _db.GetTable<PositionModel>()
                              .Where(p => reservedCells.Contains(p.PositionId))
                              .Set(p => p.Status, "Reserved")
@@ -279,17 +280,19 @@ namespace TaskControl.TaskModule.Application.Services
                     };
                     assignment.Id = await _db.InsertWithInt32IdentityAsync(assignment);
 
-                    // Создаем строки сборки (задания)
-                    foreach (var packItem in orderItems)
+                    // Создаем строки сборки (задания) на основе нового списка PackingResult.PackedItems
+                    foreach (var packedBlock in packingResult.PackedItems)
                     {
-                        var targetCell = packingResult.ItemToCellMap[packItem.OrderPositionId];
+                        // Находим оригинальную информацию о позиции для получения исходной ячейки
+                        var originalInfo = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
+
                         var line = new OrderAssemblyLineModel
                         {
                             OrderAssemblyAssignmentId = assignment.Id,
-                            ItemPositionId = packItem.ItemPositionId,
-                            SourcePositionId = packItem.SourcePositionId,
-                            TargetPositionId = targetCell,
-                            Quantity = packItem.Quantity,
+                            ItemPositionId = originalInfo.ItemPositionId,
+                            SourcePositionId = originalInfo.SourcePositionId,
+                            TargetPositionId = packedBlock.TargetPositionId,
+                            Quantity = packedBlock.Quantity,
                             Status = 0 // Pending
                         };
                         await _db.InsertAsync(line);

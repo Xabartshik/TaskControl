@@ -9,6 +9,7 @@ namespace TaskControl.TaskModule.Application.Services
         public double Length { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
+        public int Quantity { get; set; }
     }
 
     public class CellToPackInto
@@ -19,12 +20,17 @@ namespace TaskControl.TaskModule.Application.Services
         public double Height { get; set; }
     }
 
+    public class PackedItemResult
+    {
+        public int OrderPositionId { get; set; }
+        public int TargetPositionId { get; set; }
+        public int Quantity { get; set; }
+    }
+
     public class PackingResult
     {
-        /// <summary>
-        /// Key: OrderPositionId, Value: Target PositionId (ячейка PICKUP)
-        /// </summary>
-        public Dictionary<int, int> ItemToCellMap { get; set; } = new();
+        public List<PackedItemResult> PackedItems { get; set; } = new();
+        public bool IsFullyPacked { get; set; }
     }
 
     public interface IBoxPackingService

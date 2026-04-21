@@ -3,9 +3,9 @@ using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.Application.Services;
-using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
+using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
@@ -81,7 +81,7 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogInformation("+--- [Inv] завершение инвентаризации: AssignmentId={AssignmentId}, WorkerId={WorkerId}",
                     dto.AssignmentId, dto.WorkerId);
 
-                // ===== 1. ВАЛИДАЦИЯ =====
+                //1. ВАЛИДАЦИЯ
 
                 var assignment = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
                 if (assignment == null)
@@ -102,7 +102,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 _logger.LogInformation("|   > загружено {Count} линий", existingLines.Count);
 
-                // ===== 2. ОБНОВЛЕНИЕ ФАКТИЧЕСКИХ КОЛИЧЕСТВ ДЛЯ СУЩЕСТВУЮЩИХ ЛИНИЙ =====
+                //2. ОБНОВЛЕНИЕ ФАКТИЧЕСКИХ КОЛИЧЕСТВ ДЛЯ СУЩЕСТВУЮЩИХ ЛИНИЙ
 
                 var updatedLines = new List<InventoryAssignmentLine>();
                 var processedLineIds = new HashSet<int>();
@@ -157,7 +157,7 @@ namespace TaskControl.TaskModule.Application.Services
                     _logger.LogInformation("|   ! линия {LineId} не проверена -> установлен 0", uncheckedLine.Id);
                 }
 
-                // ===== 3. ДОБАВЛЕНИЕ НОВЫХ ЛИНИЙ ДЛЯ НЕОЖИДАННЫХ ТОВАРОВ =====
+                //3. ДОБАВЛЕНИЕ НОВЫХ ЛИНИЙ ДЛЯ НЕОЖИДАННЫХ ТОВАРОВ
 
                 var newLinesToAdd = new List<InventoryAssignmentLine>();
 
@@ -222,7 +222,7 @@ namespace TaskControl.TaskModule.Application.Services
                         newLinesToAdd.Add(newLine);
                     }
 
-                    // Сохраняем новые линии одним батчем
+                    // Сохраняем новые линии одной пачкой
                     if (newLinesToAdd.Count > 0)
                     {
                         await _lineRepository.AddBatchAsync(newLinesToAdd);
@@ -230,12 +230,12 @@ namespace TaskControl.TaskModule.Application.Services
                     }
                 }
 
-                // ===== 4. ПЕРЕЗАГРУЗКА ВСЕХ ЛИНИЙ =====
+                //4. ПЕРЕЗАГРУЗКА ВСЕХ ЛИНИЙ
 
                 var allLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
                 _logger.LogInformation("|   > итого линий после обработки: {Count}", allLines.Count);
 
-                // ===== 5. ОБРАБОТКА РАСХОЖДЕНИЙ =====
+                //5. ОБРАБОТКА РАСХОЖДЕНИЙ
 
                 var discrepancies = new List<TaskControl.TaskModule.Domain.InventoryDiscrepancy>();
 
@@ -279,7 +279,7 @@ namespace TaskControl.TaskModule.Application.Services
                     _logger.LogInformation("Расхождения сохранены");
                 }
 
-                // ===== 6. ОБНОВЛЕНИЕ СТАТИСТИКИ =====
+                //6. ОБНОВЛЕНИЕ СТАТИСТИКИ
 
                 var statistics = await _statisticsRepository.GetByAssignmentIdAsync(dto.AssignmentId);
                 if (statistics == null)
@@ -308,14 +308,14 @@ namespace TaskControl.TaskModule.Application.Services
                     statistics.CountedPositions, statistics.TotalPositions,
                     statistics.TotalPositions > 0 ? (decimal)statistics.CountedPositions / statistics.TotalPositions * 100 : 0);
 
-                // ===== 7. ОБНОВЛЕНИЕ СТАТУСА ЗАДАНИЯ =====
+                //7. ОБНОВЛЕНИЕ СТАТУСА ЗАДАНИЯ
 
                 assignment.Complete(DateTime.UtcNow);
                 await _assignmentRepository.UpdateAsync(assignment);
 
                 _logger.LogInformation("|   * статус назначения -> 'Completed'");
 
-                // ===== 8. ФОРМИРОВАНИЕ РЕЗУЛЬТАТА =====
+                //8. ФОРМИРОВАНИЕ РЕЗУЛЬТАТА
 
                 var statisticsDto = MapStatisticsToDto(statistics);
                 var discrepancyReport = new DiscrepancyReportDto
@@ -475,7 +475,7 @@ namespace TaskControl.TaskModule.Application.Services
                     throw new ArgumentException(msg);
                 }
                 // 3. Создать BaseTask для инвентаризации
-                var baseTaskDto = new TaskControl.TaskModule.Application.DTOs.BaseTaskDto
+                var baseTaskDto = new BaseTaskDto
                 {
                     Title = $"Инвентаризация филиала {dto.BranchId}",
                     Description = dto.Description ?? "Автоматически созданная задача инвентаризации",
