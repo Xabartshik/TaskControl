@@ -280,7 +280,7 @@ namespace TaskControl.TaskModule.Application.Services
                     };
                     assignment.Id = await _db.InsertWithInt32IdentityAsync(assignment);
 
-                    // Создаем строки сборки (задания) на основе нового списка PackingResult.PackedItems
+                    // Создаем строки сборки
                     foreach (var packedBlock in packingResult.PackedItems)
                     {
                         // Находим оригинальную информацию о позиции для получения исходной ячейки
@@ -331,7 +331,7 @@ namespace TaskControl.TaskModule.Application.Services
                                       .Where(op => op.OrderId == orderId)
                                       .Select(op => op.UniqueId);
 
-            // 2. Удаляем все текущие резервы (включая сплитованные)
+            // 2. Удаляем все текущие резервы (включая разбитые)
             await _db.GetTable<OrderReservationModel>()
                      .Where(r => orderPositionIds.Contains(r.OrderPositionId))
                      .DeleteAsync();

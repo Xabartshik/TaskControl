@@ -10,6 +10,10 @@ using TaskControl.Core.AppSettings;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.Domain;
+using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.InventoryModule.DataAccess.Model;
+using TaskControl.OrderModule.DataAccess.Model;
+using TaskControl.InformationModule.DataAccess.Model;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -40,7 +44,6 @@ namespace TaskControl.TaskModule.Application.Services
             if (_appSettings.EnableDetailedLogging)
                 _logger.LogTrace("|   [Exec] получение задач сборки для работника {UserId}", userId);
 
-            // Получаем основные назначения
             var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
             var activeAssignments = assignments
                 .Where(a => a.Status == OrderAssemblyAssignmentStatus.Assigned || a.Status == OrderAssemblyAssignmentStatus.InProgress)
@@ -51,30 +54,26 @@ namespace TaskControl.TaskModule.Application.Services
 
             var result = new List<WorkerAssemblyTaskDto>();
 
-            // Используем таблицы из разных модулей (благодаря ProjectReference)
-            // Примечание: ITaskDataConnection может работать с любыми таблицами через GetTable<T>
-            var baseTasks = _db.ActiveTasks; // Это BaseTaskModel из TaskModule
-            var positions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.PositionModel>();
-            var itemPositions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.ItemPositionModel>();
-            var items = _db.GetTable<TaskControl.InformationModule.DataAccess.Model.ItemModel>();
+            var baseTasks = _db.GetTable<BaseTaskModel>();
+            var positions = _db.GetTable<PositionModel>();
+            var itemPositions = _db.GetTable<ItemPositionModel>();
+            var items = _db.GetTable<ItemModel>();
 
             foreach (var a in activeAssignments)
             {
-                // Данные из base_tasks
                 var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
 
                 var dto = new WorkerAssemblyTaskDto
                 {
                     AssignmentId = a.Id,
                     TaskId = a.TaskId,
-                    TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}", // Используем Title как номер задания
+                    TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}",
                     OrderId = a.OrderId,
                     Status = a.Status,
                     CreatedDate = taskModel?.CreatedAt,
                     TotalLines = a.TotalLines
                 };
 
-                // Группировка по ячейкам PICKUP
                 var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
                 foreach (var g in cellGroups)
                 {
@@ -91,7 +90,6 @@ namespace TaskControl.TaskModule.Application.Services
 
                     foreach (var l in g)
                     {
-                        // Получаем инфо о товаре
                         var itemInfo = await (from ip in itemPositions
                                               join i in items on ip.ItemId equals i.ItemId
                                               where ip.Id == l.ItemPositionId
@@ -103,7 +101,7 @@ namespace TaskControl.TaskModule.Application.Services
                             ItemPositionId = l.ItemPositionId,
                             ItemId = itemInfo?.ItemId ?? 0,
                             ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                            Barcode = (itemInfo?.ItemId ?? 0).ToString(), // Fallback штрих-кода
+                            Barcode = (itemInfo?.ItemId ?? 0).ToString(),
                             Quantity = l.Quantity,
                             PickedQuantity = l.PickedQuantity,
                             Status = l.Status
@@ -119,38 +117,28 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task ScanAndPickItem(int lineId, string scannedBarcode)
         {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("|   [Exec] взят товар: LineId={LineId}, Barcode={Barcode}", lineId, scannedBarcode);
-
             var line = await _lineRepo.GetByIdAsync(lineId);
             if (line == null) throw new ArgumentException("Line not found");
 
-            // TODO: Проверка штрих-кода через репозиторий товаров
             line.MarkAsPicked();
             await _lineRepo.UpdateAsync(line);
         }
 
         public async Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode)
         {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("|   [Exec] массовое размещение: AssignmentId={AssignmentId}, CellCode={CellCode}", assignmentId, scannedCellCode);
-
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
             if (assignment == null) throw new ArgumentException("Assignment not found");
 
-            // Пытаемся найти целевую ячейку по ID (если в QR только число) или по полному коду
-            var positions = _db.GetTable<TaskControl.InventoryModule.DataAccess.Model.PositionModel>();
-            TaskControl.InventoryModule.DataAccess.Model.PositionModel? targetPosition = null;
+            var positions = _db.GetTable<PositionModel>();
+            PositionModel? targetPosition = null;
 
             if (int.TryParse(scannedCellCode, out int scannedId))
             {
-                // Если отсканировано число, ищем напрямую по ID среди всех ячеек
                 targetPosition = await positions.FirstOrDefaultAsync(p => p.PositionId == scannedId);
             }
-            
+
             if (targetPosition == null)
             {
-                // Запасной вариант: ищем по полному коду среди ячеек PICKUP
                 var allPickupPositions = await positions.Where(p => p.ZoneCode == "PICKUP").ToListAsync();
                 targetPosition = allPickupPositions.FirstOrDefault(p => GetFullPositionCode(p) == scannedCellCode);
             }
@@ -160,23 +148,19 @@ namespace TaskControl.TaskModule.Application.Services
 
             var targetPositionId = targetPosition.PositionId;
 
-            // Находим все строки этого задания, которые уже были собраны (Picked)
-            // и предназначены для отсканированной ячейки
             var linesToPlace = assignment.Lines
                 .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId == targetPositionId)
                 .ToList();
 
             if (linesToPlace.Count == 0)
-                throw new InvalidOperationException("Нет собранных товаров, предназначенных для этой ячейки.");
+                throw new InvalidOperationException("Нет собранных товаров для этой ячейки.");
 
-            // Переводим все найденные строки в статус Placed
             foreach (var line in linesToPlace)
             {
                 line.MarkAsPlaced();
                 await _lineRepo.UpdateAsync(line);
             }
 
-            // Считаем оставшиеся ячейки, в которые ещё нужно разложить товары
             var allPickedForOtherCells = assignment.Lines
                 .Where(l => l.Status == OrderAssemblyLineStatus.Picked && l.TargetPositionId != targetPositionId)
                 .Select(l => l.TargetPositionId)
@@ -192,90 +176,110 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task ReportMissingItem(int lineId, string reason)
         {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("|   ! недостача: LineId={LineId}, Reason={Reason}", lineId, reason);
-
             var line = await _lineRepo.GetByIdAsync(lineId);
             if (line == null) throw new ArgumentException("Line not found");
 
             line.ReportDiscrepancy();
             await _lineRepo.UpdateAsync(line);
-
-            // TODO: Добавить запись в inventory_discrepancies
         }
 
         public async Task CompleteAssemblyTask(int assignmentId)
         {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("|   * завершение задачи сборки AssignmentId={AssignmentId}", assignmentId);
-
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
             if (assignment == null) throw new ArgumentException("Assignment not found");
 
             if (assignment.Lines.Any(l => l.Status == OrderAssemblyLineStatus.Pending || l.Status == OrderAssemblyLineStatus.Picked))
-                throw new InvalidOperationException("Not all items are placed or reported as missing.");
+                throw new InvalidOperationException("Не все товары размещены.");
 
             assignment.Complete(DateTime.UtcNow);
             await _assignmentRepo.UpdateAsync(assignment);
 
-            var conn = (DataConnection)_db;
-            using var transaction = await conn.BeginTransactionAsync();
+            // Начинаем транзакцию через DataConnection
+            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
 
             try
             {
-                // Снимаем статус Reserved с ячеек PICKUP
-                var targetCells = assignment.Lines.Select(l => l.TargetPositionId).Distinct().ToList();
-                foreach (var cellId in targetCells)
-                {
-                    await conn.ExecuteAsync("UPDATE positions SET status = 'Active' WHERE position_id = @id", new DataParameter("id", cellId));
-                }
+                // 1. Освобождаем ячейки PICKUP (Status = Active)
+                var targetCellIds = assignment.Lines.Select(l => l.TargetPositionId).Distinct().ToList();
+                await _db.GetTable<PositionModel>()
+                    .Where(p => targetCellIds.Contains(p.PositionId))
+                    .Set(p => p.Status, "Active")
+                    .UpdateAsync();
 
-                // Меняем статус заказа на Assembled
-                await conn.ExecuteAsync("UPDATE orders SET status = 'Assembled' WHERE order_id = @orderId", new DataParameter("orderId", assignment.OrderId));
-                
-                // Переводим задачу base_tasks в Completed
-                await conn.ExecuteAsync("UPDATE base_tasks SET status = 'Completed', completed_at = @dt WHERE task_id = @taskId", 
-                    new DataParameter("dt", DateTime.UtcNow),
-                    new DataParameter("taskId", assignment.TaskId)
-                );
+                // 2. Обновляем статус заказа
+                await _db.GetTable<OrderModel>()
+                    .Where(o => o.OrderId == assignment.OrderId)
+                    .Set(o => o.Status, "Assembled")
+                    .UpdateAsync();
 
-                // Создаем записи о movement
+                // 3. Обновляем базовую задачу
+                await _db.GetTable<BaseTaskModel>()
+                    .Where(t => t.TaskId == assignment.TaskId)
+                    .Set(t => t.Status, "Completed")
+                    .Set(t => t.CompletedAt, DateTime.UtcNow)
+                    .UpdateAsync();
+
+                // 4. Перемещение товаров
+                var itemPositions = _db.GetTable<ItemPositionModel>();
+                var movements = _db.GetTable<ItemMovementModel>();
+
                 foreach (var line in assignment.Lines.Where(l => l.Status == OrderAssemblyLineStatus.Placed))
                 {
-                    await conn.ExecuteAsync(@"
-                        INSERT INTO item_movements (source_item_position_id, destination_position_id, quantity)
-                        VALUES (@itemPosId, @destPos, @qty)",
-                        new DataParameter("itemPosId", line.ItemPositionId),
-                        new DataParameter("destPos", line.TargetPositionId),
-                        new DataParameter("qty", line.Quantity));
+                    // Фиксируем передвижение
+                    await _db.InsertAsync(new ItemMovementModel
+                    {
+                        SourceItemPositionId = line.ItemPositionId,
+                        DestinationPositionId = line.TargetPositionId,
+                        Quantity = line.Quantity,
+                        CreatedAt = DateTime.UtcNow
+                    });
 
-                    // Обновляем item_positions
-                    await conn.ExecuteAsync(@"
-                        UPDATE item_positions SET position_id = @targetPos WHERE id = @itemPosId",
-                        new DataParameter("itemPosId", line.ItemPositionId),
-                        new DataParameter("targetPos", line.TargetPositionId));
+                    // Уменьшаем остаток на исходной полке
+                    await itemPositions
+                        .Where(ip => ip.Id == line.ItemPositionId)
+                        .Set(ip => ip.Quantity, ip => ip.Quantity - line.Quantity)
+                        .UpdateAsync();
+
+                    // Создаем запись в ячейке PICKUP
+                    // Находим ID товара из исходной записи
+                    var originalItem = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+                    if (originalItem != null)
+                    {
+                        await _db.InsertAsync(new ItemPositionModel
+                        {
+                            ItemId = originalItem.ItemId,
+                            PositionId = line.TargetPositionId,
+                            Quantity = line.Quantity,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
                 }
 
+                // Г) Удаляем пустые записи с полок
+                await itemPositions.Where(ip => ip.Quantity <= 0).DeleteAsync();
+
                 await transaction.CommitAsync();
+
+                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} (Assignment {Id}) успешно ЗАВЕРШЕНА ===",
+                    assignment.TaskId, assignmentId);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! Ошибка при завершении задачи {Id}", assignmentId);
                 throw;
             }
         }
-        private string GetFullPositionCode(TaskControl.InventoryModule.DataAccess.Model.PositionModel pos)
+
+        private string GetFullPositionCode(PositionModel pos)
         {
             if (pos == null) return null;
-
             var parts = new List<string>();
-            
             if (!string.IsNullOrEmpty(pos.ZoneCode)) parts.Add(pos.ZoneCode);
             if (!string.IsNullOrEmpty(pos.FirstLevelStorageType)) parts.Add(pos.FirstLevelStorageType);
             if (!string.IsNullOrEmpty(pos.FLSNumber)) parts.Add(pos.FLSNumber);
             if (!string.IsNullOrEmpty(pos.SecondLevelStorage)) parts.Add(pos.SecondLevelStorage);
             if (!string.IsNullOrEmpty(pos.ThirdLevelStorage)) parts.Add(pos.ThirdLevelStorage);
-
             return string.Join("-", parts);
         }
     }
