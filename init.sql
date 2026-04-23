@@ -590,6 +590,7 @@ CREATE TABLE IF NOT EXISTS inventory_assignments (
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
     assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at    TIMESTAMP NULL,
     completed_at TIMESTAMP
 );
 
@@ -693,6 +694,7 @@ CREATE TABLE IF NOT EXISTS order_assembly_assignments (
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
     assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
     completed_at TIMESTAMP
 );
 
@@ -748,3 +750,21 @@ CREATE TABLE IF NOT EXISTS mobile_app_users (
 CREATE INDEX idx_mobile_app_users_employee ON mobile_app_users(employee_id);
 CREATE INDEX idx_mobile_app_users_role ON mobile_app_users(role);
 CREATE INDEX idx_mobile_app_users_active ON mobile_app_users(is_active);
+
+-- Универсальная структура для хранения итогов по задачам
+CREATE TABLE worker_task_efficiency (
+    id SERIAL PRIMARY KEY,
+    worker_id integer NOT NULL,
+    branch_id integer NOT NULL,
+    task_category varchar(50) NOT NULL, -- "OrderAssembly", "Inventory", "Loading" и т.д.
+    wait_time_seconds integer NOT NULL DEFAULT 0, -- Время ожидания задачи (добавлено)
+    queue_size integer NOT NULL DEFAULT 0, -- Размер очереди задач (добавлено)
+    items_processed integer NOT NULL DEFAULT 0, -- Число товаров (integer)
+    total_duration_seconds integer NOT NULL DEFAULT 0, -- Время выполнения (integer)
+    discrepancies_found integer NOT NULL DEFAULT 0, -- Ошибки/расхождения (integer)
+    completed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для быстрой выборки отчетов по датам и сотрудникам
+CREATE INDEX idx_worker_efficiency_worker_date ON worker_task_efficiency (worker_id, completed_at);
+CREATE INDEX idx_worker_efficiency_branch_date ON worker_task_efficiency (branch_id, completed_at);

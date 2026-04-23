@@ -42,6 +42,7 @@ namespace TaskControl.TaskModule.Domain
         public OrderAssemblyAssignmentStatus Status { get; internal set; }
 
         public DateTime AssignedAt { get; internal set; }
+        public DateTime? StartedAt { get; internal set; }
         public DateTime? CompletedAt { get; internal set; }
 
         internal readonly List<OrderAssemblyLine> _lines = new();
@@ -114,13 +115,14 @@ namespace TaskControl.TaskModule.Domain
             _lines.Add(line);
         }
 
-        public void Start()
+        public void Start(DateTime startedAtUtc)
         {
             if (Status == OrderAssemblyAssignmentStatus.Cancelled ||
                 Status == OrderAssemblyAssignmentStatus.Completed)
                 throw new InvalidOperationException("Cannot start completed or cancelled assignment.");
 
             Status = OrderAssemblyAssignmentStatus.InProgress;
+            StartedAt = startedAtUtc;
         }
 
         public void Complete(DateTime completedAtUtc)

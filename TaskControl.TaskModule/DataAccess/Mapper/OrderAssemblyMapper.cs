@@ -40,6 +40,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 BranchId = model.BranchId,
                 Status = (OrderAssemblyAssignmentStatus)model.Status,
                 AssignedAt = model.AssignedAt,
+                StartedAt = model.StartedAt,
                 CompletedAt = model.CompletedAt
             };
             return assignment;
@@ -58,6 +59,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 BranchId = domain.BranchId,
                 Status = (int)domain.Status,
                 AssignedAt = domain.AssignedAt,
+                StartedAt = domain.StartedAt,
                 CompletedAt = domain.CompletedAt
             };
         }

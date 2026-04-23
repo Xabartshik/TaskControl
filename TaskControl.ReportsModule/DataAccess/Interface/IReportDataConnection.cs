@@ -12,5 +12,6 @@ namespace TaskControl.ReportsModule.DataAccess.Interface
     public interface IReportDataConnection : IDataConnection
     {
         ITable<RawEventModel> RawEvents { get; }
+        ITable<WorkerTaskEfficiencyModel> WorkerTaskEfficiency { get; }
     }
 }

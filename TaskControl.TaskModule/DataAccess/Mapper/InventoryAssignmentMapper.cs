@@ -20,6 +20,7 @@ public static class InventoryAssignmentMapper
             lines: new List<InventoryAssignmentLine>())
         {
             CompletedAt = model.CompletedAt,
+            StartedAt = model.StartedAt,
             Status = (InventoryAssignmentStatus)model.Status
         };
     }
@@ -37,6 +38,7 @@ public static class InventoryAssignmentMapper
             BranchId = domain.BranchId,
             Status = (int)domain.Status,
             AssignedAt = domain.AssignedAt,
+            StartedAt = domain.StartedAt,
             CompletedAt = domain.CompletedAt
         };
     }
@@ -57,6 +59,7 @@ public static class InventoryAssignmentMapper
             lines: lines ?? new List<InventoryAssignmentLine>())
         {
             CompletedAt = model.CompletedAt,
+            StartedAt = model.StartedAt,
             Status = (InventoryAssignmentStatus)model.Status
         };
     }

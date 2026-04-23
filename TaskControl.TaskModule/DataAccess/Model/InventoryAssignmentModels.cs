@@ -24,6 +24,9 @@ public class InventoryAssignmentModel
     [Column("assigned_at"), NotNull]
     public DateTime AssignedAt { get; set; }
 
+    [Column("started_at")]
+    public DateTime? StartedAt { get; set; }
+
     [Column("completed_at")]
     public DateTime? CompletedAt { get; set; }
 }

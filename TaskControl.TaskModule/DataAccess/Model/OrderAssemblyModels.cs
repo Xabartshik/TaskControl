@@ -25,6 +25,9 @@ public class OrderAssemblyAssignmentModel
     [Column("status"), NotNull]
     public int Status { get; set; }
 
+    [Column("started_at")]
+    public DateTime? StartedAt { get; set; }
+
     [Column("assigned_at"), NotNull]
     public DateTime AssignedAt { get; set; }
 

@@ -26,9 +26,11 @@ using TaskControl.OrderModule.DataAccess.Infrastructure;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.Services;
 using TaskControl.ReportsModule.Application.DTOs;
+using TaskControl.ReportsModule.Application.Interface;
 using TaskControl.ReportsModule.Application.Services;
 using TaskControl.ReportsModule.DataAccess.Infrastructure;
 using TaskControl.ReportsModule.DataAccess.Interface;
+using TaskControl.ReportsModule.DataAccess.Providers;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
@@ -106,6 +108,9 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IReportDataConnection, ReportDataConnection>();
             services.AddScoped<IRawEventRepository, RawEventRepository>();
             services.AddScoped<IService<RawEventDto>, RawEventService>();
+
+            services.AddScoped<ITelemetryService, TelemetryService>();
+            services.AddScoped<IAnalyticsQueryProvider, AnalyticsQueryProvider>();
 
             return services;
         }

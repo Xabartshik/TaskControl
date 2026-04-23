@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
@@ -29,10 +30,13 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IBaseTaskService _baseTaskService;
         private readonly IItemPositionRepository _itemPositionRepository;
         private readonly PositionDetailsService _positionDetailsService;
-        private readonly ActiveEmployeeService _activeEmployeeService;
         private readonly ILogger<InventoryProcessService> _logger;
         private readonly IItemRepository _itemRepository;
         private readonly IPositionCellRepository _positionCellRepository;
+        private readonly ITelemetryService _telemetryService;
+        private readonly TaskWorkloadAggregator _aggregator;
+
+
 
         public InventoryProcessService(
             IInventoryAssignmentRepository assignmentRepository,
@@ -42,9 +46,10 @@ namespace TaskControl.TaskModule.Application.Services
             IBaseTaskService baseTaskService,
             IItemPositionRepository itemPositionRepository,
             PositionDetailsService positionDetailsService,
-            ActiveEmployeeService activeEmployeeService,
             IItemRepository itemRepository,
             IPositionCellRepository positionCellRepository,
+            ITelemetryService telemetryService,
+            TaskWorkloadAggregator aggregator,
             ILogger<InventoryProcessService> logger)
         {
             _assignmentRepository = assignmentRepository
@@ -61,14 +66,16 @@ namespace TaskControl.TaskModule.Application.Services
                 ?? throw new ArgumentNullException(nameof(itemPositionRepository));
             _positionDetailsService = positionDetailsService
                 ?? throw new ArgumentNullException(nameof(positionDetailsService));
-            _activeEmployeeService = activeEmployeeService
-                ?? throw new ArgumentNullException(nameof(activeEmployeeService));
             _itemRepository = itemRepository
                 ?? throw new ArgumentNullException(nameof(itemRepository));
             _positionCellRepository = positionCellRepository
                 ?? throw new ArgumentNullException(nameof(positionCellRepository));
             _logger = logger
                 ?? throw new ArgumentNullException(nameof(logger));
+            _telemetryService = telemetryService
+                ?? throw new ArgumentNullException(nameof(telemetryService));
+            _aggregator = aggregator
+                ?? throw new ArgumentNullException(nameof(aggregator));
         }
 
         /// <summary>
@@ -208,7 +215,7 @@ namespace TaskControl.TaskModule.Application.Services
                             continue;
                         }
 
-                        // Создаем новую линию для РЕАЛЬНО неожиданного товара
+                        // Создаем новую линию для неожиданного товара
                         var newLine = new InventoryAssignmentLine(
                             inventoryAssignmentId: dto.AssignmentId,
                             itemPositionId: itemPosition.Id,
@@ -330,6 +337,27 @@ namespace TaskControl.TaskModule.Application.Services
                     Discrepancies = finalDiscrepancies.Select(MapDiscrepancyToDto).ToList()
                 };
 
+                int itemsProcessed = allLines.Count; // Считаем общее кол-во проверенных ячеек
+                DateTime startTime = assignment.StartedAt ?? assignment.AssignedAt;
+                int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+
+                int waitTimeSeconds = assignment.StartedAt.HasValue
+                    ? (int)(assignment.StartedAt.Value - assignment.AssignedAt).TotalSeconds
+                    : 0;
+
+                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(dto.WorkerId);
+
+                await _telemetryService.LogTaskEventAsync(
+                    workerId: dto.WorkerId,
+                    branchId: assignment.BranchId,
+                    taskCategory: "Inventory",
+                    itemsProcessed: itemsProcessed,
+                    durationSeconds: durationSeconds,
+                    discrepanciesFound: finalDiscrepancies.Count,
+                    waitTimeSeconds: waitTimeSeconds,
+                    queueSize: globalQueueSize
+                );
+
                 string successMessage = $"✅ Инвентаризация завершена";
                 if (newLinesToAdd.Count > 0)
                     successMessage += $"\nДобавлено неожиданных товаров: {newLinesToAdd.Count}";
@@ -353,6 +381,7 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
+
 
 
         /// <summary>
@@ -641,7 +670,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var dto = new InventoryTaskDetailsDto
                 {
-                    TaskId = assignment.TaskId, 
+                    TaskId = assignment.TaskId,
                     ZoneCode = assignment.ZoneCode,
                     InitiatedAt = assignment.AssignedAt,
                     Items = new List<InventoryItemDto>()

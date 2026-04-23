@@ -7,13 +7,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.Core.AppSettings;
-using TaskControl.TaskModule.Application.Interface;
-using TaskControl.TaskModule.DataAccess.Interface;
-using TaskControl.TaskModule.Domain;
-using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.OrderModule.DataAccess.Model;
-using TaskControl.InformationModule.DataAccess.Model;
+using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -22,6 +23,8 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IOrderAssemblyAssignmentRepository _assignmentRepo;
         private readonly IOrderAssemblyLineRepository _lineRepo;
         private readonly ILogger<OrderAssemblyExecutionService> _logger;
+        private readonly ITelemetryService _telemetryService;
+        private readonly TaskWorkloadAggregator _aggregator;
         private readonly AppSettings _appSettings;
         private readonly ITaskDataConnection _db;
 
@@ -30,6 +33,8 @@ namespace TaskControl.TaskModule.Application.Services
             IOrderAssemblyLineRepository lineRepo,
             ILogger<OrderAssemblyExecutionService> logger,
             IOptions<AppSettings> appSettings,
+            ITelemetryService telemetryService,
+            TaskWorkloadAggregator aggregator, 
             ITaskDataConnection db)
         {
             _assignmentRepo = assignmentRepo ?? throw new ArgumentNullException(nameof(assignmentRepo));
@@ -37,6 +42,8 @@ namespace TaskControl.TaskModule.Application.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _appSettings = appSettings?.Value ?? new AppSettings();
             _db = db ?? throw new ArgumentNullException(nameof(db));
+            _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
+            _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
         }
 
         public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
@@ -255,8 +262,30 @@ namespace TaskControl.TaskModule.Application.Services
                     }
                 }
 
-                // Г) Удаляем пустые записи с полок
                 await itemPositions.Where(ip => ip.Quantity <= 0).DeleteAsync();
+
+                // Внедрение отчетов
+                int itemsProcessed = assignment.Lines.Sum(line => line.Quantity);
+                int branchId = assignment.BranchId;
+
+                DateTime startTime = assignment.StartedAt ?? assignment.AssignedAt;
+                int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+
+                int waitTimeSeconds = assignment.StartedAt.HasValue
+                    ? (int)(assignment.StartedAt.Value - assignment.AssignedAt).TotalSeconds
+                    : 0;
+
+                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(assignment.AssignedToUserId);
+                await _telemetryService.LogTaskEventAsync(
+                    workerId: assignment.AssignedToUserId,
+                    branchId: branchId,
+                    taskCategory: "OrderAssembly",
+                    itemsProcessed: itemsProcessed,
+                    durationSeconds: durationSeconds,
+                    discrepanciesFound: 0,
+                    waitTimeSeconds: waitTimeSeconds,
+                    queueSize: globalQueueSize
+                );
 
                 await transaction.CommitAsync();
 
