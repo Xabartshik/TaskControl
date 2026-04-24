@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.DataAccess.Interface;
@@ -37,7 +37,7 @@ namespace TaskControl.InformationModule.DAL.Repositories
 
         public async Task<IEnumerable<CheckIOEmployee>> GetAllAsync()
         {
-            _logger.LogInformation("Получение всех записей учета прихода на работу сотрудника");
+            _logger.LogDebug("Получение всех записей учета прихода на работу сотрудника");
             try
             {
                 var checkIOEmployeesModels = await _db.CheckIOEmployees.ToListAsync();

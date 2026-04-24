@@ -40,7 +40,7 @@ namespace TaskControl.InformationModule.Domain
         public string? MiddleName { get; set; }
 
         /// <summary>
-        /// Должность/роль сотрудника в компании
+        /// Должность/роль сотрудника в компании TODO: заменить на тип, убрав строку
         /// </summary>
         [Required(ErrorMessage = "Должность обязательна для заполнения")]
         [StringLength(150, ErrorMessage = "Название должности не может превышать 150 символов")]

@@ -61,7 +61,7 @@ namespace TaskControl.OrderModule.DAL.Repositories
                     throw new ArgumentException("Недопустимый тип заказа");
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {

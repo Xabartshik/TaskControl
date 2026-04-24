@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
@@ -19,6 +20,7 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             _service = service;
             _logger = logger;
         }
+
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BaseTaskDto>>> GetAll()

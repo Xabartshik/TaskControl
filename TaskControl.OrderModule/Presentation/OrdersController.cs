@@ -40,12 +40,11 @@ namespace TaskControl.OrderModule.Presentation.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<int>> Add(OrderDto dto)
+        public async Task<ActionResult<int>> Add([FromBody] OrderDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+            // Валидация
+            if (dto.Positions == null || !dto.Positions.Any())
+                return BadRequest("Заказ не может быть пустым (без позиций)");
 
             var newId = await _service.Add(dto);
             return CreatedAtAction(nameof(GetById), new { id = newId }, newId);

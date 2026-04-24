@@ -3,7 +3,8 @@ using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
+
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
@@ -32,6 +33,33 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                 throw;
             }
         }
+
+        public async Task<IEnumerable<ItemPosition>> GetByIdsAsync(IEnumerable<int> ids)
+        {
+            if (ids == null) throw new ArgumentNullException(nameof(ids));
+
+            // Чтобы не гонять запрос с пустым IN()
+            var idArray = ids.Distinct().ToArray();
+            if (idArray.Length == 0)
+                return Array.Empty<ItemPosition>();
+
+            _logger.LogInformation("Получение связей товар-позиция по списку ID. Count: {count}", idArray.Length);
+
+            try
+            {
+                var models = await _db.ItemPositions
+                    .Where(ip => idArray.Contains(ip.Id))
+                    .ToListAsync();
+
+                return models.Select(m => m.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении связей товар-позиция по списку ID");
+                throw;
+            }
+        }
+
 
         public async Task<IEnumerable<ItemPosition>> GetAllAsync()
         {

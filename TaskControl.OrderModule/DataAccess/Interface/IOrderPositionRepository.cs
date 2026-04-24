@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DataAccess.Interface
 {
@@ -13,6 +10,6 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         Task<int> UpdateAsync(OrderPosition entity);
         Task<int> DeleteAsync(int id);
         Task<IEnumerable<OrderPosition>> GetByOrderIdAsync(int orderId);
-        Task<IEnumerable<OrderPosition>> GetByItemPositionIdAsync(int itemPositionId);
+        Task<IEnumerable<OrderPosition>> GetByItemIdAsync(int itemId);
     }
 }

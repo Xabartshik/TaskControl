@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -55,6 +55,10 @@ namespace TaskControl.OrderModule.Domain
             ErrorMessage = "Недопустимый статус заказа")]
         public string Status { get; set; } = "New";
 
+        /// <summary>
+        /// Дата создания заказа
+        /// </summary>
+        public DateTime CreatedAt { get; set; }
 
     }
 }

@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.OrderModule.Application.DTOs
 {
@@ -16,7 +16,7 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int OrderId { get; init; }
 
         [Required]
-        public int ItemPositionId { get; init; }
+        public int ItemId { get; init; }
 
         [Required]
         public int Quantity { get; init; }
@@ -25,7 +25,7 @@ namespace TaskControl.OrderModule.Application.DTOs
         {
             UniqueId = dto.UniqueId,
             OrderId = dto.OrderId,
-            ItemPositionId = dto.ItemPositionId,
+            ItemId = dto.ItemId,
             Quantity = dto.Quantity
         };
 
@@ -33,7 +33,7 @@ namespace TaskControl.OrderModule.Application.DTOs
         {
             UniqueId = entity.UniqueId,
             OrderId = entity.OrderId,
-            ItemPositionId = entity.ItemPositionId,
+            ItemId = entity.ItemId,
             Quantity = entity.Quantity
         };
     }
