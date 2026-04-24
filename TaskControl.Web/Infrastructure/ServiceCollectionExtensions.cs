@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -111,6 +112,10 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ITelemetryService, TelemetryService>();
             services.AddScoped<IAnalyticsQueryProvider, AnalyticsQueryProvider>();
+
+            services.AddScoped<ReportExportService>();
+
+            QuestPDF.Settings.License = LicenseType.Community;
 
             return services;
         }
