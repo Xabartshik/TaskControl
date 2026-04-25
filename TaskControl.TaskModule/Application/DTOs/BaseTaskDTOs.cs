@@ -97,8 +97,8 @@ namespace TaskControl.TaskModule.Application.DTOs
         [StringLength(50, ErrorMessage = "Тип задачи не может превышать 50 символов")]
         public string Type { get; init; }
 
-        [Range(0, 10, ErrorMessage = "Приоритет должен быть от 0 до 10")]
-        public int Priority { get; init; } = 5;
+        [Range(0, 5, ErrorMessage = "Приоритет должен быть от 0 до 5")]
+        public int PriorityLevel { get; init; } = 5;
     }
 
     /// <summary>

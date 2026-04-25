@@ -60,10 +60,7 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
                     .Where(l => l.OrderAssemblyAssignmentId == model.Id)
                     .ToListAsync();
 
-                if (lines.Count > 0)
-                {
-                    result.Add(model.ToDomainWithLines(lines.Select(l => l.ToDomain()).ToList()));
-                }
+                result.Add(model.ToDomainWithLines(lines.Select(l => l.ToDomain()).ToList()));
             }
             return result;
         }

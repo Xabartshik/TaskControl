@@ -9,8 +9,8 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
         [Required]
         public List<string> ZonePrefixes { get; set; } = new List<string>();
 
-        [Range(1, 10)]
-        public int Priority { get; set; } = 3;
+        [Range(0, 5)]
+        public int PriorityLevel { get; set; } = 1;
 
         public int WorkerCount { get; set; } = 1;
 

@@ -51,7 +51,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     TaskId = a.TaskId,
                     Title = baseTask?.Title ?? $"Сборка заказа #{a.OrderId}",
                     TaskType = this.TaskType,
-                    Priority = baseTask?.Priority ?? 7,
+                    PriorityLevel = baseTask?.PriorityLevel ?? 1,
                     Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new

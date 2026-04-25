@@ -67,8 +67,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     throw new ArgumentException($"Недопустимый статус задачи: {entity.Status}");
 
                 // Валидация приоритета
-                if (entity.Priority < 0 || entity.Priority > 10)
-                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.Priority}. Должен быть от 0 до 10.");
+                if (entity.PriorityLevel < 0 || entity.PriorityLevel > 5)
+                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 5.");
 
                 var model = entity.ToModel();
                 // InsertWithInt32IdentityAsync возвращает реальный ID новой записи из IDENTITY-колонки
@@ -97,8 +97,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     throw new ArgumentException($"Недопустимый статус задачи: {entity.Status}");
 
                 // Валидация приоритета
-                if (entity.Priority < 0 || entity.Priority > 10)
-                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.Priority}. Должен быть от 0 до 10.");
+                if (entity.PriorityLevel < 0 || entity.PriorityLevel > 5)
+                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 5.");
 
                 var model = entity.ToModel();
                 var result = await _db.UpdateAsync(model);
@@ -228,22 +228,22 @@ namespace TaskControl.TaskModule.DAL.Repositories
         /// </summary>
         public async Task<IEnumerable<BaseTask>> GetByPriorityAsync(int priority)
         {
-            _logger.LogInformation("Получение задач с приоритетом: {Priority}", priority);
+            _logger.LogInformation("Получение задач с приоритетом: {PriorityLevel}", priority);
             try
             {
-                if (priority < 0 || priority > 10)
-                    throw new ArgumentException($"Приоритет должен быть от 0 до 10, получено: {priority}");
+                if (priority < 0 || priority > 5)
+                    throw new ArgumentException($"Приоритет должен быть от 0 до 5, получено: {priority}");
 
                 var tasks = await _db.ActiveTasks
-                    .Where(t => t.Priority == priority)
+                    .Where(t => t.PriorityLevel == priority)
                     .ToListAsync();
 
-                _logger.LogInformation("Найдено {Count} задач с приоритетом: {Priority}", tasks.Count, priority);
+                _logger.LogInformation("Найдено {Count} задач с приоритетом: {PriorityLevel}", tasks.Count, priority);
                 return tasks.Select(t => t.ToDomain());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при получении задач с приоритетом: {Priority}", priority);
+                _logger.LogError(ex, "Ошибка при получении задач с приоритетом: {PriorityLevel}", priority);
                 throw;
             }
         }
@@ -284,8 +284,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
             try
             {
                 var tasks = await _db.ActiveTasks
-                    .Where(t => t.Priority >= 7)
-                    .OrderByDescending(t => t.Priority)
+                    .Where(t => t.PriorityLevel >= 2)
+                    .OrderByDescending(t => t.PriorityLevel)
                     .ToListAsync();
 
                 _logger.LogInformation("Найдено {Count} задач с высоким приоритетом", tasks.Count);

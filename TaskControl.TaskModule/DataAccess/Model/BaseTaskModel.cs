@@ -31,7 +31,13 @@ namespace TaskControl.TaskModule.DataAccess.Model
         [Column("status"), NotNull]
         public string Status { get; set; }
 
-        [Column("priority"), NotNull]
-        public int Priority { get; set; }
+        [Column("deadline")]
+        public DateTime? Deadline { get; set; }
+
+        [Column("priority_level")]
+        public int PriorityLevel { get; set; }
+
+        [Column("source_type")]
+        public string? SourceType { get; set; }
     }
 }

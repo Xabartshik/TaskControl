@@ -52,7 +52,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     TaskId = a.TaskId,
                     Title = baseTask?.Title ?? "Инвентаризация ячеек",
                     TaskType = this.TaskType, 
-                    Priority = baseTask?.Priority ?? 5,
+                    PriorityLevel = baseTask?.PriorityLevel ?? 5,
                     Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new

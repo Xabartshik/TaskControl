@@ -127,12 +127,12 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
                     .Where(l => l.InventoryAssignmentId == model.Id)
                     .ToListAsync();
 
-                // Пропускаем assignment'ы БЕЗ строк (они невалидны по домену)
-                if (lines.Count == 0)
-                {
-                    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
-                    continue;
-                }
+                //// Пропускаем assignment'ы БЕЗ строк (они невалидны по домену)
+                //if (lines.Count == 0)
+                //{
+                //    _logger.LogWarning("У назначения {AssignmentId} нет линий, пропускаем", model.Id);
+                //    continue;
+                //}
 
                 var domainLines = lines.Select(l => l.ToDomain()).ToList();
                 var domain = model.ToDomainWithLines(domainLines);

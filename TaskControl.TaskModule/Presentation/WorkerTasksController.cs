@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
+using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
@@ -11,10 +12,12 @@ namespace TaskControl.TaskModule.Presentation.Controllers
     public class WorkerTasksController : ControllerBase
     {
         private readonly TaskWorkloadAggregator _aggregator;
+        private readonly ITaskExecutionAggregator _taskExecutionAggregator;
 
-        public WorkerTasksController(TaskWorkloadAggregator aggregator)
+        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator)
         {
             _aggregator = aggregator;
+            _taskExecutionAggregator = taskExecutionAggregator;
         }
 
         [HttpGet("{workerId}/pending")]
@@ -22,6 +25,20 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         {
             var tasks = await _aggregator.GetAllPendingTasksAsync(workerId);
             return Ok(tasks);
+        }
+
+        /// <summary>
+        /// Начинает или продолжает выполнение задачи для указанного работника.
+        /// Остальные активные задачи работника ставятся на паузу.
+        /// </summary>
+        [HttpPost("{taskId}/start")]
+        public async Task<IActionResult> StartTask(int taskId, [FromQuery] int workerId)
+        {
+            // Агрегатор сам пройдет по всем модулям (Сборка, Инвентаризация и т.д.),
+            // поставит на паузу текущие назначения и активирует запрошенное.
+            await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
+
+            return Ok();
         }
     }
 }

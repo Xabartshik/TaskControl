@@ -35,6 +35,7 @@ using TaskControl.ReportsModule.DataAccess.Providers;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Providers;
 using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
@@ -173,6 +174,10 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<TaskWorkloadAggregator>();
 
             services.AddScoped<WorkerTasksController>();
+
+            services.AddScoped<ITaskStateProvider, OrderAssemblyTaskStateProvider>();
+            services.AddScoped<ITaskStateProvider, InventoryTaskStateProvider>();
+            services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
 
             return services;
         }

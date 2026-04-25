@@ -45,7 +45,7 @@ namespace TaskControl.TaskModule.Application.Services
                 allTasks.AddRange(moduleTasks);
             }
             
-            return allTasks.OrderByDescending(t => t.Priority).ThenBy(t => t.CreatedAt);
+            return allTasks.OrderByDescending(t => t.PriorityLevel).ThenBy(t => t.CreatedAt);
         }
 
         public async Task<bool> StartTaskAsync(int taskId, string taskType, int workerId)
