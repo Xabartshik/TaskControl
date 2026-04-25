@@ -5,7 +5,7 @@ using TaskControl.Core.Shared.SharedInterfaces;
 namespace TaskControl.InformationModule.Presentation.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     public class ItemController : ControllerBase, ICrudController<ItemDto, int>
     {
         private readonly IService<ItemDto> _service;
