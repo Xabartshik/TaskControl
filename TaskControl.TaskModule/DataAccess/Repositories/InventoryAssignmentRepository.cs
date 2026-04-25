@@ -13,7 +13,7 @@ public interface IInventoryAssignmentRepository
     Task<InventoryAssignment?> GetByTaskIdAsync(int taskId);
     Task<List<InventoryAssignment>> GetByUserIdAsync(int userId);
     Task<List<InventoryAssignment>> GetByBranchIdAsync(int branchId);
-    Task<List<InventoryAssignment>> GetByStatusAsync(InventoryAssignmentStatus status);
+    Task<List<InventoryAssignment>> GetByStatusAsync(AssignmentStatus status);
     Task<List<InventoryAssignment>> GetActiveAsync();
     Task<int> AddAsync(InventoryAssignment assignment);
     Task<int> UpdateAsync(InventoryAssignment assignment);
@@ -184,7 +184,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
         }
     }
 
-    public async Task<List<InventoryAssignment>> GetByStatusAsync(InventoryAssignmentStatus status)
+    public async Task<List<InventoryAssignment>> GetByStatusAsync(AssignmentStatus status)
     {
         _logger.LogInformation("Получение назначений со статусом: {Status}", status);
         try
@@ -225,7 +225,7 @@ public class InventoryAssignmentRepository : IInventoryAssignmentRepository
         try
         {
             var assignments = await _db.InventoryAssignments
-                .Where(a => a.Status != (int)InventoryAssignmentStatus.Completed && a.CompletedAt == null)
+                .Where(a => a.Status != (int)AssignmentStatus.Completed && a.CompletedAt == null)
                 .ToListAsync();
 
             var result = new List<InventoryAssignment>();

@@ -18,7 +18,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 model.OrderId,
                 model.AssignedToUserId,
                 model.BranchId,
-                (OrderAssemblyAssignmentStatus)model.Status,
+                (AssignmentStatus)model.Status,
                 model.AssignedAt,
                 lines
             )
@@ -38,7 +38,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 OrderId = model.OrderId,
                 AssignedToUserId = model.AssignedToUserId,
                 BranchId = model.BranchId,
-                Status = (OrderAssemblyAssignmentStatus)model.Status,
+                Status = (AssignmentStatus)model.Status,
                 AssignedAt = model.AssignedAt,
                 StartedAt = model.StartedAt,
                 CompletedAt = model.CompletedAt

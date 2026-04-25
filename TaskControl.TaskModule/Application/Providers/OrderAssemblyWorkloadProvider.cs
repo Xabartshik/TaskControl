@@ -52,7 +52,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     Title = baseTask?.Title ?? $"Сборка заказа #{a.OrderId}",
                     TaskType = this.TaskType,
                     Priority = baseTask?.Priority ?? 7,
-                    Status = a.Status == OrderAssemblyAssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new
                     {
@@ -69,7 +69,7 @@ namespace TaskControl.TaskModule.Application.Providers
             if (assignment == null || assignment.AssignedToUserId != workerId) 
                 return false;
 
-            assignment.Status = Domain.OrderAssemblyAssignmentStatus.InProgress;
+            assignment.Status = Domain.AssignmentStatus.InProgress;
             await _assemblyRepo.UpdateAsync(assignment);
             return true;
         }

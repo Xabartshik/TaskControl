@@ -14,7 +14,7 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
         public string? UserName { get; set; }
         public int BranchId { get; set; }
         public string? ZoneCode { get; set; }
-        public InventoryAssignmentStatus Status { get; set; }
+        public AssignmentStatus Status { get; set; }
         public DateTime AssignedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
         public List<InventoryAssignmentLineWithItemDto> Lines { get; set; } = new();

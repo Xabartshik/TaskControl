@@ -16,12 +16,12 @@ public static class InventoryAssignmentMapper
             taskId: model.TaskId,
             assignedToUserId: model.AssignedToUserId,
             branchId: model.BranchId,
+            status: (AssignmentStatus)model.Status, 
             assignedAtUtc: model.AssignedAt,
-            lines: new List<InventoryAssignmentLine>())
+            lines: new List<InventoryAssignmentLine>()) 
         {
             CompletedAt = model.CompletedAt,
-            StartedAt = model.StartedAt,
-            Status = (InventoryAssignmentStatus)model.Status
+            StartedAt = model.StartedAt
         };
     }
 
@@ -44,8 +44,8 @@ public static class InventoryAssignmentMapper
     }
 
     public static InventoryAssignment ToDomainWithLines(
-    this InventoryAssignmentModel model,
-    List<InventoryAssignmentLine> lines)
+        this InventoryAssignmentModel model,
+        List<InventoryAssignmentLine> lines)
     {
         if (model is null)
             return null;
@@ -55,17 +55,15 @@ public static class InventoryAssignmentMapper
             taskId: model.TaskId,
             assignedToUserId: model.AssignedToUserId,
             branchId: model.BranchId,
+            status: (AssignmentStatus)model.Status,
             assignedAtUtc: model.AssignedAt,
             lines: lines ?? new List<InventoryAssignmentLine>())
         {
             CompletedAt = model.CompletedAt,
-            StartedAt = model.StartedAt,
-            Status = (InventoryAssignmentStatus)model.Status
+            StartedAt = model.StartedAt
         };
     }
-
 }
-
 public static class InventoryAssignmentLineMapper
 {
     public static InventoryAssignmentLine ToDomain(this InventoryAssignmentLineModel model)

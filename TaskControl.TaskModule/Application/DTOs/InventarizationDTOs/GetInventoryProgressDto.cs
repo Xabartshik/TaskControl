@@ -15,7 +15,7 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
         public int AssignmentId { get; set; }
         public InventoryStatisticsDto? CurrentStatistics { get; set; }
         public List<InventoryAssignmentLineDto> RemainingItems { get; set; } = new();
-        public InventoryAssignmentStatus Status { get; set; }
+        public AssignmentStatus Status { get; set; }
         public double TimeSpentMinutes { get; set; }
         public double EstimatedTimeRemainingMinutes { get; set; }
     }

@@ -98,10 +98,10 @@ namespace TaskControl.TaskModule.Application.Services
                     throw new InvalidOperationException(
                         $"Assignment {dto.AssignmentId} не принадлежит работнику {dto.WorkerId}");
 
-                if (assignment.Status == InventoryAssignmentStatus.Completed)
+                if (assignment.Status == AssignmentStatus.Completed)
                     throw new InvalidOperationException("Задание уже завершено");
 
-                if (assignment.Status == InventoryAssignmentStatus.Cancelled)
+                if (assignment.Status == AssignmentStatus.Cancelled)
                     throw new InvalidOperationException("Задание отменено");
 
                 // Загрузка всех существующих линий
@@ -217,11 +217,11 @@ namespace TaskControl.TaskModule.Application.Services
 
                         // Создаем новую линию для неожиданного товара
                         var newLine = new InventoryAssignmentLine(
-                            inventoryAssignmentId: dto.AssignmentId,
-                            itemPositionId: itemPosition.Id,
-                            positionId: itemPosition.PositionId,
-                            positionCode: positionCode,
-                            expectedQuantity: 0); // Товар не ожидался
+                                                        inventoryAssignmentId: dto.AssignmentId,
+                                                        itemPositionId: itemPosition.Id,
+                                                        positionId: itemPosition.PositionId,
+                                                        positionCode: positionCode,
+                                                        expectedQuantity: 0);
 
                         // Устанавливаем фактическое количество
                         newLine.SetActualQuantity(lineDto.ActualQuantity ?? 0);
@@ -641,8 +641,8 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var assignment = assignments.FirstOrDefault(a =>
                     a.Id == assignmentId &&
-                    (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Completed &&
-                    (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled);
+                    (AssignmentStatus)a.Status != AssignmentStatus.Completed &&
+                    (AssignmentStatus)a.Status != AssignmentStatus.Cancelled);
 
                 if (assignment == null)
                     throw new InvalidOperationException(
@@ -800,8 +800,8 @@ namespace TaskControl.TaskModule.Application.Services
                 // "Новые/активные": не завершены и не отменены
                 var activeAssignments = assignments
                     .Where(a =>
-                        (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Completed &&
-                        (InventoryAssignmentStatus)a.Status != InventoryAssignmentStatus.Cancelled)
+                        (AssignmentStatus)a.Status != AssignmentStatus.Completed &&
+                        (AssignmentStatus)a.Status != AssignmentStatus.Cancelled)
                     .ToList();
 
                 var result = new List<InventoryAssignmentDetailedWithItemDto>();
@@ -818,7 +818,7 @@ namespace TaskControl.TaskModule.Application.Services
                         AssignedToUserId = assignment.AssignedToUserId,
                         BranchId = assignment.BranchId,
                         ZoneCode = assignment.ZoneCode,
-                        Status = (InventoryAssignmentStatus)assignment.Status,
+                        Status = (AssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
                         Lines = enrichedLines.Select(line => line).ToList()
@@ -846,8 +846,8 @@ namespace TaskControl.TaskModule.Application.Services
 
                 foreach (var assignment in assignments)
                 {
-                    if ((InventoryAssignmentStatus)assignment.Status == InventoryAssignmentStatus.Completed ||
-                        (InventoryAssignmentStatus)assignment.Status == InventoryAssignmentStatus.Cancelled)
+                    if ((AssignmentStatus)assignment.Status == AssignmentStatus.Completed ||
+                        (AssignmentStatus)assignment.Status == AssignmentStatus.Cancelled)
                         continue;
 
                     if (since.HasValue && assignment.AssignedAt <= since.Value)
@@ -900,7 +900,7 @@ namespace TaskControl.TaskModule.Application.Services
                     AssignmentId = assignmentId,
                     CurrentStatistics = statisticsDto,
                     RemainingItems = uncountedItems.Select(x => x.ToDto()).ToList(),
-                    Status = (InventoryAssignmentStatus)assignment.Status,
+                    Status = (AssignmentStatus)assignment.Status,
                     TimeSpentMinutes = CalculateTimeSpent(statistics.StartedAt),
                     EstimatedTimeRemainingMinutes = EstimateRemainingTime(statistics, uncountedItems.Count)
                 };
@@ -1002,7 +1002,7 @@ namespace TaskControl.TaskModule.Application.Services
                     throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
 
                 // Отметить как Completed
-                assignment.Status = InventoryAssignmentStatus.Completed;
+                assignment.Status = AssignmentStatus.Completed;
                 assignment.CompletedAt = DateTime.UtcNow;
                 await _assignmentRepository.UpdateAsync(assignment);
 
@@ -1060,7 +1060,7 @@ namespace TaskControl.TaskModule.Application.Services
                 if (assignment == null)
                     throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
 
-                assignment.Status = InventoryAssignmentStatus.Cancelled;
+                assignment.Status = AssignmentStatus.Cancelled;
                 assignment.CompletedAt = DateTime.UtcNow;
                 await _assignmentRepository.UpdateAsync(assignment);
 
@@ -1098,7 +1098,7 @@ namespace TaskControl.TaskModule.Application.Services
                         AssignedToUserId = assignment.AssignedToUserId,
                         BranchId = assignment.BranchId,
                         ZoneCode = assignment.ZoneCode,
-                        Status = (InventoryAssignmentStatus)assignment.Status,
+                        Status = (AssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
                         Lines = lines.Select(x => x.ToDto()).ToList()
@@ -1124,8 +1124,8 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 _logger.LogInformation("|   [Inv] запрос активных инвентаризаций (BranchId={BranchId})", branchId);
 
-                var activeStatus = (int)InventoryAssignmentStatus.InProgress;
-                var assignments = await _assignmentRepository.GetByStatusAsync((InventoryAssignmentStatus)activeStatus);
+                var activeStatus = (int)AssignmentStatus.InProgress;
+                var assignments = await _assignmentRepository.GetByStatusAsync((AssignmentStatus)activeStatus);
 
                 if (branchId.HasValue)
                     assignments = assignments.Where(a => a.BranchId == branchId.Value).ToList();
@@ -1142,7 +1142,7 @@ namespace TaskControl.TaskModule.Application.Services
                         AssignedToUserId = assignment.AssignedToUserId,
                         BranchId = assignment.BranchId,
                         ZoneCode = assignment.ZoneCode,
-                        Status = (InventoryAssignmentStatus)assignment.Status,
+                        Status = (AssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
                         Lines = lines.Select(x => x.ToDto()).ToList()
@@ -1170,8 +1170,8 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 _logger.LogInformation("|   [Inv] запрос завершенных с {StartDate} по {EndDate}", startDate, endDate);
 
-                var completedStatus = (int)InventoryAssignmentStatus.Completed;
-                var assignments = await _assignmentRepository.GetByStatusAsync((InventoryAssignmentStatus)completedStatus);
+                var completedStatus = (int)AssignmentStatus.Completed;
+                var assignments = await _assignmentRepository.GetByStatusAsync((AssignmentStatus)completedStatus);
 
                 assignments = assignments
                     .Where(a => a.CompletedAt.HasValue &&
@@ -1194,7 +1194,7 @@ namespace TaskControl.TaskModule.Application.Services
                         AssignedToUserId = assignment.AssignedToUserId,
                         BranchId = assignment.BranchId,
                         ZoneCode = assignment.ZoneCode,
-                        Status = (InventoryAssignmentStatus)assignment.Status,
+                        Status = (AssignmentStatus)assignment.Status,
                         AssignedAt = assignment.AssignedAt,
                         CompletedAt = assignment.CompletedAt,
                         Lines = lines.Select(x => x.ToDto()).ToList()
@@ -1256,7 +1256,7 @@ namespace TaskControl.TaskModule.Application.Services
                 if (assignment == null)
                     throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
 
-                assignment.Status = InventoryAssignmentStatus.InProgress;
+                assignment.Status = AssignmentStatus.InProgress;
                 await _assignmentRepository.UpdateAsync(assignment);
 
                 return await GetInventoryProgressAsync(assignmentId);

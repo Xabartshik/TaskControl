@@ -53,7 +53,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         //    var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
         //    var activeAssignments = assignments
-        //        .Where(a => a.Status == OrderAssemblyAssignmentStatus.Assigned || a.Status == OrderAssemblyAssignmentStatus.InProgress)
+        //        .Where(a => a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.InProgress)
         //        .ToList();
 
         //    if (!activeAssignments.Any())

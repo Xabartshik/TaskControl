@@ -208,11 +208,11 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 //// Подсчет активных назначений инвентаризации
                 //var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                //var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
+                //var invActiveCount = invAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
 
                 //// Подсчет активных назначений сборки заказов
                 //var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                //var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
+                //var oaActiveCount = oaAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
 
                 //result.Add(new WorkerStatusDto
                 //{
@@ -248,7 +248,7 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 var taskAssignments = assignments.Where(a => a.TaskId == task.TaskId).ToList();
                 int total = taskAssignments.Count;
-                int completed = taskAssignments.Count(a => a.Status == Domain.InventoryAssignmentStatus.Completed);
+                int completed = taskAssignments.Count(a => a.Status == Domain.AssignmentStatus.Completed);
                 
                 string progress = total == 0 ? "Нет назначений" : $"{completed}/{total} завершено";
 
@@ -296,8 +296,8 @@ namespace TaskControl.TaskModule.Application.Services
                             FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {oaAssignment.AssignedToUserId}",
                             AssignedVolume = total,
                             CompletedVolume = completed,
-                            Status = oaAssignment.Status == OrderAssemblyAssignmentStatus.InProgress ? "В процессе"
-                                     : oaAssignment.Status == OrderAssemblyAssignmentStatus.Completed ? "Завершено" : "Назначено"
+                            Status = oaAssignment.Status == AssignmentStatus.InProgress ? "В процессе"
+                                     : oaAssignment.Status == AssignmentStatus.Completed ? "Завершено" : "Назначено"
                         };
                     }
                 }
@@ -315,15 +315,15 @@ namespace TaskControl.TaskModule.Application.Services
                                 EmployeeId = a.AssignedToUserId,
                                 FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {a.AssignedToUserId}",
                                 AssignedVolume = 1,
-                                CompletedVolume = a.Status == InventoryAssignmentStatus.Completed ? 1 : 0,
-                                Status = a.Status == InventoryAssignmentStatus.InProgress ? "В процессе"
-                                         : a.Status == InventoryAssignmentStatus.Completed ? "Завершено" : "Ожидается"
+                                CompletedVolume = a.Status == AssignmentStatus.Completed ? 1 : 0,
+                                Status = a.Status == AssignmentStatus.InProgress ? "В процессе"
+                                         : a.Status == AssignmentStatus.Completed ? "Завершено" : "Ожидается"
                             };
                         }
                         else
                         {
                             dict[a.AssignedToUserId].AssignedVolume += 1;
-                            if(a.Status == InventoryAssignmentStatus.Completed)
+                            if(a.Status == AssignmentStatus.Completed)
                                 dict[a.AssignedToUserId].CompletedVolume += 1;
                         }
                     }
@@ -361,7 +361,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 // Задачи инвентаризации
                 var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeInv = invAssignments.Where(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled).ToList();
+                var activeInv = invAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
                 foreach(var a in activeInv)
                 {
                     var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
@@ -379,7 +379,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 // Задачи сборки заказов
                 var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeOa = oaAssignments.Where(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled).ToList();
+                var activeOa = oaAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
                 foreach(var a in activeOa)
                 {
                     var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
@@ -417,11 +417,11 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 // Инвентаризационные назначения
                 var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var invActiveCount = invAssignments.Count(a => a.Status != InventoryAssignmentStatus.Completed && a.Status != InventoryAssignmentStatus.Cancelled);
+                var invActiveCount = invAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
 
                 // Назначения сборки заказов
                 var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var oaActiveCount = oaAssignments.Count(a => a.Status != OrderAssemblyAssignmentStatus.Completed && a.Status != OrderAssemblyAssignmentStatus.Cancelled);
+                var oaActiveCount = oaAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
 
                 result.Add(new AvailableEmployeeDto
                 {
@@ -460,7 +460,7 @@ namespace TaskControl.TaskModule.Application.Services
             // Исключаем те, для которых уже созданы активные задания сборки
             var assemblyAssignments = await _orderAssemblyRepository.GetByBranchIdAsync(bossBranchId);
             var assignedOrderIds = assemblyAssignments
-                .Where(a => a.Status != OrderAssemblyAssignmentStatus.Cancelled && a.Status != OrderAssemblyAssignmentStatus.Completed)
+                .Where(a => a.Status != AssignmentStatus.Cancelled && a.Status != AssignmentStatus.Completed)
                 .Select(a => a.OrderId)
                 .ToHashSet();
 

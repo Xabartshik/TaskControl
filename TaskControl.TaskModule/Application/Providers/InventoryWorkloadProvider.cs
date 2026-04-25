@@ -28,7 +28,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
             var tasks = await _inventoryRepo.GetByUserIdAsync(workerId);
-            return tasks.Count(t => t.Status == InventoryAssignmentStatus.Assigned || t.Status == InventoryAssignmentStatus.InProgress);
+            return tasks.Count(t => t.Status == AssignmentStatus.Assigned || t.Status == AssignmentStatus.InProgress);
         }
 
         public async Task<bool> HasNewAssignmentsAsync(int workerId)
@@ -40,7 +40,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId)
         {
             var assignments = await _inventoryRepo.GetByUserIdAsync(workerId);
-            var pending = assignments.Where(t => t.Status == InventoryAssignmentStatus.Assigned || t.Status == InventoryAssignmentStatus.InProgress).ToList();
+            var pending = assignments.Where(t => t.Status == AssignmentStatus.Assigned || t.Status == AssignmentStatus.InProgress).ToList();
 
             var result = new List<MobileBaseTaskDto>();
             foreach (var a in pending)
@@ -53,7 +53,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     Title = baseTask?.Title ?? "Инвентаризация ячеек",
                     TaskType = this.TaskType, 
                     Priority = baseTask?.Priority ?? 5,
-                    Status = a.Status == InventoryAssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new
                     {
@@ -70,7 +70,7 @@ namespace TaskControl.TaskModule.Application.Providers
             if (assignment == null || assignment.AssignedToUserId != workerId) 
                 return false;
 
-            assignment.Status = InventoryAssignmentStatus.InProgress; 
+            assignment.Status = AssignmentStatus.InProgress; 
             await _inventoryRepo.UpdateAsync(assignment);
             return true;
         }

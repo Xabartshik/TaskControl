@@ -68,7 +68,7 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
             return result;
         }
 
-        public async Task<List<OrderAssemblyAssignment>> GetByStatusAsync(OrderAssemblyAssignmentStatus status)
+        public async Task<List<OrderAssemblyAssignment>> GetByStatusAsync(AssignmentStatus status)
         {
             var assignments = await _db.OrderAssemblyAssignments.Where(a => a.Status == (int)status).ToListAsync();
             var result = new List<OrderAssemblyAssignment>();

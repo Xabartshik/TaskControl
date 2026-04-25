@@ -4,73 +4,41 @@ using System.Linq;
 
 namespace TaskControl.TaskModule.Domain
 {
-    public enum OrderAssemblyAssignmentStatus
-    {
-        Assigned = 0,
-        InProgress = 1,
-        Completed = 2,
-        Cancelled = 3
-    }
-
     /// <summary>
     /// Назначение сборки заказа конкретному работнику.
+    /// Специализированная задача модуля TaskControl.
     /// </summary>
-    public class OrderAssemblyAssignment
+    public class OrderAssemblyAssignment : WorkerAssignment
     {
-        public int Id { get; internal set; }
-
-        /// <summary>
-        /// Id задачи (Task из TaskModule) с типом Type = 'OrderAssembly'.
-        /// </summary>
-        public int TaskId { get; internal set; }
-
         /// <summary>
         /// Id собираемого заказа.
         /// </summary>
         public int OrderId { get; internal set; }
 
-        /// <summary>
-        /// Пользователь, которому назначена сборка.
-        /// </summary>
-        public int AssignedToUserId { get; internal set; }
-
-        /// <summary>
-        /// Филиал.
-        /// </summary>
-        public int BranchId { get; internal set; }
-
-        public OrderAssemblyAssignmentStatus Status { get; internal set; }
-
-        public DateTime AssignedAt { get; internal set; }
-        public DateTime? StartedAt { get; internal set; }
-        public DateTime? CompletedAt { get; internal set; }
-
         internal readonly List<OrderAssemblyLine> _lines = new();
         public IReadOnlyCollection<OrderAssemblyLine> Lines => _lines.AsReadOnly();
 
         public int TotalLines => _lines.Count;
-        public bool IsCompleted => Status == OrderAssemblyAssignmentStatus.Completed;
 
-        public OrderAssemblyAssignment() { }
+        public OrderAssemblyAssignment() : base() { }
 
+        /// <summary>
+        /// Конструктор для загрузки существующего назначения из БД.
+        /// </summary>
         public OrderAssemblyAssignment(
             int id,
             int taskId,
             int orderId,
             int assignedToUserId,
             int branchId,
-            OrderAssemblyAssignmentStatus status,
+            AssignmentStatus status,
             DateTime assignedAtUtc,
             IEnumerable<OrderAssemblyLine> lines)
+            : base(id, taskId, assignedToUserId, branchId, status, assignedAtUtc)
         {
-            if (taskId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(taskId));
             if (orderId <= 0)
                 throw new ArgumentOutOfRangeException(nameof(orderId));
-            if (assignedToUserId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(assignedToUserId));
-            if (branchId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(branchId));
+
             if (lines == null)
                 throw new ArgumentNullException(nameof(lines));
 
@@ -78,35 +46,25 @@ namespace TaskControl.TaskModule.Domain
             if (lineList.Count == 0)
                 throw new ArgumentException("At least one line must be provided.", nameof(lines));
 
-            Id = id;
-            TaskId = taskId;
             OrderId = orderId;
-            AssignedToUserId = assignedToUserId;
-            BranchId = branchId;
-            AssignedAt = assignedAtUtc;
-            Status = status;
-
             _lines.AddRange(lineList);
         }
 
+        /// <summary>
+        /// Конструктор для создания нового назначения.
+        /// </summary>
         public OrderAssemblyAssignment(
             int taskId,
             int orderId,
             int assignedToUserId,
             int branchId,
             DateTime assignedAtUtc = default)
+            : base(taskId, assignedToUserId, branchId, assignedAtUtc)
         {
-            if (taskId <= 0) throw new ArgumentOutOfRangeException(nameof(taskId));
-            if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId));
-            if (assignedToUserId <= 0) throw new ArgumentOutOfRangeException(nameof(assignedToUserId));
-            if (branchId <= 0) throw new ArgumentOutOfRangeException(nameof(branchId));
+            if (orderId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(orderId));
 
-            TaskId = taskId;
             OrderId = orderId;
-            AssignedToUserId = assignedToUserId;
-            BranchId = branchId;
-            AssignedAt = assignedAtUtc == default ? DateTime.UtcNow : assignedAtUtc;
-            Status = OrderAssemblyAssignmentStatus.Assigned;
         }
 
         public void AddLine(OrderAssemblyLine line)
@@ -115,31 +73,23 @@ namespace TaskControl.TaskModule.Domain
             _lines.Add(line);
         }
 
-        public void Start(DateTime startedAtUtc)
+        public override void Start(DateTime startedAtUtc)
         {
-            if (Status == OrderAssemblyAssignmentStatus.Cancelled ||
-                Status == OrderAssemblyAssignmentStatus.Completed)
-                throw new InvalidOperationException("Cannot start completed or cancelled assignment.");
-
-            Status = OrderAssemblyAssignmentStatus.InProgress;
-            StartedAt = startedAtUtc;
+            base.Start(startedAtUtc);
         }
 
-        public void Complete(DateTime completedAtUtc)
+        public override void Complete(DateTime completedAtUtc)
         {
-            if (Status == OrderAssemblyAssignmentStatus.Cancelled)
-                throw new InvalidOperationException("Cannot complete cancelled assignment.");
+            // Здесь можно добавить специфичную для сборки валидацию перед завершением
+            if (!_lines.Any())
+                throw new InvalidOperationException("Cannot complete assembly without lines.");
 
-            Status = OrderAssemblyAssignmentStatus.Completed;
-            CompletedAt = completedAtUtc;
+            base.Complete(completedAtUtc);
         }
 
-        public void Cancel()
+        public override void Cancel()
         {
-            if (Status == OrderAssemblyAssignmentStatus.Completed)
-                throw new InvalidOperationException("Cannot cancel completed assignment.");
-
-            Status = OrderAssemblyAssignmentStatus.Cancelled;
+            base.Cancel();
         }
     }
 }

@@ -10,7 +10,7 @@ namespace TaskControl.TaskModule.Application.Interface
         public int TaskId { get; set; }
         public string? TaskNumber { get; set; }
         public int OrderId { get; set; }
-        public OrderAssemblyAssignmentStatus Status { get; set; }
+        public AssignmentStatus Status { get; set; }
         public System.DateTime? CreatedDate { get; set; }
         public int TotalLines { get; set; }
         /// <summary>

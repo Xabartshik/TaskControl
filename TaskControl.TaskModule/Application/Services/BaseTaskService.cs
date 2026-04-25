@@ -198,13 +198,13 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
                 var invActiveCount = invAssignments.Count(a =>
-                    a.Status != Domain.InventoryAssignmentStatus.Completed &&
-                    a.Status != Domain.InventoryAssignmentStatus.Cancelled);
+                    a.Status != Domain.AssignmentStatus.Completed &&
+                    a.Status != Domain.AssignmentStatus.Cancelled);
 
                 var oaAssignments = await _assemblyAssignmentRepository.GetByUserIdAsync(emp.EmployeeId);
                 var oaActiveCount = oaAssignments.Count(a =>
-                    a.Status != OrderAssemblyAssignmentStatus.Completed &&
-                    a.Status != OrderAssemblyAssignmentStatus.Cancelled);
+                    a.Status != AssignmentStatus.Completed &&
+                    a.Status != AssignmentStatus.Cancelled);
 
                 workLoads.Add((emp.EmployeeId, invActiveCount + oaActiveCount));
             }
