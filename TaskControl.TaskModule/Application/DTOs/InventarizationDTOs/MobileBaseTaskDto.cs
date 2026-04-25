@@ -1,14 +1,11 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using TaskControl.TaskModule.Application.DTOs;
 
 namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
 {
-    // Заполняется только если Type == "Инвентаризация"
-    public record MobileBaseTaskDto(InventoryTaskDetailsDto? InventarizationDetails) : BaseTaskDto
+    public record MobileBaseTaskDto : BaseTaskDto
     {
         public string TaskType { get; set; } = string.Empty;
+        public object? TaskDetails { get; init; }
     }
 }

@@ -46,14 +46,18 @@ namespace TaskControl.TaskModule.Application.Providers
             {
                 var baseTask = await _baseTaskService.GetById(a.TaskId);
                 
-                result.Add(new MobileBaseTaskDto(null)
+                result.Add(new MobileBaseTaskDto
                 {
                     TaskId = a.TaskId,
                     Title = baseTask?.Title ?? $"Сборка заказа #{a.OrderId}",
                     TaskType = this.TaskType,
                     Priority = baseTask?.Priority ?? 7,
                     Status = a.Status == OrderAssemblyAssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
-                    CreatedAt = a.AssignedAt
+                    CreatedAt = a.AssignedAt,
+                    TaskDetails = new
+                    {
+                        AssignmentId = a.Id
+                    }
                 });
             }
             return result;
