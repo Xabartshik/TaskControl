@@ -45,7 +45,11 @@ namespace TaskControl.TaskModule.Presentation
         public async Task<IActionResult> Cancel(int id)
             => Ok(await _processService.CancelInventoryAsync(id));
 
-        [HttpPost("assignment/complete")]
+        [HttpPost("scan")]
+        public async Task<IActionResult> ProcessScan([FromBody] ProcessInventoryScanDto dto)
+            => Ok(await _processService.ProcessScanAsync(dto));
+
+        [HttpPost("complete-assignment")]
         public async Task<IActionResult> Complete([FromBody] CompleteAssignmentDto dto)
             => Ok(await _processService.CompleteAssignmentAsync(dto));
     }

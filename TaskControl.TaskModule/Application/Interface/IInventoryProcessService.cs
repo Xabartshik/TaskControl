@@ -20,6 +20,7 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<bool> StartInventoryAsync(int assignmentId);
         Task<bool> PauseInventoryAsync(int assignmentId);
         Task<bool> CancelInventoryAsync(int assignmentId);
+        Task<CompleteAssignmentResultDto> ProcessScanAsync(ProcessInventoryScanDto dto);
         Task<CompleteAssignmentResultDto> CompleteAssignmentAsync(CompleteAssignmentDto dto);
     }
 }

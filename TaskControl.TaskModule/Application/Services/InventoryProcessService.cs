@@ -208,6 +208,37 @@ namespace TaskControl.TaskModule.Application.Services
             return true;
         }
 
+        public async Task<CompleteAssignmentResultDto> ProcessScanAsync(ProcessInventoryScanDto dto)
+        {
+            var assignment = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
+            if (assignment == null)
+                throw new InvalidOperationException("Assignment not found.");
+
+            if (assignment.AssignedToUserId != dto.UserId)
+                throw new InvalidOperationException("Assignment is assigned to another user.");
+
+            var line = await _lineRepository.GetByIdAsync(dto.LineId);
+            if (line == null || line.InventoryAssignmentId != dto.AssignmentId)
+                throw new InvalidOperationException("Line not found for current assignment.");
+
+            line.SetActualQuantity(dto.ActualQuantity);
+            await _lineRepository.UpdateAsync(line);
+
+            _logger.LogInformation(
+                "Обработан scan по assignment {AssignmentId}, line {LineId}, qty {Qty}, user {UserId}. Note: {Note}",
+                dto.AssignmentId,
+                dto.LineId,
+                dto.ActualQuantity,
+                dto.UserId,
+                dto.Note ?? string.Empty);
+
+            return new CompleteAssignmentResultDto
+            {
+                Success = true,
+                Message = "Сканирование обработано."
+            };
+        }
+
         public async Task<CompleteAssignmentResultDto> CompleteAssignmentAsync(CompleteAssignmentDto dto)
         {
             var a = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
