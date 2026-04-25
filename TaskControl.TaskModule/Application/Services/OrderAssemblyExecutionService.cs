@@ -46,81 +46,81 @@ namespace TaskControl.TaskModule.Application.Services
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
         }
 
-        public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
-        {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("|   [Exec] получение задач сборки для работника {UserId}", userId);
+        //public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
+        //{
+        //    if (_appSettings.EnableDetailedLogging)
+        //        _logger.LogTrace("|   [Exec] получение задач сборки для работника {UserId}", userId);
 
-            var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
-            var activeAssignments = assignments
-                .Where(a => a.Status == OrderAssemblyAssignmentStatus.Assigned || a.Status == OrderAssemblyAssignmentStatus.InProgress)
-                .ToList();
+        //    var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
+        //    var activeAssignments = assignments
+        //        .Where(a => a.Status == OrderAssemblyAssignmentStatus.Assigned || a.Status == OrderAssemblyAssignmentStatus.InProgress)
+        //        .ToList();
 
-            if (!activeAssignments.Any())
-                return new List<WorkerAssemblyTaskDto>();
+        //    if (!activeAssignments.Any())
+        //        return new List<WorkerAssemblyTaskDto>();
 
-            var result = new List<WorkerAssemblyTaskDto>();
+        //    var result = new List<WorkerAssemblyTaskDto>();
 
-            var baseTasks = _db.GetTable<BaseTaskModel>();
-            var positions = _db.GetTable<PositionModel>();
-            var itemPositions = _db.GetTable<ItemPositionModel>();
-            var items = _db.GetTable<ItemModel>();
+        //    var baseTasks = _db.GetTable<BaseTaskModel>();
+        //    var positions = _db.GetTable<PositionModel>();
+        //    var itemPositions = _db.GetTable<ItemPositionModel>();
+        //    var items = _db.GetTable<ItemModel>();
 
-            foreach (var a in activeAssignments)
-            {
-                var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
+        //    foreach (var a in activeAssignments)
+        //    {
+        //        var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
 
-                var dto = new WorkerAssemblyTaskDto
-                {
-                    AssignmentId = a.Id,
-                    TaskId = a.TaskId,
-                    TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}",
-                    OrderId = a.OrderId,
-                    Status = a.Status,
-                    CreatedDate = taskModel?.CreatedAt,
-                    TotalLines = a.TotalLines
-                };
+        //        var dto = new WorkerAssemblyTaskDto
+        //        {
+        //            AssignmentId = a.Id,
+        //            TaskId = a.TaskId,
+        //            TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}",
+        //            OrderId = a.OrderId,
+        //            Status = a.Status,
+        //            CreatedDate = taskModel?.CreatedAt,
+        //            TotalLines = a.TotalLines
+        //        };
 
-                var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
-                foreach (var g in cellGroups)
-                {
-                    var targetId = g.Key;
-                    var posModel = await positions.FirstOrDefaultAsync(p => p.PositionId == targetId);
-                    var fullCode = GetFullPositionCode(posModel) ?? targetId.ToString();
+        //        var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
+        //        foreach (var g in cellGroups)
+        //        {
+        //            var targetId = g.Key;
+        //            var posModel = await positions.FirstOrDefaultAsync(p => p.PositionId == targetId);
+        //            var fullCode = GetFullPositionCode(posModel) ?? targetId.ToString();
 
-                    var cellDto = new CellPlacementInfoDto
-                    {
-                        TargetPositionId = targetId,
-                        CellCode = fullCode,
-                        CellDisplayName = fullCode
-                    };
+        //            var cellDto = new CellPlacementInfoDto
+        //            {
+        //                TargetPositionId = targetId,
+        //                CellCode = fullCode,
+        //                CellDisplayName = fullCode
+        //            };
 
-                    foreach (var l in g)
-                    {
-                        var itemInfo = await (from ip in itemPositions
-                                              join i in items on ip.ItemId equals i.ItemId
-                                              where ip.Id == l.ItemPositionId
-                                              select new { i.ItemId, i.Name }).FirstOrDefaultAsync();
+        //            foreach (var l in g)
+        //            {
+        //                var itemInfo = await (from ip in itemPositions
+        //                                      join i in items on ip.ItemId equals i.ItemId
+        //                                      where ip.Id == l.ItemPositionId
+        //                                      select new { i.ItemId, i.Name }).FirstOrDefaultAsync();
 
-                        cellDto.Items.Add(new PlacementLineDto
-                        {
-                            LineId = l.Id,
-                            ItemPositionId = l.ItemPositionId,
-                            ItemId = itemInfo?.ItemId ?? 0,
-                            ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                            Barcode = (itemInfo?.ItemId ?? 0).ToString(),
-                            Quantity = l.Quantity,
-                            PickedQuantity = l.PickedQuantity,
-                            Status = l.Status
-                        });
-                    }
-                    dto.CellPlacements.Add(cellDto);
-                }
-                result.Add(dto);
-            }
+        //                cellDto.Items.Add(new PlacementLineDto
+        //                {
+        //                    LineId = l.Id,
+        //                    ItemPositionId = l.ItemPositionId,
+        //                    ItemId = itemInfo?.ItemId ?? 0,
+        //                    ItemName = itemInfo?.Name ?? "Неизвестный товар",
+        //                    Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+        //                    Quantity = l.Quantity,
+        //                    PickedQuantity = l.PickedQuantity,
+        //                    Status = l.Status
+        //                });
+        //            }
+        //            dto.CellPlacements.Add(cellDto);
+        //        }
+        //        result.Add(dto);
+        //    }
 
-            return result;
-        }
+        //    return result;
+        //}
 
         public async Task ScanAndPickItem(int lineId, string scannedBarcode)
         {

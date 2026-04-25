@@ -34,15 +34,16 @@ namespace TaskControl.InformationModule.Application.Services
         /// </summary>
         public async Task<IEnumerable<ActiveEmployeeDto>> GetWorkingEmployeesByBranchAsync(int branchId)
         {
+            // Получаем все чеки из репозитория
+            // TODO: в идеале нужно добавить в метод GetRecentByBranchAsync, чтобы не тянуть всю таблицу из БД)
             var allChecks = await _checkIORepository.GetAllAsync();
             var threshold = DateTime.UtcNow.AddHours(-24);
 
             var recentChecks = allChecks
                 .Where(c => c.BranchId == branchId && c.CheckTimeStamp >= threshold)
                 .GroupBy(c => c.EmployeeId)
-                .Select(g => g.OrderBy(c => c.CheckTimeStamp).Last())
+                .Select(g => g.OrderBy(c => c.CheckTimeStamp).Last()) // Берем самую последнюю отметку сотрудника
                 .ToList();
-
             var activeChecks = recentChecks
                 .Where(c => c.IsCheckIn())
                 .ToList();

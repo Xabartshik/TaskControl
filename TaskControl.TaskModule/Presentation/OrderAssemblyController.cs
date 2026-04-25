@@ -26,27 +26,27 @@ namespace TaskControl.TaskModule.Presentation
             _appSettings = appSettings?.Value ?? new AppSettings();
         }
 
-        /// <summary>
-        /// Получить список активных задач сборки для работника.
-        /// В составе каждой задачи возвращается список целевых ячеек PICKUP с товарами.
-        /// </summary>
-        [HttpGet("tasks/{userId}")]
-        public async Task<IActionResult> GetWorkerTasks(int userId)
-        {
-            if (_appSettings.EnableDetailedLogging)
-                _logger.LogTrace("GET /api/OrderAssembly/tasks/{UserId}", userId);
+        ///// <summary>
+        ///// Получить список активных задач сборки для работника.
+        ///// В составе каждой задачи возвращается список целевых ячеек PICKUP с товарами.
+        ///// </summary>
+        //[HttpGet("tasks/{userId}")]
+        //public async Task<IActionResult> GetWorkerTasks(int userId)
+        //{
+        //    if (_appSettings.EnableDetailedLogging)
+        //        _logger.LogTrace("GET /api/OrderAssembly/tasks/{UserId}", userId);
 
-            try
-            {
-                var tasks = await _executionService.GetWorkerAssemblyTasks(userId);
-                return Ok(tasks);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка получения задач сборки");
-                return BadRequest(new { error = ex.Message });
-            }
-        }
+        //    try
+        //    {
+        //        var tasks = await _executionService.GetWorkerAssemblyTasks(userId);
+        //        return Ok(tasks);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Ошибка получения задач сборки");
+        //        return BadRequest(new { error = ex.Message });
+        //    }
+        //}
 
         /// <summary>
         /// Отсканировать штрих-код товара и подтвердить, что кладовщик забрал его с полки.

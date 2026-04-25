@@ -40,6 +40,7 @@ using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Presentation.Controllers;
 
 namespace TaskControl.Core.Infrastructure
 {
@@ -170,6 +171,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.InventoryWorkloadProvider>();
             services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.OrderAssemblyWorkloadProvider>();
             services.AddScoped<TaskWorkloadAggregator>();
+
+            services.AddScoped<WorkerTasksController>();
 
             return services;
         }

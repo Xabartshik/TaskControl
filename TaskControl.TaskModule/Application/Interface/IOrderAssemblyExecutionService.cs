@@ -53,7 +53,7 @@ namespace TaskControl.TaskModule.Application.Interface
 
     public interface IOrderAssemblyExecutionService
     {
-        Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId);
+        //Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId);
         Task ScanAndPickItem(int lineId, string scannedBarcode);
         /// <summary>
         /// Массовое размещение: кладовщик сканирует ячейку PICKUP и все собранные (Picked) товары,
