@@ -300,6 +300,115 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
+        public async Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId)
+        {
+            var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
+            return assignments
+                .Where(a => a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.InProgress)
+                .Select(a => new OrderAssemblyHeaderDto
+                {
+                    AssignmentId = a.Id,
+                    TaskId = a.TaskId,
+                    OrderId = a.OrderId,
+                    Status = a.Status,
+                    AssignedAt = a.AssignedAt,
+                    TotalLines = a.TotalLines,
+                    PlacedLines = a.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed)
+                })
+                .OrderByDescending(a => a.Status == AssignmentStatus.InProgress)
+                .ThenBy(a => a.AssignedAt)
+                .ToList();
+        }
+
+        public async Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId)
+        {
+            var a = await _assignmentRepo.GetByIdAsync(assignmentId);
+            if (a == null) throw new InvalidOperationException("Назначение не найдено.");
+
+            var baseTasks = _db.GetTable<BaseTaskModel>();
+            var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
+
+            var dto = new WorkerAssemblyTaskDto
+            {
+                AssignmentId = a.Id,
+                TaskId = a.TaskId,
+                TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}",
+                OrderId = a.OrderId,
+                Status = a.Status,
+                CreatedDate = taskModel?.CreatedAt,
+                TotalLines = a.TotalLines
+            };
+
+            var positions = _db.GetTable<PositionModel>();
+            var itemPositions = _db.GetTable<ItemPositionModel>();
+            var items = _db.GetTable<ItemModel>();
+
+            // Группировка, которая раньше была закомментирована
+            var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
+            foreach (var g in cellGroups)
+            {
+                var targetId = g.Key;
+                var posModel = await positions.FirstOrDefaultAsync(p => p.PositionId == targetId);
+                var fullCode = GetFullPositionCode(posModel) ?? targetId.ToString();
+
+                var cellDto = new CellPlacementInfoDto
+                {
+                    TargetPositionId = targetId,
+                    CellCode = fullCode,
+                    CellDisplayName = fullCode
+                };
+
+                foreach (var l in g)
+                {
+                    var itemInfo = await (from ip in itemPositions
+                                          join i in items on ip.ItemId equals i.ItemId
+                                          where ip.Id == l.ItemPositionId
+                                          select new { i.ItemId, i.Name }).FirstOrDefaultAsync();
+
+                    cellDto.Items.Add(new PlacementLineDto
+                    {
+                        LineId = l.Id,
+                        ItemPositionId = l.ItemPositionId,
+                        ItemId = itemInfo?.ItemId ?? 0,
+                        ItemName = itemInfo?.Name ?? "Неизвестный товар",
+                        Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+                        Quantity = l.Quantity,
+                        PickedQuantity = l.PickedQuantity,
+                        Status = l.Status
+                    });
+                }
+                dto.CellPlacements.Add(cellDto);
+            }
+            return dto;
+        }
+
+        public async Task<bool> StartAssemblyAsync(int id)
+        {
+            var a = await _assignmentRepo.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Start(DateTime.UtcNow); // Доменный метод базового класса
+            await _assignmentRepo.UpdateAsync(a);
+            return true;
+        }
+
+        public async Task<bool> PauseAssemblyAsync(int id)
+        {
+            var a = await _assignmentRepo.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Pause(); // Доменный метод базового класса
+            await _assignmentRepo.UpdateAsync(a);
+            return true;
+        }
+
+        public async Task<bool> CancelAssemblyAsync(int id)
+        {
+            var a = await _assignmentRepo.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Cancel(); // Доменный метод базового класса
+            await _assignmentRepo.UpdateAsync(a);
+            return true;
+        }
+
         private string GetFullPositionCode(PositionModel pos)
         {
             if (pos == null) return null;

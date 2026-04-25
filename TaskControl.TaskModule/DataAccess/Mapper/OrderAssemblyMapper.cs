@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
@@ -8,42 +6,46 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
 {
     internal static class OrderAssemblyMapper
     {
-        public static OrderAssemblyAssignment ToDomainWithLines(this OrderAssemblyAssignmentModel model, IEnumerable<OrderAssemblyLine> lines)
+        public static OrderAssemblyAssignment ToDomainWithLines(
+            this OrderAssemblyAssignmentModel model,
+            IEnumerable<OrderAssemblyLine> lines)
         {
             if (model == null) return null;
 
             return new OrderAssemblyAssignment(
-                model.Id,
-                model.TaskId,
-                model.OrderId,
-                model.AssignedToUserId,
-                model.BranchId,
-                (AssignmentStatus)model.Status,
-                model.AssignedAt,
-                lines
+                id: model.Id,
+                taskId: model.TaskId,
+                orderId: model.OrderId,
+                assignedToUserId: model.AssignedToUserId,
+                branchId: model.BranchId,
+                status: (AssignmentStatus)model.Status,
+                assignedAtUtc: model.AssignedAt,
+                lines: lines
             )
             {
-                CompletedAt = model.CompletedAt
+                CompletedAt = model.CompletedAt,
+                StartedAt = model.StartedAt
             };
         }
-        
+
         public static OrderAssemblyAssignment ToDomain(this OrderAssemblyAssignmentModel model)
         {
             if (model == null) return null;
 
-            var assignment = new OrderAssemblyAssignment
+            return new OrderAssemblyAssignment(
+                id: model.Id,
+                taskId: model.TaskId,
+                orderId: model.OrderId,
+                assignedToUserId: model.AssignedToUserId,
+                branchId: model.BranchId,
+                status: (AssignmentStatus)model.Status,
+                assignedAtUtc: model.AssignedAt,
+                lines: new List<OrderAssemblyLine>()
+            )
             {
-                Id = model.Id,
-                TaskId = model.TaskId,
-                OrderId = model.OrderId,
-                AssignedToUserId = model.AssignedToUserId,
-                BranchId = model.BranchId,
-                Status = (AssignmentStatus)model.Status,
-                AssignedAt = model.AssignedAt,
-                StartedAt = model.StartedAt,
-                CompletedAt = model.CompletedAt
+                CompletedAt = model.CompletedAt,
+                StartedAt = model.StartedAt
             };
-            return assignment;
         }
 
         public static OrderAssemblyAssignmentModel ToModel(this OrderAssemblyAssignment domain)
@@ -69,13 +71,13 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
             if (model == null) return null;
 
             var line = new OrderAssemblyLine(
-                model.Id,
-                model.OrderAssemblyAssignmentId,
-                model.ItemPositionId,
-                model.SourcePositionId,
-                model.TargetPositionId,
-                model.Quantity,
-                (OrderAssemblyLineStatus)model.Status
+                id: model.Id,
+                orderAssemblyAssignmentId: model.OrderAssemblyAssignmentId,
+                itemPositionId: model.ItemPositionId,
+                sourcePositionId: model.SourcePositionId,
+                targetPositionId: model.TargetPositionId,
+                quantity: model.Quantity,
+                status: (OrderAssemblyLineStatus)model.Status
             );
             line.SetPickedQuantity(model.PickedQuantity);
             return line;

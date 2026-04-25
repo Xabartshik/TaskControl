@@ -4,6 +4,18 @@ using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Interface
 {
+    public class OrderAssemblyHeaderDto
+    {
+        public int AssignmentId { get; set; }
+        public int TaskId { get; set; }
+        public int OrderId { get; set; }
+        public AssignmentStatus Status { get; set; }
+        public DateTime AssignedAt { get; set; }
+        public int TotalLines { get; set; }
+        public int PlacedLines { get; set; }
+        public double CompletionPercentage => TotalLines == 0 ? 0 : Math.Round((double)PlacedLines / TotalLines * 100, 1);
+    }
+
     public class WorkerAssemblyTaskDto
     {
         public int AssignmentId { get; set; }
@@ -11,11 +23,8 @@ namespace TaskControl.TaskModule.Application.Interface
         public string? TaskNumber { get; set; }
         public int OrderId { get; set; }
         public AssignmentStatus Status { get; set; }
-        public System.DateTime? CreatedDate { get; set; }
+        public DateTime? CreatedDate { get; set; }
         public int TotalLines { get; set; }
-        /// <summary>
-        /// Список целевых ячеек с их товарами (для отображения кладовщику).
-        /// </summary>
         public List<CellPlacementInfoDto> CellPlacements { get; set; } = new();
     }
 
@@ -53,12 +62,14 @@ namespace TaskControl.TaskModule.Application.Interface
 
     public interface IOrderAssemblyExecutionService
     {
-        //Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId);
+        Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId);
+        Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId);
+
+        Task<bool> StartAssemblyAsync(int assignmentId);
+        Task<bool> PauseAssemblyAsync(int assignmentId);
+        Task<bool> CancelAssemblyAsync(int assignmentId);
+
         Task ScanAndPickItem(int lineId, string scannedBarcode);
-        /// <summary>
-        /// Массовое размещение: кладовщик сканирует ячейку PICKUP и все собранные (Picked) товары,
-        /// предназначенные для этой ячейки, переводятся в статус Placed.
-        /// </summary>
         Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode);
         Task ReportMissingItem(int lineId, string reason);
         Task CompleteAssemblyTask(int assignmentId);

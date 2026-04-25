@@ -10,9 +10,6 @@ namespace TaskControl.TaskModule.Domain
     /// </summary>
     public class OrderAssemblyAssignment : WorkerAssignment
     {
-        /// <summary>
-        /// Id собираемого заказа.
-        /// </summary>
         public int OrderId { get; internal set; }
 
         internal readonly List<OrderAssemblyLine> _lines = new();
@@ -36,15 +33,10 @@ namespace TaskControl.TaskModule.Domain
             IEnumerable<OrderAssemblyLine> lines)
             : base(id, taskId, assignedToUserId, branchId, status, assignedAtUtc)
         {
-            if (orderId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(orderId));
-
-            if (lines == null)
-                throw new ArgumentNullException(nameof(lines));
+            if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId));
+            if (lines == null) throw new ArgumentNullException(nameof(lines));
 
             var lineList = lines.ToList();
-            if (lineList.Count == 0)
-                throw new ArgumentException("At least one line must be provided.", nameof(lines));
 
             OrderId = orderId;
             _lines.AddRange(lineList);
@@ -61,8 +53,7 @@ namespace TaskControl.TaskModule.Domain
             DateTime assignedAtUtc = default)
             : base(taskId, assignedToUserId, branchId, assignedAtUtc)
         {
-            if (orderId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(orderId));
+            if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId));
 
             OrderId = orderId;
         }
@@ -73,23 +64,13 @@ namespace TaskControl.TaskModule.Domain
             _lines.Add(line);
         }
 
-        public override void Start(DateTime startedAtUtc)
-        {
-            base.Start(startedAtUtc);
-        }
-
         public override void Complete(DateTime completedAtUtc)
         {
-            // Здесь можно добавить специфичную для сборки валидацию перед завершением
-            if (!_lines.Any())
-                throw new InvalidOperationException("Cannot complete assembly without lines.");
+            // Валидация: нельзя завершить сборку, если есть необработанные позиции (Pending)
+            if (_lines.Any(l => l.Status == OrderAssemblyLineStatus.Pending))
+                throw new InvalidOperationException("Нельзя завершить сборку: есть необработанные позиции.");
 
             base.Complete(completedAtUtc);
-        }
-
-        public override void Cancel()
-        {
-            base.Cancel();
         }
     }
 }

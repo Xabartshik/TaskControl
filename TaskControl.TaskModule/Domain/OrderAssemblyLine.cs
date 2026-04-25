@@ -16,41 +16,19 @@ namespace TaskControl.TaskModule.Domain
     public class OrderAssemblyLine
     {
         public int Id { get; internal set; }
-
-        /// <summary>
-        /// Ссылка на назначение (родительский агрегат).
-        /// </summary>
         public int OrderAssemblyAssignmentId { get; internal set; }
-
-        /// <summary>
-        /// Id ItemPosition (товар).
-        /// </summary>
         public int ItemPositionId { get; internal set; }
-
-        /// <summary>
-        /// Id складской ячейки (PositionCell.PositionId), откуда забираем товар.
-        /// </summary>
         public int SourcePositionId { get; internal set; }
-
-        /// <summary>
-        /// Id складской ячейки (PositionCell.PositionId), куда кладем товар (PICKUP).
-        /// </summary>
         public int TargetPositionId { get; internal set; }
-
-        /// <summary>
-        /// Количество товара для сборки.
-        /// </summary>
         public int Quantity { get; internal set; }
-
-        /// <summary>
-        /// Фактически собранное количество.
-        /// </summary>
         public int PickedQuantity { get; internal set; }
-
         public OrderAssemblyLineStatus Status { get; internal set; }
 
         internal OrderAssemblyLine() { }
 
+        /// <summary>
+        /// Конструктор для загрузки существующей строки из БД.
+        /// </summary>
         public OrderAssemblyLine(
             int id,
             int orderAssemblyAssignmentId,
@@ -60,16 +38,10 @@ namespace TaskControl.TaskModule.Domain
             int quantity,
             OrderAssemblyLineStatus status)
         {
-            if (orderAssemblyAssignmentId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(orderAssemblyAssignmentId));
-            if (itemPositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(itemPositionId));
-            if (sourcePositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(sourcePositionId));
-            if (targetPositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(targetPositionId));
-            if (quantity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(quantity));
+            if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
+            if (orderAssemblyAssignmentId <= 0) throw new ArgumentOutOfRangeException(nameof(orderAssemblyAssignmentId));
+            if (itemPositionId <= 0) throw new ArgumentOutOfRangeException(nameof(itemPositionId));
+            if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
 
             Id = id;
             OrderAssemblyAssignmentId = orderAssemblyAssignmentId;
@@ -77,17 +49,12 @@ namespace TaskControl.TaskModule.Domain
             SourcePositionId = sourcePositionId;
             TargetPositionId = targetPositionId;
             Quantity = quantity;
-            PickedQuantity = 0;
             Status = status;
         }
 
-        public void SetPickedQuantity(int pickedQuantity)
-        {
-            if (pickedQuantity < 0 || pickedQuantity > Quantity)
-                throw new ArgumentOutOfRangeException(nameof(pickedQuantity));
-            PickedQuantity = pickedQuantity;
-        }
-
+        /// <summary>
+        /// Конструктор для создания новой строки.
+        /// </summary>
         public OrderAssemblyLine(
             int orderAssemblyAssignmentId,
             int itemPositionId,
@@ -95,16 +62,9 @@ namespace TaskControl.TaskModule.Domain
             int targetPositionId,
             int quantity)
         {
-            if (orderAssemblyAssignmentId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(orderAssemblyAssignmentId));
-            if (itemPositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(itemPositionId));
-            if (sourcePositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(sourcePositionId));
-            if (targetPositionId <= 0)
-                throw new ArgumentOutOfRangeException(nameof(targetPositionId));
-            if (quantity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(quantity));
+            if (orderAssemblyAssignmentId <= 0) throw new ArgumentOutOfRangeException(nameof(orderAssemblyAssignmentId));
+            if (itemPositionId <= 0) throw new ArgumentOutOfRangeException(nameof(itemPositionId));
+            if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
 
             OrderAssemblyAssignmentId = orderAssemblyAssignmentId;
             ItemPositionId = itemPositionId;
@@ -115,29 +75,31 @@ namespace TaskControl.TaskModule.Domain
             Status = OrderAssemblyLineStatus.Pending;
         }
 
-        /// <summary>
-        /// Отметить предмет как собранный (инкремент).
-        /// </summary>
+        public void SetPickedQuantity(int pickedQuantity)
+        {
+            if (pickedQuantity < 0 || pickedQuantity > Quantity)
+                throw new ArgumentOutOfRangeException(nameof(pickedQuantity));
+
+            PickedQuantity = pickedQuantity;
+        }
+
         public void MarkAsPicked()
         {
             if (Status == OrderAssemblyLineStatus.Placed)
-                throw new InvalidOperationException("Item is already placed.");
-            
-            if (PickedQuantity >= Quantity)
-                return; // Уже собрано полностью
+                throw new InvalidOperationException("Позиция уже размещена.");
+
+            if (PickedQuantity >= Quantity) return;
 
             PickedQuantity++;
-
             if (PickedQuantity >= Quantity)
-            {
                 Status = OrderAssemblyLineStatus.Picked;
-            }
         }
 
         public void MarkAsPlaced()
         {
-            if (Status != OrderAssemblyLineStatus.Picked)
-                throw new InvalidOperationException("Item can only be placed after it is picked.");
+            if (Status != OrderAssemblyLineStatus.Picked && Status != OrderAssemblyLineStatus.Placed)
+                throw new InvalidOperationException("Разместить позицию можно только после её сборки.");
+
             Status = OrderAssemblyLineStatus.Placed;
         }
 
