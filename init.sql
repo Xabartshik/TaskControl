@@ -82,7 +82,9 @@ CREATE TABLE IF NOT EXISTS base_tasks (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Assigned', 'InProgress', 'Completed', 'Cancelled', 'OnHold', 'Blocked')) DEFAULT 'New',
-    priority INT NOT NULL CHECK (priority >= 0 AND priority <= 10) DEFAULT 5
+    deadline TIMESTAMP NULL,
+    priority_level INT NOT NULL DEFAULT 1,
+    source_type VARCHAR(50) NULL
 );
 
 -- Индексы для задач

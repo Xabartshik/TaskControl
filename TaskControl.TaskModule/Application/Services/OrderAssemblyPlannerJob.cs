@@ -234,7 +234,7 @@ namespace TaskControl.TaskModule.Application.Services
                         BranchId = order.BranchId,
                         Type = "OrderAssembly",
                         Status = "New",
-                        Priority = 7,
+                        PriorityLevel = 1,
                         CreatedAt = DateTime.UtcNow
                     };
                     var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);

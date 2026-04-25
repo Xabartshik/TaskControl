@@ -69,8 +69,11 @@ namespace TaskControl.TaskModule.Domain
         public TaskStatus Status { get; set; } = TaskStatus.New;
 
 
-        [Range(0, 10)]
-        public int Priority { get; set; } = 5;
+        [Range(0, 5)]
+        public int PriorityLevel { get; set; } = 1;
+
+        public DateTime? Deadline { get; set; }
+        public string SourceType { get; set; }
         /// <summary>
         /// Дополнительные параметры задачи в формате JSON были удалены, так как являются частью БД, а не бизнес-сущности
         /// </summary>

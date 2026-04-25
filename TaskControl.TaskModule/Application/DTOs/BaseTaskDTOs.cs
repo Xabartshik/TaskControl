@@ -33,8 +33,11 @@ namespace TaskControl.TaskModule.Application.DTOs
         [Required]
         public TaskStatus Status { get; init; }
 
-        [Range(0, 10, ErrorMessage = "Приоритет должен быть от 0 до 10")]
-        public int Priority { get; init; }
+        [Range(0, 5, ErrorMessage = "Приоритет должен быть от 0 до 5")]
+        public int PriorityLevel { get; init; }
+
+        public DateTime? Deadline { get; set; }
+        public string SourceType { get; set; }
 
         public static BaseTask FromDto(BaseTaskDto dto)
         {
@@ -51,7 +54,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CreatedAt = dto.CreatedAt,
                 CompletedAt = dto.CompletedAt,
                 Status = dto.Status,
-                Priority = dto.Priority
+                PriorityLevel = dto.PriorityLevel
             };
         }
 
@@ -70,7 +73,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CreatedAt = entity.CreatedAt,
                 CompletedAt = entity.CompletedAt,
                 Status = entity.Status,
-                Priority = entity.Priority
+                PriorityLevel = entity.PriorityLevel
             };
         }
     }
