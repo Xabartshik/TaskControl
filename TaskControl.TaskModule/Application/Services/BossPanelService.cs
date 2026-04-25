@@ -186,12 +186,9 @@ namespace TaskControl.TaskModule.Application.Services
             var createDto = new CreateInventoryTaskDto
             {
                 BranchId = bossBranchId,
-                Priority = dto.Priority,
                 ItemPositionIds = targetItemPositionIds,
                 WorkerCount = workerIds.Count,
-                Description = dto.Description ?? $"Инвентаризация зон: {string.Join(", ", dto.ZonePrefixes)}",
-                DivisionStrategy = DivisionStrategy.ByQuantity,
-                DeadlineDate = dto.DeadlineDate
+                DivisionStrategy = DivisionStrategy.ByQuantity
             };
 
             return await _inventoryProcessService.CreateAndDistributeInventoryAsync(createDto, workerIds);
