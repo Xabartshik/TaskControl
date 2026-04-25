@@ -2,5 +2,5 @@
 
 public interface ITaskExecutionAggregator
 {
-    Task StartOrResumeTaskAsync(int taskId, int workerId);
+    Task<bool> StartOrResumeTaskAsync(int taskId, int workerId);
 }

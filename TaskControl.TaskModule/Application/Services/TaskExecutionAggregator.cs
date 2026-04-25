@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.Interface;
@@ -10,34 +11,45 @@ namespace TaskControl.TaskModule.Application.Services
     public class TaskExecutionAggregator : ITaskExecutionAggregator
     {
         private readonly IEnumerable<ITaskStateProvider> _stateProviders;
-        private readonly ITaskDataConnection _dataConnection;
+        private readonly ILogger<TaskExecutionAggregator> _logger;
 
         public TaskExecutionAggregator(
             IEnumerable<ITaskStateProvider> stateProviders,
-            ITaskDataConnection dataConnection)
+            ILogger<TaskExecutionAggregator> logger)
         {
             _stateProviders = stateProviders;
-            _dataConnection = dataConnection;
+            _logger = logger;
         }
 
-        public async Task StartOrResumeTaskAsync(int taskId, int workerId)
+        public async Task<bool> StartOrResumeTaskAsync(int taskId, int workerId)
         {
-            // 1. Ставим на паузу все текущие активные назначения работника во всех модулях
+            _logger.LogInformation("Запуск процесса переключения задачи. Целевая задача: {TaskId}, Работник: {WorkerId}", taskId, workerId);
+
+            // 1. Ставим на паузу все текущие активные назначения работника
             foreach (var provider in _stateProviders)
             {
                 await provider.PauseActiveTasksAsync(workerId, taskId);
             }
 
+            bool activated = false;
+
             // 2. Ищем целевое назначение и активируем его
             foreach (var provider in _stateProviders)
             {
-                // TryActivateTaskAsync внутри себя проверяет, принадлежит ли назначение этому работнику,
-                // и если да, меняет статус и сохраняет изменения в БД
                 if (await provider.TryActivateTaskAsync(taskId, workerId))
                 {
-                    break; // Как только нашли и активировали — прерываем цикл, дальше искать не нужно
+                    activated = true;
+                    _logger.LogInformation("Задача {TaskId} успешно активирована для работника {WorkerId}", taskId, workerId);
+                    break;
                 }
             }
+
+            if (!activated)
+            {
+                _logger.LogWarning("Не удалось найти назначение для задачи {TaskId} у пользователя {WorkerId}", taskId, workerId);
+            }
+
+            return activated;
         }
     }
 }

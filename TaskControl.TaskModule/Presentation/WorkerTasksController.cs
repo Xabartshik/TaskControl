@@ -34,9 +34,14 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpPost("{taskId}/start")]
         public async Task<IActionResult> StartTask(int taskId, [FromQuery] int workerId)
         {
-            // Агрегатор сам пройдет по всем модулям (Сборка, Инвентаризация и т.д.),
-            // поставит на паузу текущие назначения и активирует запрошенное.
-            await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
+            // Вызываем метод и получаем результат (успех/провал)
+            bool isStarted = await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
+
+            if (!isStarted)
+            {
+                // Возвращаем ошибку, если задача не найдена или не принадлежит работнику
+                return NotFound(new { message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+            }
 
             return Ok();
         }
