@@ -9,7 +9,7 @@ using TaskControl.TaskModule.Application.Interface;
 namespace TaskControl.TaskModule.Presentation
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     public class OrderAssemblyController : ControllerBase
     {
         private readonly IOrderAssemblyExecutionService _executionService;

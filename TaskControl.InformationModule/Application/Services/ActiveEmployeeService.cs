@@ -34,41 +34,40 @@ namespace TaskControl.InformationModule.Application.Services
         /// </summary>
         public async Task<IEnumerable<ActiveEmployeeDto>> GetWorkingEmployeesByBranchAsync(int branchId)
         {
-            var allChecks = (await _checkIORepository.GetAllAsync()).ToList();
-            var today = DateTime.UtcNow.Date;
+            var allChecks = await _checkIORepository.GetAllAsync();
+            var threshold = DateTime.UtcNow.AddHours(-24);
 
-            // Группируем по сотруднику, берем все записи за день
-            var employeeChecks = allChecks
-                .Where(c => c.BranchId == branchId && c.CheckTimeStamp.Date == today)
+            var recentChecks = allChecks
+                .Where(c => c.BranchId == branchId && c.CheckTimeStamp >= threshold)
                 .GroupBy(c => c.EmployeeId)
-                .Select(g => g.OrderBy(c => c.CheckTimeStamp).ToList())
+                .Select(g => g.OrderBy(c => c.CheckTimeStamp).Last())
                 .ToList();
 
-            var workingEmployeeIds = new List<int>();
+            var activeChecks = recentChecks
+                .Where(c => c.IsCheckIn())
+                .ToList();
 
-            // Проверяем: если последняя запись - это check-in, то сотрудник работает
-            foreach (var checks in employeeChecks)
+            var workingEmployeeIds = activeChecks.Select(c => c.EmployeeId).ToList();
+
+            if (!workingEmployeeIds.Any())
             {
-                if (checks.Last().IsCheckIn())
-                    workingEmployeeIds.Add(checks.First().EmployeeId);
+                _logger.LogWarning("Нет работающих сотрудников в филиале {BranchId} (активных check-in не найдено)", branchId);
+                return Enumerable.Empty<ActiveEmployeeDto>();
             }
 
             var allEmployees = await _employeeRepository.GetAllAsync();
-            var employees = allEmployees
+            var workingEmployees = allEmployees
                 .Where(e => workingEmployeeIds.Contains(e.EmployeesId))
                 .ToList();
 
-            return employees.Select(e => new ActiveEmployeeDto
+            return workingEmployees.Select(e => new ActiveEmployeeDto
             {
                 EmployeeId = e.EmployeesId,
                 Surname = e.Surname,
                 Name = e.Name,
                 MiddleName = e.MiddleName,
                 Role = e.Role,
-                CheckInTime = allChecks
-                    .Where(c => c.EmployeeId == e.EmployeesId && c.IsCheckIn())
-                    .OrderByDescending(c => c.CheckTimeStamp)
-                    .First().CheckTimeStamp,
+                CheckInTime = activeChecks.First(c => c.EmployeeId == e.EmployeesId).CheckTimeStamp,
                 IsCheckedOut = false
             });
         }

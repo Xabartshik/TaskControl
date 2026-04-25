@@ -7,7 +7,7 @@ using TaskControl.TaskModule.Application.Services;
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     public class TaskAssignationsController : ControllerBase, ICrudController<TaskAssignationDto, int>
     {
         private readonly IService<TaskAssignationDto> _service;
