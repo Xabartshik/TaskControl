@@ -88,9 +88,11 @@ namespace TaskControl.TaskModule.Application.Services
             var taskId = await _baseTaskService.Add(new BaseTaskDto
             {
                 Title = $"Инвентаризация {DateTime.UtcNow:dd.MM HH:mm}",
+                CreatedAt = DateTime.UtcNow,
+                PriorityLevel = dto.PriorityLevel,
                 BranchId = dto.BranchId,
                 Type = "inventory",
-                Status = TaskStatus.New
+                Status = TaskStatus.New,
             });
 
             var itemChunks = DivideItems(dto.ItemPositionIds, targetWorkerIds.Count);

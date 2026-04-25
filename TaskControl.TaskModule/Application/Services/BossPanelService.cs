@@ -188,7 +188,10 @@ namespace TaskControl.TaskModule.Application.Services
                 BranchId = bossBranchId,
                 ItemPositionIds = targetItemPositionIds,
                 WorkerCount = workerIds.Count,
-                DivisionStrategy = DivisionStrategy.ByQuantity
+                DivisionStrategy = DivisionStrategy.ByQuantity,
+                PriorityLevel = dto.PriorityLevel,
+                //TODO: Добавить время дедлайна
+                DeadlineDate = DateTime.Now.AddDays(3)
             };
 
             return await _inventoryProcessService.CreateAndDistributeInventoryAsync(createDto, workerIds);

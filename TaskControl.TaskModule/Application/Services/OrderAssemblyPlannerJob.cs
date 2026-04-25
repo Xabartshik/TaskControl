@@ -55,7 +55,7 @@ namespace TaskControl.TaskModule.Application.Services
                 // Получаем подходящие заказы
                 var targetOrders = await _db.GetTable<OrderModel>()
                     .Where(o => o.Status == "New" && o.DeliveryDate <= targetTime)
-                    .Select(o => new { o.OrderId, o.BranchId })
+                    .Select(o => new { o.OrderId, o.BranchId, o.DeliveryDate })
                     .ToListAsync();
 
                 _logger.LogInformation("+--- Планирование сборки заказов: найдено {Count} заказов (до {TargetTime:yyyy-MM-dd HH:mm})",
@@ -235,7 +235,8 @@ namespace TaskControl.TaskModule.Application.Services
                         Type = "OrderAssembly",
                         Status = "New",
                         PriorityLevel = 1,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        Deadline = order.DeliveryDate
                     };
                     var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
 

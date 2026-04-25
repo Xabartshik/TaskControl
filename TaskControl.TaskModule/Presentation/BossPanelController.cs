@@ -274,12 +274,24 @@ namespace TaskControl.TaskModule.Presentation
 
             try
             {
+                // Логируем попытку для отладки
+                _logger.LogInformation("Начальник филиала {BranchId} создает инвентаризацию по зонам: {Zones}",
+                    branchId.Value, string.Join(", ", dto.ZonePrefixes));
+
                 var result = await _bossPanelService.CreateInventoryByZoneAsync(dto, branchId.Value);
                 return Ok(result);
             }
+            catch (InvalidOperationException ex)
+            {
+                // Ошибки бизнес-логики (например, "зона пуста") отдаем как 400 Bad Request
+                _logger.LogWarning(ex, "Ошибка бизнес-логики при создании инвентаризации по зоне");
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                // Реальные падения сервера (например, БД недоступна или NullReference) логируем и отдаем как 500
+                _logger.LogError(ex, "Внутренняя ошибка сервера при создании инвентаризации по зоне");
+                return StatusCode(500, new { message = "Внутренняя ошибка сервера", details = ex.Message });
             }
         }
 

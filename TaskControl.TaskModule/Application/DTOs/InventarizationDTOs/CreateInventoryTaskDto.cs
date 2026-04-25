@@ -43,5 +43,7 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
 
         public int WorkerCount { get; set; }
         public DivisionStrategy DivisionStrategy { get; set; }
+        public int PriorityLevel { get; set; }
+        public DateTime? DeadlineDate { get; set; }
     }
 }
