@@ -1,26 +1,24 @@
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
-using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
-using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
-using UnitsNet;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Application.Services
 {
-    /// <summary>
-    /// Реализация основного сервиса обработки инвентаризации
-    /// </summary>
     public class InventoryProcessService : IInventoryProcessService
     {
         private readonly IInventoryAssignmentRepository _assignmentRepository;
@@ -30,13 +28,11 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IBaseTaskService _baseTaskService;
         private readonly IItemPositionRepository _itemPositionRepository;
         private readonly PositionDetailsService _positionDetailsService;
-        private readonly ILogger<InventoryProcessService> _logger;
         private readonly IItemRepository _itemRepository;
-        private readonly IPositionCellRepository _positionCellRepository;
         private readonly ITelemetryService _telemetryService;
         private readonly TaskWorkloadAggregator _aggregator;
-
-
+        private readonly ActiveEmployeeService _activeEmployeeService;
+        private readonly ILogger<InventoryProcessService> _logger;
 
         public InventoryProcessService(
             IInventoryAssignmentRepository assignmentRepository,
@@ -47,1598 +43,218 @@ namespace TaskControl.TaskModule.Application.Services
             IItemPositionRepository itemPositionRepository,
             PositionDetailsService positionDetailsService,
             IItemRepository itemRepository,
-            IPositionCellRepository positionCellRepository,
             ITelemetryService telemetryService,
             TaskWorkloadAggregator aggregator,
+            ActiveEmployeeService activeEmployeeService,
             ILogger<InventoryProcessService> logger)
         {
-            _assignmentRepository = assignmentRepository
-                ?? throw new ArgumentNullException(nameof(assignmentRepository));
-            _lineRepository = lineRepository
-                ?? throw new ArgumentNullException(nameof(lineRepository));
-            _discrepancyRepository = discrepancyRepository
-                ?? throw new ArgumentNullException(nameof(discrepancyRepository));
-            _statisticsRepository = statisticsRepository
-                ?? throw new ArgumentNullException(nameof(statisticsRepository));
-            _baseTaskService = baseTaskService
-                ?? throw new ArgumentNullException(nameof(baseTaskService));
-            _itemPositionRepository = itemPositionRepository
-                ?? throw new ArgumentNullException(nameof(itemPositionRepository));
-            _positionDetailsService = positionDetailsService
-                ?? throw new ArgumentNullException(nameof(positionDetailsService));
-            _itemRepository = itemRepository
-                ?? throw new ArgumentNullException(nameof(itemRepository));
-            _positionCellRepository = positionCellRepository
-                ?? throw new ArgumentNullException(nameof(positionCellRepository));
-            _logger = logger
-                ?? throw new ArgumentNullException(nameof(logger));
-            _telemetryService = telemetryService
-                ?? throw new ArgumentNullException(nameof(telemetryService));
-            _aggregator = aggregator
-                ?? throw new ArgumentNullException(nameof(aggregator));
+            _assignmentRepository = assignmentRepository;
+            _lineRepository = lineRepository;
+            _discrepancyRepository = discrepancyRepository;
+            _statisticsRepository = statisticsRepository;
+            _baseTaskService = baseTaskService;
+            _itemPositionRepository = itemPositionRepository;
+            _positionDetailsService = positionDetailsService;
+            _itemRepository = itemRepository;
+            _telemetryService = telemetryService;
+            _aggregator = aggregator;
+            _activeEmployeeService = activeEmployeeService;
+            _logger = logger;
         }
 
-        /// <summary>
-        /// Завершает задание инвентаризации для конкретного сотрудника
-        /// </summary>
+        public async Task<CompleteInventoryDto> CreateAndDistributeInventoryAsync(CreateInventoryTaskDto dto, List<int> availableWorkers)
+        {
+            List<int> targetWorkerIds = availableWorkers ?? new List<int>();
+
+            // Если список работников не передан, выбираем автоматически
+            if (!targetWorkerIds.Any())
+            {
+                var activeEmployees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(dto.BranchId);
+                var activeList = activeEmployees.ToList();
+
+                if (!activeList.Any())
+                    throw new InvalidOperationException("Нет активных сотрудников в филиале для автоматического назначения.");
+
+                // Берем нужное количество (WorkerCount) самых свободных
+                int countToTake = dto.WorkerCount > 0 ? Math.Min(dto.WorkerCount, activeList.Count) : 1;
+
+                var loadTasks = activeList.Select(async e => new { id = e.EmployeeId, load = await _aggregator.GetTotalActiveWorkloadAsync(e.EmployeeId) });
+                var results = await Task.WhenAll(loadTasks);
+
+                targetWorkerIds = results.OrderBy(x => x.load).Take(countToTake).Select(x => x.id).ToList();
+                _logger.LogInformation("Автоматически выбрано {Count} исполнителей.", targetWorkerIds.Count);
+            }
+
+            var taskId = await _baseTaskService.Add(new BaseTaskDto
+            {
+                Title = $"Инвентаризация {DateTime.UtcNow:dd.MM HH:mm}",
+                BranchId = dto.BranchId,
+                Type = "inventory",
+                Status = TaskStatus.New
+            });
+
+            var itemChunks = DivideItems(dto.ItemPositionIds, targetWorkerIds.Count);
+            var posDetails = (await _positionDetailsService.GetPositionDetailsByBranchAsync(dto.BranchId)).ToDictionary(p => p.PositionId);
+            var itemPositions = (await _itemPositionRepository.GetAllAsync()).ToDictionary(ip => ip.Id);
+
+            for (int i = 0; i < itemChunks.Count; i++)
+            {
+                var assignment = new InventoryAssignment(taskId, targetWorkerIds[i], dto.BranchId);
+                var assignmentId = await _assignmentRepository.AddAsync(assignment);
+
+                var lines = itemChunks[i].Select(id =>
+                {
+                    var ip = itemPositions[id];
+                    var pd = posDetails[ip.PositionId];
+                    return new InventoryAssignmentLine(assignmentId, id, ip.PositionId, PositionCode.FromString(pd.PositionCode), ip.Quantity);
+                }).ToList();
+
+                await _lineRepository.AddBatchAsync(lines);
+                await _statisticsRepository.AddAsync(new InventoryStatistics(assignmentId, lines.Count));
+            }
+
+            return new CompleteInventoryDto { Message = $"Создано {targetWorkerIds.Count} назначений." };
+        }
+
+        public async Task<List<InventoryAssignmentHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId)
+        {
+            var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
+            return assignments
+                .Where(a => a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.InProgress)
+                .Select(a => new InventoryAssignmentHeaderDto
+                {
+                    AssignmentId = a.Id,
+                    TaskId = a.TaskId,
+                    Status = a.Status,
+                    AssignedAt = a.AssignedAt,
+                    TotalLines = a.TotalLines,
+                    CountedLines = a.CountedLines
+                }).ToList();
+        }
+
+        public async Task<WorkerInventoryTaskDto> GetInventoryTaskDetailsAsync(int assignmentId)
+        {
+            var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
+            if (assignment == null) throw new InvalidOperationException("Назначение не найдено.");
+
+            var baseTask = await _baseTaskService.GetById(assignment.TaskId);
+            var lines = await _lineRepository.GetByAssignmentIdAsync(assignmentId);
+            var items = (await _itemRepository.GetAllAsync()).ToDictionary(i => i.ItemId);
+            var itemPositions = (await _itemPositionRepository.GetAllAsync()).ToDictionary(ip => ip.Id);
+
+            var dto = new WorkerInventoryTaskDto
+            {
+                AssignmentId = assignment.Id,
+                TaskId = assignment.TaskId,
+                TaskNumber = baseTask?.Title,
+                Status = assignment.Status,
+                CreatedDate = assignment.AssignedAt,
+                TotalLines = assignment.TotalLines,
+                CountedLines = assignment.CountedLines
+            };
+
+            foreach (var group in lines.GroupBy(l => l.PositionId))
+            {
+                var first = group.First();
+                var cell = new CellInventoryInfoDto
+                {
+                    PositionId = group.Key,
+                    CellCode = first.PositionCode.ToString(),
+                    CellDisplayName = first.PositionCode.ToString()
+                };
+
+                foreach (var line in group)
+                {
+                    var itemId = itemPositions[line.ItemPositionId].ItemId;
+                    cell.Items.Add(new InventoryLineDto
+                    {
+                        LineId = line.Id,
+                        ItemPositionId = line.ItemPositionId,
+                        ItemId = itemId,
+                        ItemName = items[itemId].Name,
+                        ExpectedQuantity = line.ExpectedQuantity,
+                        ActualQuantity = line.ActualQuantity
+                    });
+                }
+                dto.CellInventories.Add(cell);
+            }
+            return dto;
+        }
+
+        public async Task<bool> StartInventoryAsync(int id)
+        {
+            var a = await _assignmentRepository.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Start(DateTime.UtcNow);
+            await _assignmentRepository.UpdateAsync(a);
+            return true;
+        }
+
+        public async Task<bool> PauseInventoryAsync(int id)
+        {
+            var a = await _assignmentRepository.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Pause();
+            await _assignmentRepository.UpdateAsync(a);
+            return true;
+        }
+
+        public async Task<bool> CancelInventoryAsync(int id)
+        {
+            var a = await _assignmentRepository.GetByIdAsync(id);
+            if (a == null) return false;
+            a.Cancel();
+            await _assignmentRepository.UpdateAsync(a);
+            return true;
+        }
+
         public async Task<CompleteAssignmentResultDto> CompleteAssignmentAsync(CompleteAssignmentDto dto)
         {
-            try
+            var a = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
+            if (a == null) throw new InvalidOperationException("Assignment not found.");
+
+            foreach (var lDto in dto.Lines.Where(l => l.LineId.HasValue))
             {
-                _logger.LogInformation("+--- [Inv] завершение инвентаризации: AssignmentId={AssignmentId}, WorkerId={WorkerId}",
-                    dto.AssignmentId, dto.WorkerId);
-
-                //1. ВАЛИДАЦИЯ
-
-                var assignment = await _assignmentRepository.GetByIdAsync(dto.AssignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Assignment {dto.AssignmentId} не найден");
-
-                if (assignment.AssignedToUserId != dto.WorkerId)
-                    throw new InvalidOperationException(
-                        $"Assignment {dto.AssignmentId} не принадлежит работнику {dto.WorkerId}");
-
-                if (assignment.Status == AssignmentStatus.Completed)
-                    throw new InvalidOperationException("Задание уже завершено");
-
-                if (assignment.Status == AssignmentStatus.Cancelled)
-                    throw new InvalidOperationException("Задание отменено");
-
-                // Загрузка всех существующих линий
-                var existingLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-
-                _logger.LogInformation("|   > загружено {Count} линий", existingLines.Count);
-
-                //2. ОБНОВЛЕНИЕ ФАКТИЧЕСКИХ КОЛИЧЕСТВ ДЛЯ СУЩЕСТВУЮЩИХ ЛИНИЙ
-
-                var updatedLines = new List<InventoryAssignmentLine>();
-                var processedLineIds = new HashSet<int>();
-
-                // Обрабатываем линии с LineId (существующие товары)
-                foreach (var lineDto in dto.Lines.Where(l => l.LineId.HasValue))
+                var line = await _lineRepository.GetByIdAsync(lDto.LineId!.Value);
+                if (line != null)
                 {
-                    var existingLine = existingLines.FirstOrDefault(l => l.Id == lineDto.LineId.Value);
-
-                    if (existingLine == null)
-                    {
-                        _logger.LogWarning("|   ! линия {LineId} не найдена, пропуск", lineDto.LineId.Value);
-                        continue;
-                    }
-
-                    // Проверка принадлежности линии к этому assignment
-                    if (existingLine.InventoryAssignmentId != dto.AssignmentId)
-                    {
-                        _logger.LogWarning(
-                            "Линия {LineId} не принадлежит assignment {AssignmentId}",
-                            lineDto.LineId.Value, dto.AssignmentId);
-                        continue;
-                    }
-
-                    // Обновляем фактическое количество для существующей линии
-                    existingLine.SetActualQuantity(lineDto.ActualQuantity ?? 0);
-                    updatedLines.Add(existingLine);
-                    processedLineIds.Add(existingLine.Id);
-
-                    _logger.LogInformation("|   > обновлена линия {LineId}: {Expected} -> {Actual}",
-                        existingLine.Id, existingLine.ExpectedQuantity, lineDto.ActualQuantity);
-                }
-
-                // Обновляем существующие линии в БД
-                foreach (var line in updatedLines)
-                {
+                    line.SetActualQuantity(lDto.ActualQuantity ?? 0);
                     await _lineRepository.UpdateAsync(line);
                 }
-
-                _logger.LogInformation("|   * обновлено {Count} линий", updatedLines.Count);
-
-                // Устанавливаем actual_quantity = 0 для непроверенных линий
-                var uncheckedLines = existingLines
-                    .Where(l => !processedLineIds.Contains(l.Id))
-                    .ToList();
-
-                foreach (var uncheckedLine in uncheckedLines)
-                {
-                    uncheckedLine.SetActualQuantity(0);
-                    await _lineRepository.UpdateAsync(uncheckedLine);
-
-                    _logger.LogInformation("|   ! линия {LineId} не проверена -> установлен 0", uncheckedLine.Id);
-                }
-
-                //3. ДОБАВЛЕНИЕ НОВЫХ ЛИНИЙ ДЛЯ НЕОЖИДАННЫХ ТОВАРОВ
-
-                var newLinesToAdd = new List<InventoryAssignmentLine>();
-
-                // Определяем неожиданные товары: те, у которых LineId == null
-                var unexpectedItems = dto.Lines.Where(l => !l.LineId.HasValue).ToList();
-
-                if (unexpectedItems.Count > 0)
-                {
-                    _logger.LogInformation("|   > обнаружено {Count} неожиданных товаров", unexpectedItems.Count);
-
-                    foreach (var lineDto in unexpectedItems)
-                    {
-                        _logger.LogInformation("|     + ItemId={ItemId}, Position={PositionCode}, Qty={Quantity}",
-                            lineDto.ItemId, lineDto.PositionCode, lineDto.ActualQuantity);
-
-                        // Найти или создать ItemPosition для этого товара
-                        var itemPosition = await FindOrCreateItemPositionAsync(
-                            lineDto.ItemId,
-                            lineDto.PositionCode,
-                            assignment.BranchId);
-
-                        if (itemPosition == null)
-                        {
-                            _logger.LogError(
-                                "Не удалось найти/создать ItemPosition для товара {ItemId} в позиции {PositionCode}",
-                                lineDto.ItemId, lineDto.PositionCode);
-                            continue;
-                        }
-
-                        // Парсим PositionCode из строки
-                        var positionCode = PositionCode.FromString(lineDto.PositionCode);
-
-                        if (positionCode == null)
-                        {
-                            _logger.LogError("Не удалось распарсить PositionCode: {PositionCode}", lineDto.PositionCode);
-                            continue;
-                        }
-
-                        // Проверка: может быть, этот товар УЖЕ был в исходных линиях?
-                        var existingLineForThisItem = existingLines.FirstOrDefault(l => l.ItemPositionId == itemPosition.Id);
-
-                        if (existingLineForThisItem != null)
-                        {
-                            _logger.LogWarning("|     ! товар {ItemPositionId} уже в списке, обновление вместо добавления", itemPosition.Id);
-
-                            existingLineForThisItem.SetActualQuantity(lineDto.ActualQuantity ?? 0);
-                            await _lineRepository.UpdateAsync(existingLineForThisItem);
-                            continue;
-                        }
-
-                        // Создаем новую линию для неожиданного товара
-                        var newLine = new InventoryAssignmentLine(
-                                                        inventoryAssignmentId: dto.AssignmentId,
-                                                        itemPositionId: itemPosition.Id,
-                                                        positionId: itemPosition.PositionId,
-                                                        positionCode: positionCode,
-                                                        expectedQuantity: 0);
-
-                        // Устанавливаем фактическое количество
-                        newLine.SetActualQuantity(lineDto.ActualQuantity ?? 0);
-
-                        newLinesToAdd.Add(newLine);
-                    }
-
-                    // Сохраняем новые линии одной пачкой
-                    if (newLinesToAdd.Count > 0)
-                    {
-                        await _lineRepository.AddBatchAsync(newLinesToAdd);
-                        _logger.LogInformation("|   * добавлено {Count} новых линий", newLinesToAdd.Count);
-                    }
-                }
-
-                //4. ПЕРЕЗАГРУЗКА ВСЕХ ЛИНИЙ
-
-                var allLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-                _logger.LogInformation("|   > итого линий после обработки: {Count}", allLines.Count);
-
-                //5. ОБРАБОТКА РАСХОЖДЕНИЙ
-
-                var discrepancies = new List<TaskControl.TaskModule.Domain.InventoryDiscrepancy>();
-
-                foreach (var line in allLines)
-                {
-                    if (!line.ActualQuantity.HasValue)
-                        continue;
-
-                    var variance = line.ActualQuantity.Value - line.ExpectedQuantity;
-
-                    if (variance != 0)
-                    {
-                        var discrepancyType = variance > 0
-                            ? DiscrepancyType.Surplus
-                            : DiscrepancyType.Shortage;
-
-                        var discrepancy = new TaskControl.TaskModule.Domain.InventoryDiscrepancy(
-                            inventoryAssignmentLineId: line.Id,
-                            itemPositionId: line.ItemPositionId,
-                            expectedQuantity: line.ExpectedQuantity,
-                            actualQuantity: line.ActualQuantity.Value,
-                            note: null);
-
-                        discrepancies.Add(discrepancy);
-
-                        _logger.LogInformation("|   ! расхождение: Line={LineId}, {Variance} ({Type})",
-                            line.Id, variance, discrepancyType);
-                    }
-                }
-
-                // Сохраняем расхождения
-                if (discrepancies.Count > 0)
-                {
-                    _logger.LogInformation("Сохранение {Count} расхождений", discrepancies.Count);
-
-                    foreach (var discrepancy in discrepancies)
-                    {
-                        await _discrepancyRepository.AddAsync(discrepancy);
-                    }
-
-                    _logger.LogInformation("Расхождения сохранены");
-                }
-
-                //6. ОБНОВЛЕНИЕ СТАТИСТИКИ
-
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-                if (statistics == null)
-                {
-                    throw new InvalidOperationException($"Статистика для assignment {dto.AssignmentId} не найдена");
-                }
-
-                var finalDiscrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-
-                statistics.TotalPositions = allLines.Count;
-                statistics.CountedPositions = allLines.Count(l => l.ActualQuantity.HasValue);
-                statistics.DiscrepancyCount = finalDiscrepancies.Count;
-                statistics.SurplusCount = finalDiscrepancies.Count(d => d.Type == DiscrepancyType.Surplus);
-                statistics.ShortageCount = finalDiscrepancies.Count(d => d.Type == DiscrepancyType.Shortage);
-                statistics.TotalSurplusQuantity = finalDiscrepancies
-                    .Where(d => d.Type == DiscrepancyType.Surplus)
-                    .Sum(d => d.Variance);
-                statistics.TotalShortageQuantity = finalDiscrepancies
-                    .Where(d => d.Type == DiscrepancyType.Shortage)
-                    .Sum(d => Math.Abs(d.Variance));
-                statistics.CompletedAt = DateTime.UtcNow;
-
-                await _statisticsRepository.UpdateAsync(statistics);
-
-                _logger.LogInformation("|   * статистика: учтено {Counted}/{Total} ({Percentage:F1}%)",
-                    statistics.CountedPositions, statistics.TotalPositions,
-                    statistics.TotalPositions > 0 ? (decimal)statistics.CountedPositions / statistics.TotalPositions * 100 : 0);
-
-                //7. ОБНОВЛЕНИЕ СТАТУСА ЗАДАНИЯ
-
-                assignment.Complete(DateTime.UtcNow);
-                await _assignmentRepository.UpdateAsync(assignment);
-
-                _logger.LogInformation("|   * статус назначения -> 'Completed'");
-
-                //8. ФОРМИРОВАНИЕ РЕЗУЛЬТАТА
-
-                var statisticsDto = MapStatisticsToDto(statistics);
-                var discrepancyReport = new DiscrepancyReportDto
-                {
-                    InventoryAssignmentId = dto.AssignmentId,
-                    TotalDiscrepancies = finalDiscrepancies.Count,
-                    SurplusCount = statistics.SurplusCount,
-                    ShortageCount = statistics.ShortageCount,
-                    DiscrepancyPercentage = statistics.TotalPositions > 0
-                        ? (decimal)finalDiscrepancies.Count / statistics.TotalPositions * 100
-                        : 0,
-                    Discrepancies = finalDiscrepancies.Select(MapDiscrepancyToDto).ToList()
-                };
-
-                int itemsProcessed = allLines.Count; // Считаем общее кол-во проверенных ячеек
-                DateTime startTime = assignment.StartedAt ?? assignment.AssignedAt;
-                int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
-
-                int waitTimeSeconds = assignment.StartedAt.HasValue
-                    ? (int)(assignment.StartedAt.Value - assignment.AssignedAt).TotalSeconds
-                    : 0;
-
-                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(dto.WorkerId);
-
-                await _telemetryService.LogTaskEventAsync(
-                    workerId: dto.WorkerId,
-                    branchId: assignment.BranchId,
-                    taskCategory: "Inventory",
-                    itemsProcessed: itemsProcessed,
-                    durationSeconds: durationSeconds,
-                    discrepanciesFound: finalDiscrepancies.Count,
-                    waitTimeSeconds: waitTimeSeconds,
-                    queueSize: globalQueueSize
-                );
-
-                string successMessage = $"✅ Инвентаризация завершена";
-                if (newLinesToAdd.Count > 0)
-                    successMessage += $"\nДобавлено неожиданных товаров: {newLinesToAdd.Count}";
-                if (finalDiscrepancies.Count > 0)
-                    successMessage += $"\nОбнаружено расхождений: {finalDiscrepancies.Count}";
-
-                _logger.LogInformation("=== [Inv] завершена: AssignmentId={AssignmentId}, {Counted}/{Total} учтено, {Discrepancies} расхождений ===",
-                    dto.AssignmentId, statistics.CountedPositions, statistics.TotalPositions, finalDiscrepancies.Count);
-
-                return new CompleteAssignmentResultDto
-                {
-                    Success = true,
-                    Message = successMessage,
-                    Statistics = statisticsDto,
-                    DiscrepancyReport = discrepancyReport
-                };
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при завершении инвентаризации AssignmentId={AssignmentId}", dto.AssignmentId);
-                throw;
-            }
+
+            a.Complete(DateTime.UtcNow);
+            await _assignmentRepository.UpdateAsync(a);
+
+            var finalLines = await _lineRepository.GetByAssignmentIdAsync(a.Id);
+            var discrepancies = await ProcessDiscrepanciesAsync(finalLines);
+
+            int queueSize = await _aggregator.GetTotalActiveWorkloadAsync(a.AssignedToUserId);
+            await _telemetryService.LogTaskEventAsync(a.AssignedToUserId, a.BranchId, "Inventory", finalLines.Count,
+                (int)(DateTime.UtcNow - a.AssignedAt).TotalSeconds, discrepancies.Count, queueSize);
+
+            return new CompleteAssignmentResultDto { Success = true, Message = "Завершено." };
         }
 
-
-
-        /// <summary>
-        /// Найти или создать ItemPosition для товара в указанной позиции
-        /// </summary>
-        private async Task<ItemPosition?> FindOrCreateItemPositionAsync(
-            int itemId,
-            string positionCodeString,
-            int branchId)
+        private List<List<int>> DivideItems(List<int> ids, int count)
         {
-            try
-            {
-                // Парсим PositionCode
-                var positionCode = PositionCode.FromString(positionCodeString);
-                if (positionCode == null)
-                {
-                    _logger.LogError("Некорректный PositionCode: {PositionCode}", positionCodeString);
-                    return null;
-                }
-
-                // Получаем все PositionCell для филиала
-                var positionCells = await _positionCellRepository.GetByBranchAsync(branchId);
-                var positionCell = positionCells.FirstOrDefault(pc => pc.Code.ToString() == positionCodeString);
-
-                if (positionCell == null)
-                {
-                    _logger.LogError("Позиция с кодом {PositionCode} не найдена в филиале {BranchId}",
-                        positionCodeString, branchId);
-                    return null;
-                }
-
-                // Проверяем, существует ли уже ItemPosition для этого товара в этой позиции
-                var allItemPositions = await _itemPositionRepository.GetAllAsync();
-                var existingItemPosition = allItemPositions.FirstOrDefault(ip =>
-                    ip.ItemId == itemId && ip.PositionId == positionCell.PositionId);
-
-                if (existingItemPosition != null)
-                {
-                    _logger.LogInformation("|     - ItemPosition {ItemPositionId} уже существует", existingItemPosition.Id);
-                    return existingItemPosition;
-                }
-
-                // Создаем новый ItemPosition
-                var newItemPosition = new ItemPosition
-                {
-                    ItemId = itemId,
-                    PositionId = positionCell.PositionId,
-                    Quantity = 0  // Будет обновлено после инвентаризации
-                };
-
-                var newItemPositionId = await _itemPositionRepository.AddAsync(newItemPosition);
-                newItemPosition.Id = newItemPositionId;
-
-                _logger.LogInformation("|     + создан ItemPosition {ItemPositionId}", newItemPositionId);
-
-                return newItemPosition;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Ошибка при поиске/создании ItemPosition для ItemId={ItemId}, PositionCode={PositionCode}",
-                    itemId, positionCodeString);
-                return null;
-            }
+            var res = new List<List<int>>();
+            if (count <= 0) return res;
+            int per = (int)Math.Ceiling((double)ids.Count / count);
+            for (int i = 0; i < count; i++) res.Add(ids.Skip(i * per).Take(per).ToList());
+            return res;
         }
 
-        //TODO: Поработать над этой частью
-        /// <summary>
-        /// Создать новую инвентаризацию и распределить товары между работниками
-        /// </summary>
-        public async Task<CompleteInventoryDto> CreateAndDistributeInventoryAsync(
-            CreateInventoryTaskDto dto,
-            List<int> availableWorkers)
+        private async Task<List<InventoryDiscrepancy>> ProcessDiscrepanciesAsync(List<InventoryAssignmentLine> lines)
         {
-            try
+            var res = new List<InventoryDiscrepancy>();
+            foreach (var l in lines.Where(x => x.ActualQuantity != x.ExpectedQuantity))
             {
-                _logger.LogInformation("+--- [Inv] создание инвентаризации: филиал {BranchId}, товаров {ItemCount}",
-                    dto.BranchId, dto.ItemPositionIds.Count);
-
-                if (dto.ItemPositionIds.Count == 0)
-                    throw new ArgumentException("Список товаров не может быть пустым");
-
-                if (availableWorkers.Count == 0)
-                    throw new ArgumentException("Нет доступных работников для распределения");
-
-                var workerCount = Math.Min(dto.WorkerCount, availableWorkers.Count);
-
-                // 1. Получить данные о всех ItemPosition
-                var itemPositions = await _itemPositionRepository.GetAllAsync();
-                var itemPositionDict = itemPositions
-                    .Where(ip => dto.ItemPositionIds.Contains(ip.Id))
-                    .ToDictionary(ip => ip.Id);
-
-                if (itemPositionDict.Count != dto.ItemPositionIds.Count)
-                {
-                    var missingIds = dto.ItemPositionIds.Except(itemPositionDict.Keys).ToList();
-                    _logger.LogWarning("|   ! не найдены ItemPosition: {MissingIds}", string.Join(", ", missingIds));
-                }
-
-                // 2. Получить детальную информацию о позициях
-                var positionIds = itemPositionDict.Values.Select(ip => ip.PositionId).Distinct().ToList();
-                var positionDetails = await _positionDetailsService.GetPositionDetailsByBranchAsync(dto.BranchId);
-                var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
-
-                var invalidItemPositions = itemPositionDict.Values
-                    .Where(ip => !positionDetailsDict.ContainsKey(ip.PositionId))
-                    .Select(ip => new { ip.Id, ip.PositionId })
-                    .ToList();
-
-                if (invalidItemPositions.Any())
-                {
-                    var msg =
-                        "Невозможно создать инвентаризацию: в списке есть позиции товара, " +
-                        "которые не относятся к выбранному филиалу или по ним нет данных о ячейке. " +
-                        $"BranchId={dto.BranchId}. " +
-                        "Проблемные ItemPositionId/PositionId: " +
-                        string.Join(", ", invalidItemPositions.Select(x => $"{x.Id}/{x.PositionId}"));
-
-                    _logger.LogError(msg);
-                    throw new ArgumentException(msg);
-                }
-                // 3. Создать BaseTask для инвентаризации
-                var baseTaskDto = new BaseTaskDto
-                {
-                    Title = $"Инвентаризация филиала {dto.BranchId}",
-                    Description = dto.Description ?? "Автоматически созданная задача инвентаризации",
-                    BranchId = dto.BranchId,
-                    Type = "inventory",
-                    Priority = dto.Priority,
-                    CreatedAt = DateTime.UtcNow,
-                    Status = TaskStatus.New
-                };
-
-                var taskId = await _baseTaskService.Add(baseTaskDto);
-                _logger.LogInformation("|   > создана системная задача TaskId={TaskId}", taskId);
-
-                // 4. Разделить товары на зоны в зависимости от стратегии
-                var zones = DivideItemsByStrategy(dto.ItemPositionIds, workerCount, dto.DivisionStrategy);
-                _logger.LogInformation("|   > разделение на {ZoneCount} зон", zones.Count);
-
-                var assignments = new List<InventoryAssignment>();
-
-                // 5. Создать InventoryAssignment для каждого работника
-                for (int zoneIndex = 0; zoneIndex < zones.Count; zoneIndex++)
-                {
-                    if (zoneIndex >= availableWorkers.Count)
-                    {
-                        _logger.LogWarning("|   ! не хватило работника для зоны {ZoneIndex}", zoneIndex);
-                        break;
-                    }
-
-                    var workerId = availableWorkers[zoneIndex];
-                    var itemsInZone = zones[zoneIndex];
-
-                    var assignment = new InventoryAssignment(
-                        taskId: taskId,
-                        assignedToUserId: workerId,
-                        branchId: dto.BranchId);
-
-                    assignments.Add(assignment);
-
-                    _logger.LogInformation(
-                        "|     - Зона {ZoneIndex}: UserId={UserId}, товаров {Count}",
-                        zoneIndex, workerId, itemsInZone.Count);
-                }
-
-
-                // 6. Сохранить назначения
-                var assignmentIds = new List<int>();
-                foreach (var assignment in assignments)
-                {
-                    var id = await _assignmentRepository.AddAsync(assignment);
-                    assignmentIds.Add(id);
-                }
-
-                _logger.LogInformation("|   * сохранено {Count} назначений", assignmentIds.Count);
-
-                // 7. Создать Lines и Statistics для каждого назначения
-                for (int i = 0; i < assignmentIds.Count; i++)
-                {
-                    var assignmentId = assignmentIds[i];
-                    var zoneItemPositionIds = zones[i];
-
-                    // Создать Lines с полными данными
-                    var lines = new List<InventoryAssignmentLine>();
-
-                    foreach (var itemPositionId in zoneItemPositionIds)
-                    {
-                        if (!itemPositionDict.TryGetValue(itemPositionId, out var itemPosition))
-                        {
-                            _logger.LogWarning("ItemPosition {ItemPositionId} не найден, пропускаем", itemPositionId);
-                            continue;
-                        }
-
-                        if (!positionDetailsDict.TryGetValue(itemPosition.PositionId, out var positionDetail))
-                        {
-                            _logger.LogWarning("|   ! PositionDetails для {PositionId} не найдены", itemPosition.PositionId);
-                            continue;
-                        }
-
-                        // Парсим PositionCode из строки
-                        var positionCode = PositionCode.FromString(positionDetail.PositionCode);
-
-                        var line = new InventoryAssignmentLine(
-                            inventoryAssignmentId: assignmentId,
-                            itemPositionId: itemPositionId,
-                            positionId: itemPosition.PositionId,
-                            positionCode: positionCode,
-                            expectedQuantity: itemPosition.Quantity);
-
-                        lines.Add(line);
-                    }
-
-                    if (lines.Count == 0)
-                    {
-                        _logger.LogWarning("|   ! для назначения {AssignmentId} нет строк", assignmentId);
-                        continue;
-                    }
-
-                    // Массовое добавление Lines
-                    await _lineRepository.AddBatchAsync(lines);
-                    _logger.LogInformation("|     > добавлено {Count} строк для AssignmentId={AssignmentId}", lines.Count, assignmentId);
-
-                    // Создать Statistics
-                    var statistics = new InventoryStatistics(
-                        inventoryAssignmentId: assignmentId,
-                        totalPositions: lines.Count);
-
-                    await _statisticsRepository.AddAsync(statistics);
-                    _logger.LogInformation("|     > статистика инициализирована");
-                }
-
-                _logger.LogInformation("=== [Inv] распланирована между {WorkerCount} сотрудниками ===", assignmentIds.Count);
-
-                return new CompleteInventoryDto
-                {
-                    InventoryAssignmentId = assignmentIds.FirstOrDefault(),
-                    CompletedAt = DateTime.UtcNow,
-                    Message = $"Инвентаризация создана и распределена между {assignmentIds.Count} работниками"
-                };
+                var d = new InventoryDiscrepancy(l.Id, l.ItemPositionId, l.ExpectedQuantity, l.ActualQuantity ?? 0);
+                await _discrepancyRepository.AddAsync(d);
+                res.Add(d);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при создании инвентаризации");
-                throw;
-            }
+            return res;
         }
-
-        public async Task<InventoryTaskDetailsDto> GetInventoryTaskDetailsForWorkerAsync(int userId, int assignmentId)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос деталей назначения {AssignmentId} (UserId={UserId})",
-                    assignmentId, userId);
-
-                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
-
-                var assignment = assignments.FirstOrDefault(a =>
-                    a.Id == assignmentId &&
-                    (AssignmentStatus)a.Status != AssignmentStatus.Completed &&
-                    (AssignmentStatus)a.Status != AssignmentStatus.Cancelled);
-
-                if (assignment == null)
-                    throw new InvalidOperationException(
-                        $"Активное назначение {assignmentId} для пользователя {userId} не найдено");
-
-                var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
-
-                var itemPositions = await _itemPositionRepository.GetAllAsync();
-                var itemPositionIds = lines.Select(l => l.ItemPositionId).Distinct().ToList();
-
-                var itemPositionDict = itemPositions
-                    .Where(ip => itemPositionIds.Contains(ip.Id))
-                    .ToDictionary(ip => ip.Id);
-
-                var positionDetails = await _positionDetailsService.GetPositionDetailsByBranchAsync(assignment.BranchId);
-                var positionDetailsDict = positionDetails.ToDictionary(pd => pd.PositionId);
-
-                var itemIds = itemPositionDict.Values
-                    .Select(ip => ip.ItemId)
-                    .Distinct()
-                    .ToList();
-
-                var items = await _itemRepository.GetByIdsAsync(itemIds);
-                var itemsDict = items.ToDictionary(i => i.ItemId);
-
-                var dto = new InventoryTaskDetailsDto
-                {
-                    TaskId = assignment.TaskId,
-                    ZoneCode = assignment.ZoneCode,
-                    InitiatedAt = assignment.AssignedAt,
-                    Items = new List<InventoryItemDto>()
-                };
-
-                foreach (var line in lines)
-                {
-                    itemPositionDict.TryGetValue(line.ItemPositionId, out var itemPosition);
-                    var itemId = itemPosition?.ItemId ?? 0;
-
-                    itemsDict.TryGetValue(itemId, out var item);
-
-                    var positionId = itemPosition != null ? itemPosition.PositionId : 0;
-
-                    var positionCode = positionDetailsDict.TryGetValue(positionId, out var pd)
-                        ? pd.PositionCode
-                        : (line.PositionCode?.ToString() ?? string.Empty);
-
-                    dto.Items.Add(new InventoryItemDto
-                    {
-                        ItemId = itemId,
-                        LineId = line.Id,
-                        ItemName = item?.Name ?? $"Item {itemId}",
-                        Weight = (item?.Weight ?? UnitsNet.Mass.Zero).Kilograms,
-                        Length = (item?.Length ?? UnitsNet.Length.Zero).Millimeters,
-                        Width = (item?.Width ?? UnitsNet.Length.Zero).Millimeters,
-                        Height = (item?.Height ?? UnitsNet.Length.Zero).Millimeters,
-                        PositionId = positionId,
-                        PositionCode = positionCode,
-                        ExpectedQuantity = line.ExpectedQuantity,
-                        Status = line.ActualQuantity.HasValue ? "Counted" : "Available"
-                    });
-                }
-
-                dto.TotalExpectedCount = dto.Items.Sum(i => i.ExpectedQuantity);
-
-                _logger.LogInformation("|   > сформировано: строк {LineCount}, ожидаемо {TotalExpectedCount}",
-                    dto.Items.Count, dto.TotalExpectedCount);
-
-                return dto;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Ошибка при получении деталей назначения задачи {AssignmentId} для пользователя {UserId}",
-                    assignmentId, userId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Обогащение строк назначения данными о товарах из ItemRepository
-        /// </summary>
-        private async Task<List<InventoryAssignmentLineWithItemDto>> EnrichLinesWithItemDataAsync(
-            IEnumerable<InventoryAssignmentLine> lines)
-        {
-            var lineList = lines.ToList();
-            if (lineList.Count == 0)
-                return new List<InventoryAssignmentLineWithItemDto>();
-
-            // Шаг 1: Получить все ItemPosition для этих строк
-            var itemPositionIds = lineList.Select(l => l.ItemPositionId).Distinct().ToList();
-            var itemPositions = await _itemPositionRepository.GetByIdsAsync(itemPositionIds);
-
-            // Шаг 2: Получить все Item для этих позиций
-            var itemIds = itemPositions
-                .Select(ip => ip.ItemId)
-                .Distinct()
-                .ToList();
-
-            var items = itemIds.Count > 0
-                ? await _itemRepository.GetByIdsAsync(itemIds)
-                : new List<Item>();
-
-            // Создаём словари для быстрого поиска
-            var itemPositionDict = itemPositions.ToDictionary(ip => ip.Id);
-            var itemDict = items.ToDictionary(i => i.ItemId);
-
-            // Шаг 3: Маппинг со связыванием данных
-            var result = lineList.Select(line =>
-            {
-                var dto = MapLineToExtendedDto(line);
-
-                // Ищем ItemPosition для этой строки
-                // Ищем ItemPosition для этой строки
-                if (itemPositionDict.TryGetValue(line.ItemPositionId, out var itemPosition) &&
-                    itemDict.TryGetValue(itemPosition.ItemId, out var item))
-                {
-                    dto.ItemId = item.ItemId;
-                    dto.ItemName = item.Name;
-                }
-
-
-                return dto;
-            }).ToList();
-
-            return result;
-        }
-
-        /// <summary>
-        /// Маппинг доменной строки назначения в расширенное DTO (для передачи на клиент с товарами)
-        /// </summary>
-        private InventoryAssignmentLineWithItemDto MapLineToExtendedDto(InventoryAssignmentLine line)
-        {
-            return new InventoryAssignmentLineWithItemDto
-            {
-                Id = line.Id,
-                InventoryAssignmentId = line.InventoryAssignmentId,
-                ItemPositionId = line.ItemPositionId,
-                PositionId = line.PositionId,
-                PositionCode = line.PositionCode,
-                ExpectedQuantity = line.ExpectedQuantity,
-                ActualQuantity = line.ActualQuantity,
-                ItemId = 0,  // Будет заполнено в EnrichLinesWithItemDataAsync
-                ItemName = null  // Будет заполнено в EnrichLinesWithItemDataAsync
-            };
-        }
-
-        public async Task<List<InventoryAssignmentDetailedWithItemDto>> GetNewAssignmentsForWorkerAsync(int userId)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос новых задач (UserId={UserId})", userId);
-
-                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
-
-                // "Новые/активные": не завершены и не отменены
-                var activeAssignments = assignments
-                    .Where(a =>
-                        (AssignmentStatus)a.Status != AssignmentStatus.Completed &&
-                        (AssignmentStatus)a.Status != AssignmentStatus.Cancelled)
-                    .ToList();
-
-                var result = new List<InventoryAssignmentDetailedWithItemDto>();
-
-                foreach (var assignment in activeAssignments)
-                {
-                    var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
-                    var enrichedLines = await EnrichLinesWithItemDataAsync(lines);
-
-                    result.Add(new InventoryAssignmentDetailedWithItemDto
-                    {
-                        Id = assignment.Id,
-                        TaskId = assignment.TaskId,
-                        AssignedToUserId = assignment.AssignedToUserId,
-                        BranchId = assignment.BranchId,
-                        ZoneCode = assignment.ZoneCode,
-                        Status = (AssignmentStatus)assignment.Status,
-                        AssignedAt = assignment.AssignedAt,
-                        CompletedAt = assignment.CompletedAt,
-                        Lines = enrichedLines.Select(line => line).ToList()
-                    });
-                }
-
-                _logger.LogInformation("|   * найдено {Count} активных назначений", result.Count);
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении новых задач для пользователя {UserId}", userId);
-                throw;
-            }
-        }
-
-        public async Task<bool> HasNewTasksForWorkerAsync(int userId, DateTime? since = null)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] проверка новых задач (UserId={UserId})", userId);
-
-                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
-
-                foreach (var assignment in assignments)
-                {
-                    if ((AssignmentStatus)assignment.Status == AssignmentStatus.Completed ||
-                        (AssignmentStatus)assignment.Status == AssignmentStatus.Cancelled)
-                        continue;
-
-                    if (since.HasValue && assignment.AssignedAt <= since.Value)
-                        continue;
-                    var baseTask = await _baseTaskService.GetById(assignment.TaskId);
-                    if (baseTask == null)
-                        continue;
-
-                    if (baseTask.Status == TaskStatus.Completed || baseTask.Status == TaskStatus.Cancelled)
-                        continue;
-                    if (!string.Equals(baseTask.Type, "inventory", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    return true; // нашли хотя бы одну “новую/активную” задачу
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при проверке новых задач для пользователя {UserId}", userId);
-                throw;
-            }
-        }
-
-
-        /// <summary>
-        /// Получить текущий прогресс выполнения инвентаризации
-        /// </summary>
-        public async Task<GetInventoryProgressDto> GetInventoryProgressAsync(
-            int assignmentId)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос прогресса: AssignmentId={AssignmentId}", assignmentId);
-
-                var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
-
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                if (statistics == null)
-                    throw new InvalidOperationException($"Статистика для назначения {assignmentId} не найдена");
-
-                var uncountedItems = await _lineRepository.GetUncountedAsync(assignmentId);
-
-                var statisticsDto = MapStatisticsToDto(statistics);
-
-                return new GetInventoryProgressDto
-                {
-                    AssignmentId = assignmentId,
-                    CurrentStatistics = statisticsDto,
-                    RemainingItems = uncountedItems.Select(x => x.ToDto()).ToList(),
-                    Status = (AssignmentStatus)assignment.Status,
-                    TimeSpentMinutes = CalculateTimeSpent(statistics.StartedAt),
-                    EstimatedTimeRemainingMinutes = EstimateRemainingTime(statistics, uncountedItems.Count)
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении прогресса инвентаризации {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Обработать сканирование товара при инвентаризации
-        /// </summary>
-        public async Task<InventoryStatisticsDto> ProcessInventoryScanAsync(
-            ProcessInventoryScanDto dto)
-        {
-            try
-            {
-                _logger.LogInformation("+--- [Inv] сканирование: AssignmentId={AssignmentId}, LineId={LineId}, Qty={ActualQuantity}",
-                    dto.AssignmentId, dto.LineId, dto.ActualQuantity);
-
-                // Получить Line
-                var line = await _lineRepository.GetByIdAsync(dto.LineId);
-                if (line == null)
-                    throw new InvalidOperationException($"Строка {dto.LineId} не найдена");
-
-                if (line.InventoryAssignmentId != dto.AssignmentId)
-                    throw new InvalidOperationException("Строка не принадлежит указанному назначению");
-
-                // Обновить ActualQuantity
-                line.ActualQuantity = dto.ActualQuantity;
-                await _lineRepository.UpdateAsync(line);
-
-                // Проверить на расхождение
-                var variance = dto.ActualQuantity - line.ExpectedQuantity;
-                if (variance != 0)
-                {
-                    var discrepancyType = variance > 0 ? DiscrepancyType.Surplus : DiscrepancyType.Shortage;
-                    var discrepancy = new InventoryDiscrepancy(
-                        inventoryAssignmentLineId: dto.LineId,
-                        itemPositionId: line.ItemPositionId,
-                        expectedQuantity: line.ExpectedQuantity,
-                        actualQuantity: dto.ActualQuantity,
-                        note: dto.Note);
-
-                    await _discrepancyRepository.AddAsync(discrepancy);
-                    _logger.LogInformation("|   ! расхождение: {Variance} ({Type})", variance, discrepancyType);
-                }
-
-                // Получить и обновить Statistics
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-                if (statistics == null)
-                    throw new InvalidOperationException($"Статистика для назначения {dto.AssignmentId} не найдена");
-
-                // Пересчитать статистику
-                var allLines = await _lineRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-                var countedItems = allLines.Count(l => l.ActualQuantity.HasValue);
-                var discrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(dto.AssignmentId);
-
-                statistics.CountedPositions = countedItems;
-                statistics.DiscrepancyCount = discrepancies.Count;
-                statistics.SurplusCount = discrepancies.Count(d => d.Type == DiscrepancyType.Surplus);
-                statistics.ShortageCount = discrepancies.Count(d => d.Type == DiscrepancyType.Shortage);
-
-                // Пересчитать суммарные количества
-                statistics.TotalSurplusQuantity = discrepancies
-                    .Where(d => d.Type == DiscrepancyType.Surplus)
-                    .Sum(d => d.Variance);
-                statistics.TotalShortageQuantity = discrepancies
-                    .Where(d => d.Type == DiscrepancyType.Shortage)
-                    .Sum(d => Math.Abs(d.Variance));
-
-                await _statisticsRepository.UpdateAsync(statistics);
-
-                _logger.LogInformation("|   * учтено {Counted}/{Total} позиций", countedItems, allLines.Count);
-
-                return MapStatisticsToDto(statistics);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при обработке сканирования");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Завершить инвентаризацию и получить финальный отчёт
-        /// </summary>
-        public async Task<CompleteInventoryDto> CompleteInventoryAsync(
-            int assignmentId)
-        {
-            try
-            {
-                _logger.LogInformation("+--- [Inv] завершение: AssignmentId={AssignmentId}", assignmentId);
-
-                var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
-
-                // Отметить как Completed
-                assignment.Status = AssignmentStatus.Completed;
-                assignment.CompletedAt = DateTime.UtcNow;
-                await _assignmentRepository.UpdateAsync(assignment);
-
-                // Получить статистику
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                statistics!.CompletedAt = DateTime.UtcNow;
-                await _statisticsRepository.UpdateAsync(statistics);
-
-                // Получить расхождения
-                var discrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(assignmentId);
-
-                var statisticsDto = MapStatisticsToDto(statistics);
-                var discrepancyReport = new DiscrepancyReportDto
-                {
-                    InventoryAssignmentId = assignmentId,
-                    TotalDiscrepancies = discrepancies.Count,
-                    SurplusCount = discrepancies.Count(d => d.Type == DiscrepancyType.Surplus),
-                    ShortageCount = discrepancies.Count(d => d.Type == DiscrepancyType.Shortage),
-                    DiscrepancyPercentage = statistics.TotalPositions > 0
-                        ? discrepancies.Count / statistics.TotalPositions * 100
-                        : 0,
-                    Discrepancies = discrepancies.Select(MapDiscrepancyToDto).ToList()
-                };
-
-                _logger.LogInformation("=== [Inv] завершена: {DiscrepancyCount} расхождений ===", discrepancies.Count);
-
-                return new CompleteInventoryDto
-                {
-                    InventoryAssignmentId = assignmentId,
-                    Statistics = statisticsDto,
-                    DiscrepancyReport = discrepancyReport,
-                    CompletedAt = DateTime.UtcNow,
-                    Message = $"Инвентаризация завершена. Найдено {discrepancies.Count} расхождений"
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при завершении инвентаризации {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Отменить инвентаризацию
-        /// </summary>
-        public async Task<bool> CancelInventoryAsync(
-            int assignmentId,
-            string? reason = null)
-        {
-            try
-            {
-                _logger.LogInformation("|   ! отмена инвентаризации {AssignmentId}, причина: {Reason}", assignmentId, reason ?? "не указана");
-
-                var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
-
-                assignment.Status = AssignmentStatus.Cancelled;
-                assignment.CompletedAt = DateTime.UtcNow;
-                await _assignmentRepository.UpdateAsync(assignment);
-
-                _logger.LogInformation("Инвентаризация {AssignmentId} отменена", assignmentId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при отмене инвентаризации {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить все назначения инвентаризации для конкретного пользователя
-        /// </summary>
-        public async Task<List<InventoryAssignmentDetailedDto>> GetUserAssignmentsAsync(
-            int userId)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос назначений (UserId={UserId})", userId);
-
-                var assignments = await _assignmentRepository.GetByUserIdAsync(userId);
-                var result = new List<InventoryAssignmentDetailedDto>();
-
-                foreach (var assignment in assignments)
-                {
-                    var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
-
-                    result.Add(new InventoryAssignmentDetailedDto
-                    {
-                        Id = assignment.Id,
-                        TaskId = assignment.TaskId,
-                        AssignedToUserId = assignment.AssignedToUserId,
-                        BranchId = assignment.BranchId,
-                        ZoneCode = assignment.ZoneCode,
-                        Status = (AssignmentStatus)assignment.Status,
-                        AssignedAt = assignment.AssignedAt,
-                        CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(x => x.ToDto()).ToList()
-                    });
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении назначений для пользователя {UserId}", userId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить активные (незавершенные) инвентаризации
-        /// </summary>
-        public async Task<List<InventoryAssignmentDetailedDto>> GetActiveInventoriesAsync(
-            int? branchId = null)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос активных инвентаризаций (BranchId={BranchId})", branchId);
-
-                var activeStatus = (int)AssignmentStatus.InProgress;
-                var assignments = await _assignmentRepository.GetByStatusAsync((AssignmentStatus)activeStatus);
-
-                if (branchId.HasValue)
-                    assignments = assignments.Where(a => a.BranchId == branchId.Value).ToList();
-
-                var result = new List<InventoryAssignmentDetailedDto>();
-                foreach (var assignment in assignments)
-                {
-                    var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
-
-                    result.Add(new InventoryAssignmentDetailedDto
-                    {
-                        Id = assignment.Id,
-                        TaskId = assignment.TaskId,
-                        AssignedToUserId = assignment.AssignedToUserId,
-                        BranchId = assignment.BranchId,
-                        ZoneCode = assignment.ZoneCode,
-                        Status = (AssignmentStatus)assignment.Status,
-                        AssignedAt = assignment.AssignedAt,
-                        CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(x => x.ToDto()).ToList()
-                    });
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении активных инвентаризаций");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить завершенные инвентаризации за период
-        /// </summary>
-        public async Task<List<InventoryAssignmentDetailedDto>> GetCompletedInventoriesAsync(
-            DateTime startDate,
-            DateTime endDate,
-            int? branchId = null)
-        {
-            try
-            {
-                _logger.LogInformation("|   [Inv] запрос завершенных с {StartDate} по {EndDate}", startDate, endDate);
-
-                var completedStatus = (int)AssignmentStatus.Completed;
-                var assignments = await _assignmentRepository.GetByStatusAsync((AssignmentStatus)completedStatus);
-
-                assignments = assignments
-                    .Where(a => a.CompletedAt.HasValue &&
-                               a.CompletedAt.Value >= startDate &&
-                               a.CompletedAt.Value <= endDate)
-                    .ToList();
-
-                if (branchId.HasValue)
-                    assignments = assignments.Where(a => a.BranchId == branchId.Value).ToList();
-
-                var result = new List<InventoryAssignmentDetailedDto>();
-                foreach (var assignment in assignments)
-                {
-                    var lines = await _lineRepository.GetByAssignmentIdAsync(assignment.Id);
-
-                    result.Add(new InventoryAssignmentDetailedDto
-                    {
-                        Id = assignment.Id,
-                        TaskId = assignment.TaskId,
-                        AssignedToUserId = assignment.AssignedToUserId,
-                        BranchId = assignment.BranchId,
-                        ZoneCode = assignment.ZoneCode,
-                        Status = (AssignmentStatus)assignment.Status,
-                        AssignedAt = assignment.AssignedAt,
-                        CompletedAt = assignment.CompletedAt,
-                        Lines = lines.Select(x => x.ToDto()).ToList()
-                    });
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении завершённых инвентаризаций");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Переназначить инвентаризацию другому работнику
-        /// </summary>
-        public async Task<bool> ReassignInventoryAsync(
-            int assignmentId,
-            int newUserId,
-            string? reason = null
-            )
-        {
-            try
-            {
-                _logger.LogInformation(
-                    "Переназначение инвентаризации {AssignmentId} новому пользователю {UserId}, причина: {Reason}",
-                    assignmentId, newUserId, reason ?? "не указана");
-
-                var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
-
-                assignment.AssignedToUserId = newUserId;
-                await _assignmentRepository.UpdateAsync(assignment);
-
-                _logger.LogInformation("Инвентаризация {AssignmentId} переназначена пользователю {UserId}", assignmentId, newUserId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при переназначении инвентаризации");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Возобновить незавершённую инвентаризацию
-        /// </summary>
-        public async Task<GetInventoryProgressDto> ResumeInventoryAsync(
-            int assignmentId)
-        {
-            try
-            {
-                _logger.LogInformation("Возобновление инвентаризации {AssignmentId}", assignmentId);
-
-                var assignment = await _assignmentRepository.GetByIdAsync(assignmentId);
-                if (assignment == null)
-                    throw new InvalidOperationException($"Назначение {assignmentId} не найдено");
-
-                assignment.Status = AssignmentStatus.InProgress;
-                await _assignmentRepository.UpdateAsync(assignment);
-
-                return await GetInventoryProgressAsync(assignmentId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при возобновлении инвентаризации {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить статистику инвентаризации по конкретному назначению
-        /// </summary>
-        public async Task<InventoryStatisticsDto> GetStatisticsAsync(
-            int assignmentId)
-        {
-            try
-            {
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                if (statistics == null)
-                    throw new InvalidOperationException($"Статистика для назначения {assignmentId} не найдена");
-
-                return MapStatisticsToDto(statistics);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении статистики {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Отменить сканирование (удалить последнее сканированное значение)
-        /// </summary>
-        public async Task<bool> UndoScanAsync(
-            int lineId)
-        {
-            try
-            {
-                _logger.LogInformation("Отмена сканирования для строки {LineId}", lineId);
-
-                var line = await _lineRepository.GetByIdAsync(lineId);
-                if (line == null)
-                    throw new InvalidOperationException($"Строка {lineId} не найдена");
-
-                // Удалить расхождение если оно есть
-                var discrepancies = await _discrepancyRepository.GetByAssignmentLineIdAsync(lineId);
-                foreach (var discrepancy in discrepancies)
-                {
-                    await _discrepancyRepository.DeleteAsync(discrepancy.Id);
-                }
-
-                // Очистить ActualQuantity
-                line.ActualQuantity = null;
-                await _lineRepository.UpdateAsync(line);
-
-                // Обновить статистику
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(line.InventoryAssignmentId);
-                if (statistics != null)
-                {
-                    var allLines = await _lineRepository.GetByAssignmentIdAsync(line.InventoryAssignmentId);
-                    statistics.CountedPositions = allLines.Count(l => l.ActualQuantity.HasValue);
-                    statistics.DiscrepancyCount = await _discrepancyRepository.GetCountByAssignmentIdAsync(line.InventoryAssignmentId);
-
-                    var allDiscrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(line.InventoryAssignmentId);
-                    statistics.SurplusCount = allDiscrepancies.Count(d => d.Type == DiscrepancyType.Surplus);
-                    statistics.ShortageCount = allDiscrepancies.Count(d => d.Type == DiscrepancyType.Shortage);
-
-                    await _statisticsRepository.UpdateAsync(statistics);
-                }
-
-                _logger.LogInformation("Сканирование для строки {LineId} отменено", lineId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при отмене сканирования {LineId}", lineId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить список товаров которые ещё не отсчитаны в назначении
-        /// </summary>
-        public async Task<List<InventoryAssignmentLineDto>> GetUncountedItemsAsync(
-            int assignmentId)
-        {
-            try
-            {
-                var uncounted = await _lineRepository.GetUncountedAsync(assignmentId);
-                return uncounted.Select(x => x.ToDto()).ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении неотсчитанных товаров {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить рекомендации по ускорению процесса
-        /// </summary>
-        public async Task<List<string>> GetOptimizationRecommendationsAsync(
-            int assignmentId)
-        {
-            var recommendations = new List<string>();
-
-            try
-            {
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                if (statistics == null)
-                    return recommendations;
-
-                var completionPercentage = statistics.CompletionPercentage;
-
-                if (completionPercentage < 25)
-                    recommendations.Add("Низкий прогресс. Рекомендуется проверить наличие товаров и их доступность.");
-
-                if (statistics.DiscrepancyCount > statistics.TotalPositions * 0.1m)
-                    recommendations.Add("Высокий процент расхождений. Проверьте точность сканирования и маркировки товаров.");
-
-                if (statistics.SurplusCount > statistics.ShortageCount)
-                    recommendations.Add("Больше излишков, чем недостач. Проверьте систему хранения и учета.");
-
-                if (statistics.CountedPositions > 0)
-                {
-                    var timePerItem = (DateTime.UtcNow - statistics.StartedAt).TotalMinutes / statistics.CountedPositions;
-                    if (timePerItem > 5)
-                        recommendations.Add($"Медленный темп (более {timePerItem:F1} мин на товар). Оптимизируйте маршрут.");
-                }
-
-                return recommendations;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении рекомендаций {AssignmentId}", assignmentId);
-                return recommendations;
-            }
-        }
-
-        /// <summary>
-        /// Валидировать сканирование перед применением
-        /// </summary>
-        public async Task<(bool IsValid, string? ErrorMessage)> ValidateScanAsync(
-            ProcessInventoryScanDto dto)
-        {
-            try
-            {
-                if (dto.AssignmentId <= 0)
-                    return (false, "ID назначения должен быть больше 0");
-
-                if (dto.LineId <= 0)
-                    return (false, "ID строки должен быть больше 0");
-
-                if (dto.ActualQuantity < 0)
-                    return (false, "Количество не может быть отрицательным");
-
-                var line = await _lineRepository.GetByIdAsync(dto.LineId);
-                if (line == null)
-                    return (false, $"Строка {dto.LineId} не найдена");
-
-                if (line.InventoryAssignmentId != dto.AssignmentId)
-                    return (false, "Строка не принадлежит указанному назначению");
-
-                return (true, null);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при валидации сканирования");
-                return (false, "Ошибка при валидации сканирования");
-            }
-        }
-
-        /// <summary>
-        /// Синхронизировать данные инвентаризации
-        /// </summary>
-        public async Task<InventoryStatisticsDto> SyncInventoryDataAsync(
-            int assignmentId)
-        {
-            try
-            {
-                _logger.LogInformation("Синхронизация данных инвентаризации {AssignmentId}", assignmentId);
-
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                if (statistics == null)
-                    throw new InvalidOperationException($"Статистика для назначения {assignmentId} не найдена");
-
-                var allLines = await _lineRepository.GetByAssignmentIdAsync(assignmentId);
-                var allDiscrepancies = await _discrepancyRepository.GetByAssignmentIdAsync(assignmentId);
-
-                // Пересчитать все метрики
-                statistics.CountedPositions = allLines.Count(l => l.ActualQuantity.HasValue);
-                statistics.DiscrepancyCount = allDiscrepancies.Count;
-                statistics.SurplusCount = allDiscrepancies.Count(d => d.Type == DiscrepancyType.Surplus);
-                statistics.ShortageCount = allDiscrepancies.Count(d => d.Type == DiscrepancyType.Shortage);
-                statistics.TotalSurplusQuantity = allDiscrepancies.Where(d => d.Type == DiscrepancyType.Surplus).Sum(d => d.Variance);
-                statistics.TotalShortageQuantity = allDiscrepancies.Where(d => d.Type == DiscrepancyType.Shortage).Sum(d => Math.Abs(d.Variance));
-
-                await _statisticsRepository.UpdateAsync(statistics);
-
-                _logger.LogInformation("Синхронизация завершена для {AssignmentId}", assignmentId);
-                return MapStatisticsToDto(statistics);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при синхронизации данных {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Добавить примечание к инвентаризации
-        /// </summary>
-        public async Task<bool> AddNoteAsync(
-            int assignmentId,
-            string note)
-        {
-            try
-            {
-                _logger.LogInformation("Добавление примечания к назначению {AssignmentId}", assignmentId);
-
-                if (string.IsNullOrWhiteSpace(note))
-                    throw new ArgumentException("Примечание не может быть пустым");
-
-                // TODO: Сохранить примечание в БД (требуется добавить поле Note в InventoryAssignment или отдельную таблицу)
-                _logger.LogInformation("Примечание добавлено к назначению {AssignmentId}", assignmentId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при добавлении примечания {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Получить метрики производительности для инвентаризации
-        /// </summary>
-        public async Task<Dictionary<string, object>> GetPerformanceMetricsAsync(
-            int assignmentId
-            )
-        {
-            try
-            {
-                var statistics = await _statisticsRepository.GetByAssignmentIdAsync(assignmentId);
-                if (statistics == null)
-                    throw new InvalidOperationException($"Статистика для назначения {assignmentId} не найдена");
-
-                var duration = (DateTime.UtcNow - statistics.StartedAt).TotalMinutes;
-                var itemsPerHour = statistics.CountedPositions > 0 ? (60 / duration) * statistics.CountedPositions : 0;
-
-                return new Dictionary<string, object>
-            {
-                { "totalPositions", statistics.TotalPositions },
-                { "countedPositions", statistics.CountedPositions },
-                { "completionPercentage", statistics.CompletionPercentage },
-                { "discrepancyCount", statistics.DiscrepancyCount },
-                { "discrepancyPercentage", statistics.TotalPositions > 0 ? (decimal)statistics.DiscrepancyCount / statistics.TotalPositions * 100 : 0 },
-                { "durationMinutes", Math.Round(duration, 2) },
-                { "itemsPerHour", Math.Round(itemsPerHour, 2) },
-                { "accuracy", 100 - (statistics.TotalPositions > 0 ? (decimal)statistics.DiscrepancyCount / statistics.TotalPositions * 100 : 0) }
-            };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении метрик производительности {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Экспортировать результаты инвентаризации
-        /// </summary>
-        public async Task<Stream> ExportResultsAsync(
-            int assignmentId,
-            ExportFormat format
-            )
-        {
-            try
-            {
-                _logger.LogInformation("Экспорт результатов инвентаризации {AssignmentId} в формате {Format}", assignmentId, format);
-
-                // TODO: Реализовать экспорт в различные форматы
-                throw new NotImplementedException("Экспорт пока не реализован");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при экспорте результатов {AssignmentId}", assignmentId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Разделить товары по стратегии распределения
-        /// </summary>
-        private List<List<int>> DivideItemsByStrategy(
-            List<int> itemIds,
-            int workerCount,
-            DivisionStrategy strategy)
-        {
-            var zones = new List<List<int>>();
-
-            return strategy switch
-            {
-                DivisionStrategy.ByQuantity => DivideByQuantity(itemIds, workerCount),
-                DivisionStrategy.ByZone => DivideByZone(itemIds, workerCount),
-                DivisionStrategy.ByDistance => DivideByDistance(itemIds, workerCount),
-                _ => DivideByQuantity(itemIds, workerCount)
-            };
-        }
-
-        private List<List<int>> DivideByQuantity(List<int> itemIds, int workerCount)
-        {
-            var zones = new List<List<int>>();
-            var itemsPerWorker = (int)Math.Ceiling((double)itemIds.Count / workerCount);
-
-            for (int i = 0; i < workerCount; i++)
-            {
-                var start = i * itemsPerWorker;
-                var end = Math.Min(start + itemsPerWorker, itemIds.Count);
-                zones.Add(itemIds.GetRange(start, end - start));
-            }
-
-            return zones;
-        }
-
-        private List<List<int>> DivideByZone(List<int> itemIds, int workerCount)
-        {
-            // TODO: Реализовать распределение по существующим зонам
-            return DivideByQuantity(itemIds, workerCount);
-        }
-
-        private List<List<int>> DivideByDistance(List<int> itemIds, int workerCount)
-        {
-            // TODO: Реализовать оптимизацию по маршруту расстояния
-            return DivideByQuantity(itemIds, workerCount);
-        }
-
-        private double CalculateTimeSpent(DateTime startedAt) => (DateTime.UtcNow - startedAt).TotalMinutes;
-
-        private double EstimateRemainingTime(InventoryStatistics stats, int remainingItems)
-        {
-            if (stats.CountedPositions == 0) return 0;
-
-            var timePerItem = (DateTime.UtcNow - stats.StartedAt).TotalMinutes / stats.CountedPositions;
-            return remainingItems * timePerItem;
-        }
-
-        //TODO: Вынести в файлы к самим Dto.
-        private InventoryStatisticsDto MapStatisticsToDto(InventoryStatistics stats) =>
-            new()
-            {
-                Id = stats.Id,
-                InventoryAssignmentId = stats.InventoryAssignmentId,
-                TotalPositions = stats.TotalPositions,
-                CountedPositions = stats.CountedPositions,
-                CompletionPercentage = stats.CompletionPercentage,
-                DiscrepancyCount = stats.DiscrepancyCount,
-                SurplusCount = stats.SurplusCount,
-                ShortageCount = stats.ShortageCount,
-                TotalSurplusQuantity = stats.TotalSurplusQuantity,
-                TotalShortageQuantity = stats.TotalShortageQuantity,
-                StartedAt = stats.StartedAt,
-                CompletedAt = stats.CompletedAt
-            };
-
-
-        private DiscrepancyDto MapDiscrepancyToDto(InventoryDiscrepancy d) =>
-            new()
-            {
-                Id = d.Id,
-                InventoryAssignmentLineId = d.InventoryAssignmentLineId,
-                ItemPositionId = d.ItemPositionId,
-                ExpectedQuantity = d.ExpectedQuantity,
-                ActualQuantity = d.ActualQuantity,
-                Variance = d.Variance,
-                Type = d.Type,
-                Note = d.Note,
-                IdentifiedAt = d.IdentifiedAt,
-                ResolutionStatus = d.ResolutionStatus
-            };
     }
-
 }

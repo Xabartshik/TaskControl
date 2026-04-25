@@ -26,6 +26,31 @@ namespace TaskControl.TaskModule.Application.DTOs.InventarizationDTOs
     }
 
     /// <summary>
+    /// Краткая информация о назначенной инвентаризации (заголовок).
+    /// Используется для отображения списка активных/доступных задач работника.
+    /// </summary>
+    public class InventoryAssignmentHeaderDto
+    {
+        public int AssignmentId { get; set; }
+
+        public int TaskId { get; set; }
+
+        public AssignmentStatus Status { get; set; }
+
+        public DateTime AssignedAt { get; set; }
+
+        // Поля прогресса выполнения
+        public int TotalLines { get; set; }
+        public int CountedLines { get; set; }
+
+        /// <summary>
+        /// Вычисляемое свойство для удобного отображения прогресс-бара в UI (0-100%)
+        /// </summary>
+        public double CompletionPercentage =>
+            TotalLines == 0 ? 0 : Math.Round((double)CountedLines / TotalLines * 100, 1);
+    }
+
+    /// <summary>
     /// Информация о конкретной ячейке, которую нужно проверить
     /// </summary>
     public class CellInventoryInfoDto
