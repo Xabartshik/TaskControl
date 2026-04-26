@@ -236,7 +236,8 @@ namespace TaskControl.TaskModule.Application.Services
                         Status = "New",
                         PriorityLevel = 1,
                         CreatedAt = DateTime.UtcNow,
-                        Deadline = order.DeliveryDate
+                        Deadline = order.DeliveryDate,
+                        SourceType = "Server"
                     };
                     var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
 

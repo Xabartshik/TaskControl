@@ -45,8 +45,15 @@ namespace TaskControl.Web
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings()
                 .UsePostgreSqlStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
-            
+
             builder.Services.AddHangfireServer();
+
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            builder.Services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.Converters.Add(new Web.Infrastructure.UtcDateTimeConverter());
+            });
 
             var app = builder.Build();
             try

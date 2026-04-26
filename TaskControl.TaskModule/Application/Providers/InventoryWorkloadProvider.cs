@@ -45,24 +45,28 @@ namespace TaskControl.TaskModule.Application.Providers
             var result = new List<MobileBaseTaskDto>();
             foreach (var a in pending)
             {
-                var baseTask = await _baseTaskService.GetById(a.TaskId); 
-                
+                var baseTask = await _baseTaskService.GetById(a.TaskId);
+
                 result.Add(new MobileBaseTaskDto
                 {
                     TaskId = a.TaskId,
                     Title = baseTask?.Title ?? "Инвентаризация ячеек",
-                    TaskType = this.TaskType, 
+                    TaskType = this.TaskType,
                     PriorityLevel = baseTask?.PriorityLevel ?? 5,
-                    Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    Status = a.Status == AssignmentStatus.Assigned ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    AssignmentStatus = a.Status,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new
                     {
-                        AssignmentId = a.Id
+                        AssignmentId = a.Id,
+                        totalLines = a.TotalLines,
+                        completedLines = a.Lines?.Count(l => l.ActualQuantity != null) ?? 0
                     }
                 });
             }
             return result;
         }
+
 
         public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
         {

@@ -52,11 +52,14 @@ namespace TaskControl.TaskModule.Application.Providers
                     Title = baseTask?.Title ?? $"Сборка заказа #{a.OrderId}",
                     TaskType = this.TaskType,
                     PriorityLevel = baseTask?.PriorityLevel ?? 1,
-                    Status = a.Status == AssignmentStatus.InProgress ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    Status = a.Status == AssignmentStatus.Assigned ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    AssignmentStatus = a.Status,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new
                     {
-                        AssignmentId = a.Id
+                        AssignmentId = a.Id,
+                        totalLines = a.TotalLines,
+                        completedLines = a.Lines?.Count(l => l.Status == Domain.OrderAssemblyLineStatus.Placed) ?? 0
                     }
                 });
             }
