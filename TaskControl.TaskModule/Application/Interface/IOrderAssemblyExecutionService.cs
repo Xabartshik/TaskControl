@@ -11,6 +11,7 @@ namespace TaskControl.TaskModule.Application.Interface
         public int OrderId { get; set; }
         public AssignmentStatus Status { get; set; }
         public DateTime AssignedAt { get; set; }
+        public DateTime? Deadline { get; set; }
         public int TotalLines { get; set; }
         public int PlacedLines { get; set; }
         public double CompletionPercentage => TotalLines == 0 ? 0 : Math.Round((double)PlacedLines / TotalLines * 100, 1);
@@ -24,6 +25,7 @@ namespace TaskControl.TaskModule.Application.Interface
         public int OrderId { get; set; }
         public AssignmentStatus Status { get; set; }
         public DateTime? CreatedDate { get; set; }
+        public DateTime? Deadline { get; set; }
         public int TotalLines { get; set; }
         public List<CellPlacementInfoDto> CellPlacements { get; set; } = new();
     }

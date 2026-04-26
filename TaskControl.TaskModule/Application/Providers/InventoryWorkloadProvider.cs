@@ -40,7 +40,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId)
         {
             var assignments = await _inventoryRepo.GetByUserIdAsync(workerId);
-            var pending = assignments.Where(t => t.Status == AssignmentStatus.Assigned || t.Status == AssignmentStatus.InProgress).ToList();
+            var pending = assignments.Where(t => t.Status == AssignmentStatus.Assigned || t.Status == AssignmentStatus.InProgress || t.Status == AssignmentStatus.Paused).ToList();
 
             var result = new List<MobileBaseTaskDto>();
             foreach (var a in pending)
@@ -53,7 +53,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     Title = baseTask?.Title ?? "Инвентаризация ячеек",
                     TaskType = this.TaskType,
                     PriorityLevel = baseTask?.PriorityLevel ?? 5,
-                    Status = a.Status == AssignmentStatus.Assigned ? TaskStatus.InProgress : TaskStatus.Assigned,
+                    Status = TaskStatus.Assigned,
                     AssignmentStatus = a.Status,
                     CreatedAt = a.AssignedAt,
                     TaskDetails = new

@@ -302,23 +302,40 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId)
         {
+            // 1. Получаем список назначений из репозитория (уже в памяти)
             var assignments = await _assignmentRepo.GetByUserIdAsync(userId);
-            return assignments
+
+            // 2. Выбираем только активные, чтобы не грузить лишние задачи
+            var activeAssignments = assignments
                 .Where(a => a.Status == AssignmentStatus.Assigned || a.Status == AssignmentStatus.InProgress)
+                .ToList();
+
+            // 3. Получаем ID всех нужных задач, чтобы выгрузить их одним запросом
+            var taskIds = activeAssignments.Select(a => a.TaskId).Distinct().ToList();
+    
+            // 4. Загружаем задачи из БД (один запрос вместо N)
+            var tasks = await _db.GetTable<BaseTaskModel>()
+                .Where(t => taskIds.Contains(t.TaskId))
+                .ToDictionaryAsync(t => t.TaskId); // Словарь для быстрого поиска по Id
+
+            // 5. Формируем итоговый DTO
+            return activeAssignments
                 .Select(a => new OrderAssemblyHeaderDto
                 {
                     AssignmentId = a.Id,
                     TaskId = a.TaskId,
                     OrderId = a.OrderId,
                     Status = a.Status,
+                    Deadline = tasks.TryGetValue(a.TaskId, out var task) ? task.Deadline : null,
                     AssignedAt = a.AssignedAt,
                     TotalLines = a.TotalLines,
-                    PlacedLines = a.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed)
+                    PlacedLines = a.Lines?.Count(l => l.Status == OrderAssemblyLineStatus.Placed) ?? 0
                 })
                 .OrderByDescending(a => a.Status == AssignmentStatus.InProgress)
                 .ThenBy(a => a.AssignedAt)
                 .ToList();
         }
+
 
         public async Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId)
         {
@@ -335,6 +352,7 @@ namespace TaskControl.TaskModule.Application.Services
                 TaskNumber = taskModel?.Title ?? $"T-{a.TaskId}",
                 OrderId = a.OrderId,
                 Status = a.Status,
+                Deadline = taskModel?.Deadline,
                 CreatedDate = taskModel?.CreatedAt,
                 TotalLines = a.TotalLines
             };

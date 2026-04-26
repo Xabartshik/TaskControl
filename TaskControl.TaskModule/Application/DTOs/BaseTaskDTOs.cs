@@ -54,6 +54,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CreatedAt = dto.CreatedAt,
                 CompletedAt = dto.CompletedAt,
                 Status = dto.Status,
+                Deadline = dto.Deadline,
                 PriorityLevel = dto.PriorityLevel
             };
         }
@@ -73,6 +74,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CreatedAt = entity.CreatedAt,
                 CompletedAt = entity.CompletedAt,
                 Status = entity.Status,
+                Deadline = entity.Deadline,
                 PriorityLevel = entity.PriorityLevel
             };
         }
