@@ -361,7 +361,7 @@ namespace TaskControl.TaskModule.Application.Services
             var itemPositions = _db.GetTable<ItemPositionModel>();
             var items = _db.GetTable<ItemModel>();
 
-            // Группировка, которая раньше была закомментирована
+            // Группировка по целевой ячейке (куда нужно положить)
             var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
             foreach (var g in cellGroups)
             {
@@ -378,10 +378,19 @@ namespace TaskControl.TaskModule.Application.Services
 
                 foreach (var l in g)
                 {
+                    // Добавлено извлечение ip.PositionId (ID исходной ячейки хранения)
                     var itemInfo = await (from ip in itemPositions
                                           join i in items on ip.ItemId equals i.ItemId
                                           where ip.Id == l.ItemPositionId
-                                          select new { i.ItemId, i.Name }).FirstOrDefaultAsync();
+                                          select new { i.ItemId, i.Name, ip.PositionId }).FirstOrDefaultAsync();
+
+                    // Определяем строковый код исходной ячейки
+                    string sourceCellCode = "Неизвестная ячейка";
+                    if (itemInfo != null)
+                    {
+                        var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == itemInfo.PositionId);
+                        sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemInfo.PositionId.ToString();
+                    }
 
                     cellDto.Items.Add(new PlacementLineDto
                     {
@@ -390,6 +399,7 @@ namespace TaskControl.TaskModule.Application.Services
                         ItemId = itemInfo?.ItemId ?? 0,
                         ItemName = itemInfo?.Name ?? "Неизвестный товар",
                         Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+                        SourceCellCode = sourceCellCode,
                         Quantity = l.Quantity,
                         PickedQuantity = l.PickedQuantity,
                         Status = l.Status
@@ -399,7 +409,6 @@ namespace TaskControl.TaskModule.Application.Services
             }
             return dto;
         }
-
         public async Task<bool> StartAssemblyAsync(int id)
         {
             var a = await _assignmentRepo.GetByIdAsync(id);

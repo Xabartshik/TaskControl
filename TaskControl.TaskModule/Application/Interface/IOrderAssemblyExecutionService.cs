@@ -49,6 +49,8 @@ namespace TaskControl.TaskModule.Application.Interface
         public string? ItemName { get; set; }
         public string? Barcode { get; set; }
         public int Quantity { get; set; }
+
+        public string SourceCellCode { get; set; }
         public int PickedQuantity { get; set; }
         public OrderAssemblyLineStatus Status { get; set; }
     }
