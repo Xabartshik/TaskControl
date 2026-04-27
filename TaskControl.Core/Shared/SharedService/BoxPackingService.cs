@@ -12,6 +12,7 @@ namespace TaskControl.TaskModule.Application.Services
     /// Реализация 3D-упаковки товаров в ячейки PICKUP с использованием алгоритма EB-AFIT.
     /// Для каждой ячейки проверяется, какие товары в неё помещаются.
     /// Если одной ячейки недостаточно — товары распределяются по нескольким ячейкам.
+    /// TODO: Слегка увеличить размеры предметов, имитируя зазоры между ними
     /// </summary>
     public class BoxPackingService : IBoxPackingService
     {

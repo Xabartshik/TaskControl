@@ -564,7 +564,7 @@ namespace TaskControl.TaskModule.Application.Services
                     DestinationAddress = o.DestinationAddress
                 };
 
-                // 2. Обогащаем данными о постамате (если применимо)
+                // 2. Обогащаем данными о постамате (если применимо) 
                 if (o.PostamatId.HasValue)
                 {
                     var postamat = await _postamatRepository.GetByIdAsync(o.PostamatId.Value);

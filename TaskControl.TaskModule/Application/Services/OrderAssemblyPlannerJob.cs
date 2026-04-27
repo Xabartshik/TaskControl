@@ -12,6 +12,8 @@ using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.DataAccess.Model;
 // Подключаем модели из других модулей:
 using TaskControl.OrderModule.DataAccess.Model;
+using TaskControl.OrderModule.Domain;
+using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
@@ -99,7 +101,7 @@ namespace TaskControl.TaskModule.Application.Services
                 using var transaction = await conn.BeginTransactionAsync();
 
                 var order = await _db.GetTable<OrderModel>()
-                    .FirstOrDefaultAsync(o => o.OrderId == orderId);
+                    .FirstOrDefaultAsync(o => o.OrderId == orderId && o.Status == DeliveryType.Express.ToString());
 
                 if (order == null)
                 {
@@ -129,6 +131,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         private async Task<bool> ProcessOrderInternal(int orderId, int branchId, DateTime? deliveryDate)
         {
+            // TODO: Убрать мягкую аллокацию, ввести жесткую аллокацию
             // 1. HARD ALLOCATION: Перевод "мягких" резервов в "жесткие"
             var softReservations = await (from ores in _db.GetTable<OrderReservationModel>()
                                           join op in _db.GetTable<OrderPositionModel>() on ores.OrderPositionId equals op.UniqueId
@@ -355,10 +358,10 @@ namespace TaskControl.TaskModule.Application.Services
             // Обновляем статус заказа
             await _db.GetTable<OrderModel>()
                      .Where(o => o.OrderId == orderId)
-                     .Set(o => o.Status, "Assembling")
+                     .Set(o => o.Status, "Assembly")
                      .UpdateAsync();
 
-            _logger.LogInformation("|   * завершено, статус -> 'Assembling', {LineCount} строк сборки", orderItems.Count);
+            _logger.LogInformation("|   * завершено, статус -> 'Assembly', {LineCount} строк сборки", orderItems.Count);
             return true;
         }
 
