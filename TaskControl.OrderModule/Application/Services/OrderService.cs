@@ -129,7 +129,23 @@ namespace TaskControl.OrderModule.Application.Services
                         ItemId = pDto.ItemId,
                         Quantity = pDto.Quantity
                     };
-                    await _positionRepository.AddAsync(pos);
+
+                    // Сохраняем позицию заказа и получаем ее ID
+                    int orderPositionId = await _positionRepository.AddAsync(pos);
+
+                    // Сразу же выполняем ЖЕСТКУЮ АЛЛОКАЦИЮ через инвентарный сервис
+                    bool isAllocated = await _allocationService.HardAllocateOrderItemsAsync(
+                        dto.BranchId,
+                        orderPositionId,
+                        pDto.ItemId,
+                        pDto.Quantity
+                    );
+
+                    if (!isAllocated)
+                    {
+                        // Если кто-то успел купить товар за те 2 секунды, пока клиент оформлял заказ
+                        throw new InvalidOperationException($"Критическая ошибка: Товар {pDto.ItemId} закончился на складе в процессе оформления.");
+                    }
                 }
 
                 // 6. Вызов событий (обработчиков)

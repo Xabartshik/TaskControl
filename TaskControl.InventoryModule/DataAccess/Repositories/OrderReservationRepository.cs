@@ -9,6 +9,7 @@ namespace TaskControl.InventoryModule.DAL.Repositories
 {
     public interface IOrderReservationRepository
     {
+        Task<int> GetReservedQuantityByItemPositionAsync(int itemPositionId);
         Task<int> AddAsync(OrderReservation reservation);
         Task<decimal> GetReservedQuantityInBranchAsync(int itemId, int branchId);
     }
@@ -22,6 +23,21 @@ namespace TaskControl.InventoryModule.DAL.Repositories
         {
             _db = db;
             _logger = logger;
+        }
+
+        public async Task<int> GetReservedQuantityByItemPositionAsync(int itemPositionId)
+        {
+            try
+            {
+                return await _db.GetTable<OrderReservationModel>()
+                    .Where(r => r.ItemPositionId == itemPositionId)
+                    .SumAsync(r => (int?)r.Quantity) ?? 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при подсчете резервов для ItemPosition {Id}", itemPositionId);
+                throw;
+            }
         }
 
         public async Task<int> AddAsync(OrderReservation reservation)

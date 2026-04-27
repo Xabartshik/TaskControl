@@ -17,6 +17,7 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         Task<IEnumerable<ItemPosition>> GetByItemIdAsync(int itemId);
         Task<IEnumerable<ItemPosition>> GetByPositionIdAsync(int positionId);
         Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId);
-        
+        Task<IEnumerable<ItemPosition>> GetByItemAndBranchAsync(int itemId, int branchId);
+
     }
 }

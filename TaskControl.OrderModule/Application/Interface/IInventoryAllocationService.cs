@@ -10,5 +10,6 @@ namespace TaskControl.OrderModule.Application.Interface
         /// Возвращает ID забронированной ячейки.
         /// </summary>
         Task<int> ReservePostamatCellAsync(int postamatId, List<ItemToPack> itemsToPack);
+        Task<bool> HardAllocateOrderItemsAsync(int branchId, int orderPositionId, int itemId, int neededQuantity);
     }
 }

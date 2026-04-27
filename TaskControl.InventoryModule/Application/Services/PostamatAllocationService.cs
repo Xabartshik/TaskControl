@@ -23,6 +23,11 @@ namespace TaskControl.InventoryModule.Application.Services
             _packingService = packingService;
             _logger = logger;
         }
+        //TODO: Заглушка. Потом разделить
+        public Task<bool> HardAllocateOrderItemsAsync(int branchId, int orderPositionId, int itemId, int neededQuantity)
+        {
+            throw new NotImplementedException();
+        }
 
         public async Task<int> ReservePostamatCellAsync(int postamatId, List<ItemToPack> itemsToPack)
         {
