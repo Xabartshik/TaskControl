@@ -13,7 +13,7 @@ using TaskControl.InventoryModule.DataAccess.Model;
 // Подключаем модели из других модулей:
 using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
-using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
+
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;

@@ -1,15 +1,8 @@
-using System;
-using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TaskControl.OrderModule.Domain
 {
-    using global::TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
-    using System.ComponentModel;
-
     public enum OrderStatus
     {
         [Description("Создан")]
@@ -34,24 +27,18 @@ namespace TaskControl.OrderModule.Domain
         Canceled
     }
 
-    namespace TaskControl.OrderModule.Domain.Enums
+    public enum DeliveryType
     {
-        public enum DeliveryType
-        {
-            Pickup,     // Обычный самовывоз
-            Delivery,   // Доставка курьером
-            Postamat,   // Постамат
-            Express     // Сборка и выдача здесь и сейчас
-        }
+        Pickup,     // Обычный самовывоз
+        Delivery,   // Доставка курьером
+        Postamat,   // Постамат
+        Express     // Сборка и выдача здесь и сейчас
     }
 
-    namespace TaskControl.OrderModule.Domain.Enums
+    public enum PaymentType
     {
-        public enum PaymentType
-        {
-            Prepaid,    // С предоплатой
-            Postpaid    // Без предоплаты (оплата при получении)
-        }
+        Prepaid,    // С предоплатой
+        Postpaid    // Без предоплаты (оплата при получении)
     }
     /// <summary>
     /// Заказ в системе

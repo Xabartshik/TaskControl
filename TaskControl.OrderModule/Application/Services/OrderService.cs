@@ -9,7 +9,7 @@ using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.Application.Interface;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.Domain;
-using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
+
 
 namespace TaskControl.OrderModule.Application.Services
 {

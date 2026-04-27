@@ -1,6 +1,5 @@
 ﻿using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
-using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
 using UnitsNet;
 
 namespace TaskControl.OrderModule.DataAccess.Mapper

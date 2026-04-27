@@ -1,7 +1,7 @@
 ﻿using Hangfire;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.OrderModule.DataAccess.Interface;
-using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
+using TaskControl.OrderModule.Domain;
 using TaskControl.TaskModule.Application.Services;
 
 namespace TaskControl.TaskModule.Application.Handlers
@@ -26,7 +26,8 @@ namespace TaskControl.TaskModule.Application.Handlers
 
             // 2. Логика фильтрации:
             // Если заказ Экспресс или в Постамат — нам нужно создать задачу СЕЙЧАС.
-            if (order.DeliveryType == DeliveryType.Express || order.DeliveryType == DeliveryType.Postamat)
+            //  || order.DeliveryType == DeliveryType.Postamat
+            if (order.DeliveryType == DeliveryType.Express)
             {
                 // Используем Hangfire Fire-and-Forget. 
                 // Это добавит задачу в очередь, и она начнет выполняться немедленно.

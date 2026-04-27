@@ -6,7 +6,7 @@ using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.DataAccess.Mapper;
 using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
-using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
+
 
 namespace TaskControl.OrderModule.DAL.Repositories
 {
