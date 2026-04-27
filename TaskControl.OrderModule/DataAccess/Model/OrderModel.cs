@@ -14,7 +14,13 @@ namespace TaskControl.OrderModule.DataAccess.Model
         [Column("customer_id"), NotNull] public int CustomerId { get; set; }
         [Column("branch_id"), NotNull] public int BranchId { get; set; }
         [Column("delivery_date")] public DateTime? DeliveryDate { get; set; }
-        [Column("type"), NotNull] public string Type { get; set; }
+
+        // Поля логистики
+        [Column("destination_address")] public string? DestinationAddress { get; set; }
+        [Column("delivery_type"), NotNull] public string DeliveryType { get; set; }
+        [Column("payment_type"), NotNull] public string PaymentType { get; set; }
+
+        // В БД статусы храним строками для читаемости и безопасности
         [Column("status"), NotNull] public string Status { get; set; }
         [Column("created_at"), NotNull] public DateTime CreatedAt { get; set; }
     }

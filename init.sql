@@ -116,13 +116,16 @@ CREATE INDEX idx_assigned_tasks_user ON active_assigned_tasks (user_id);
 CREATE INDEX idx_assigned_tasks_combo ON active_assigned_tasks (task_id, user_id);
 
 -- Создание таблицы заказов
+-- Создание таблицы заказов
 CREATE TABLE IF NOT EXISTS orders (
     order_id SERIAL PRIMARY KEY,
     customer_id INT NOT NULL,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     delivery_date TIMESTAMP,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('Online', 'Offline', 'Wholesale')),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Processing', 'Assembling', 'Assembled', 'Shipped', 'Delivered', 'Cancelled')),
+    destination_address VARCHAR(500),
+    delivery_type VARCHAR(20) NOT NULL CHECK (delivery_type IN ('Pickup', 'Delivery', 'Postamat', 'Express')),
+    payment_type VARCHAR(20) NOT NULL CHECK (payment_type IN ('Prepaid', 'Postpaid')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('Created', 'Reserved', 'Assembly', 'Ready', 'InTransit', 'Completed', 'Canceled')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -263,12 +266,12 @@ VALUES
     (3, 3, 2);
 
 -- 6. Вставка заказов
-INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
+-- 6. Вставка заказов
+INSERT INTO orders (customer_id, branch_id, delivery_date, delivery_type, payment_type, status, destination_address)
 VALUES
-    (1001, 1, '2025-07-20 14:00:00', 'Online', 'New'), -- Заказ для сборки (1 вид товара)
-    (1002, 1, '2025-07-22 10:00:00', 'Offline', 'New'), -- Заказ для сборки (3 вида товара)
-    (1003, 1, '2025-07-25 16:00:00', 'Wholesale', 'Shipped');
-
+    (1001, 1, '2025-07-20 14:00:00', 'Express', 'Prepaid', 'Created', NULL),
+    (1002, 1, '2025-07-22 10:00:00', 'Pickup', 'Postpaid', 'Created', NULL),
+    (1003, 1, '2025-07-25 16:00:00', 'Delivery', 'Prepaid', 'InTransit', 'г. Чита, ул. Ленина, 15');
 -- 7. Вставка позиций заказа
 INSERT INTO order_positions (order_id, item_id, quantity)
 VALUES
@@ -291,22 +294,6 @@ VALUES
     (1, 1, 'in', '2025-07-16 08:00:00'),
     (1, 1, 'out', '2025-07-16 17:30:00'),
     (2, 2, 'in', '2025-07-16 09:15:00');
-
--- 9. Вставка сырых событий
-INSERT INTO raw_events (type, json_params, event_time, source_service)
-VALUES
-    (
-        'scan', 
-        '{"barcode": "123456", "location": "A-01"}', 
-        '2025-07-16 10:30:00', 
-        'ScannerService'
-    ),
-    (
-        'login', 
-        '{"user_id": 2, "device": "tablet"}', 
-        '2025-07-16 09:00:00', 
-        'AuthService'
-    );
 
 -- 10. Вставка активных задач
 -- Очистка существующих данных (опционально)
@@ -499,32 +486,6 @@ VALUES
     (10, 2, '2025-07-18 11:15:00'),
     (11, 3, '2025-07-18 13:40:00');
 
--- Дополнительные заказы (8 записей)
-INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
-VALUES
-    (1004, 3, '2025-07-23 12:00:00', 'Online', 'Processing'),
-    (1005, 1, '2025-07-24 15:30:00', 'Wholesale', 'New'),
-    (1006, 2, '2025-07-25 11:00:00', 'Offline', 'Shipped'),
-    (1007, 1, '2025-07-26 14:45:00', 'Online', 'Delivered'),
-    (1008, 3, '2025-07-27 10:15:00', 'Online', 'Cancelled'),
-    (1009, 2, '2025-07-28 16:20:00', 'Wholesale', 'Processing'),
-    (1010, 1, '2025-07-29 09:30:00', 'Offline', 'New'),
-    (1011, 3, '2025-07-30 13:00:00', 'Online', 'Processing');
-
--- Дополнительные позиции заказов (10 записей)
-INSERT INTO order_positions (order_id, item_id, quantity)
-VALUES
-    (4, 1, 3),
-    (4, 3, 1),
-    (5, 2, 4),
-    (6, 1, 2),
-    (6, 2, 2),
-    (7, 3, 1),
-    (8, 1, 5),
-    (9, 2, 3),
-    (10, 3, 2),
-    (11, 1, 4);
-
 -- Дополнительные товарные позиции (8 записей, id 4..11)
 INSERT INTO item_positions (item_id, position_id, quantity)
 VALUES
@@ -536,20 +497,6 @@ VALUES
     (3, 2, 2),
     (1, 1, 5),
     (2, 2, 9);
-
--- Дополнительные резервирования (ссылаются на item_position id 4..11)
-INSERT INTO order_reservations (order_position_id, item_position_id, quantity)
-VALUES
-    (5,  4, 3),
-    (6,  6, 1),
-    (7,  5, 4),
-    (8,  7, 2),
-    (9,  8, 2),
-    (10, 9, 1),
-    (11, 10, 5),
-    (12, 11, 3),
-    (13, 4, 2),
-    (14, 7, 4);
 
 -- Дополнительные перемещения товара (8 записей)
 INSERT INTO item_movements (

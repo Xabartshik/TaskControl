@@ -36,9 +36,9 @@ namespace TaskControl.OrderModule.Application.Services
             if (_appSettings.EnableDetailedLogging)
             {
                 _logger.LogTrace("Вызов процедуры Add для заказа");
-                _logger.LogDebug("Добавление заказа: Клиент={CustomerId}, Тип={Type}", dto.CustomerId, dto.Type);
+                _logger.LogDebug("Добавление заказа: Клиент={CustomerId}, Тип={Type}", dto.CustomerId, dto.DeliveryType);
             }
-            _logger.LogInformation("Добавление нового заказа типа {Type} для клиента {CustomerId}", dto.Type, dto.CustomerId);
+            _logger.LogInformation("Добавление нового заказа типа {Type} для клиента {CustomerId}", dto.DeliveryType, dto.CustomerId);
 
             try
             {
@@ -62,7 +62,7 @@ namespace TaskControl.OrderModule.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка добавления заказа типа {Type} для клиента {CustomerId}", dto.Type, dto.CustomerId);
+                _logger.LogError(ex, "Ошибка добавления заказа типа {Type} для клиента {CustomerId}", dto.DeliveryType, dto.CustomerId);
                 throw;
             }
         }
