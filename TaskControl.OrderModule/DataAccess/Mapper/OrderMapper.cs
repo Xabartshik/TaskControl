@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using TaskControl.OrderModule.DataAccess.Model;
+﻿using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
+using UnitsNet;
 
 namespace TaskControl.OrderModule.DataAccess.Mapper
 {
     public static class OrderMapper
     {
-        // Order → OrderModel
         public static OrderModel ToModel(this Order entity)
         {
             if (entity == null) return null;
@@ -21,14 +16,19 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = entity.CustomerId,
                 BranchId = entity.BranchId,
                 DeliveryDate = entity.DeliveryDate,
-                Type = entity.Type,
-                Status = entity.Status,
-                // Установка времени создания
-                CreatedAt = DateTime.UtcNow
+                DestinationAddress = entity.DestinationAddress,
+
+                // Трансформация для БД
+                DeliveryType = entity.DeliveryType.ToString(),
+                PaymentType = entity.PaymentType.ToString(),
+                PostamatId = entity.PostamatId,
+                PostamatCellId = entity.PostamatCellId,
+                Status = entity.Status.ToString(),
+
+                CreatedAt = entity.CreatedAt == default ? DateTime.UtcNow : entity.CreatedAt
             };
         }
 
-        // OrderModel → Order
         public static Order ToDomain(this OrderModel model)
         {
             if (model == null) return null;
@@ -39,8 +39,15 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = model.CustomerId,
                 BranchId = model.BranchId,
                 DeliveryDate = model.DeliveryDate,
-                Type = model.Type,
-                Status = model.Status
+                DestinationAddress = model.DestinationAddress,
+                PostamatId = model.PostamatId,
+                PostamatCellId = model.PostamatCellId,
+                // Безопасный парсинг из БД
+                DeliveryType = Enum.TryParse<DeliveryType>(model.DeliveryType, out var dType) ? dType : DeliveryType.Pickup,
+                PaymentType = Enum.TryParse<PaymentType>(model.PaymentType, out var pType) ? pType : PaymentType.Postpaid,
+                Status = Enum.TryParse<OrderStatus>(model.Status, out var status) ? status : OrderStatus.Created,
+
+                CreatedAt = model.CreatedAt
             };
         }
     }

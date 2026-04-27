@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
@@ -28,11 +28,11 @@ namespace TaskControl.OrderModule.Services
             if (_appSettings.EnableDetailedLogging)
             {
                 _logger.LogTrace("Вызов процедуры Add для позиции заказа");
-                _logger.LogDebug("Добавление позиции: Заказ={OrderId}, Позиция={PositionId}",
-                    dto.OrderId, dto.ItemPositionId);
+                _logger.LogDebug("Добавление позиции: Заказ={OrderId}, Товар={ItemId}",
+                    dto.OrderId, dto.ItemId);
             }
-            _logger.LogInformation("Добавление позиции {PositionId} в заказ {OrderId}",
-                dto.ItemPositionId, dto.OrderId);
+            _logger.LogInformation("Добавление позиции товара {ItemId} в заказ {OrderId}",
+                dto.ItemId, dto.OrderId);
 
             try
             {
@@ -44,8 +44,8 @@ namespace TaskControl.OrderModule.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка добавления позиции {PositionId} в заказ {OrderId}",
-                    dto.ItemPositionId, dto.OrderId);
+                _logger.LogError(ex, "Ошибка добавления позиции товара {ItemId} в заказ {OrderId}",
+                    dto.ItemId, dto.OrderId);
                 throw;
             }
         }

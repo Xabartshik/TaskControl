@@ -2,11 +2,12 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     public class BaseTasksController : ControllerBase, ICrudController<BaseTaskDto, int>
     {
         private readonly IService<BaseTaskDto> _service;
@@ -19,6 +20,7 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             _service = service;
             _logger = logger;
         }
+
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BaseTaskDto>>> GetAll()

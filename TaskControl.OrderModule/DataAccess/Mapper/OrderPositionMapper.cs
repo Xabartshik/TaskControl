@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InventoryModule.DataAccess.Model;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DataAccess.Mapper
 {
@@ -18,7 +18,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             {
                 UniqueId = entity.UniqueId,
                 OrderId = entity.OrderId,
-                ItemPositionId = entity.ItemPositionId,
+                ItemId = entity.ItemId,
                 Quantity = entity.Quantity,
                 CreatedAt = DateTime.UtcNow
             };
@@ -32,7 +32,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             {
                 UniqueId = model.UniqueId,
                 OrderId = model.OrderId,
-                ItemPositionId = model.ItemPositionId,
+                ItemId = model.ItemId,
                 Quantity = model.Quantity
             };
         }

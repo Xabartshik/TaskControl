@@ -1,9 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Data.Common;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DataAccess.Interface;
+using TaskControl.InventoryModule.DataAccess.Model;
 
 namespace TaskControl.OrderModule.Application.Services
 {
@@ -77,6 +80,11 @@ namespace TaskControl.OrderModule.Application.Services
                 _logger.LogError(ex, "Ошибка удаления товарной позиции ID: {PositionId}", id);
                 throw;
             }
+        }
+
+        public async Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId)
+        {
+            return await _repository.GetAvailableItemsByBranchAsync(branchId);
         }
 
         public async Task<IEnumerable<ItemPositionDto>> GetAll()

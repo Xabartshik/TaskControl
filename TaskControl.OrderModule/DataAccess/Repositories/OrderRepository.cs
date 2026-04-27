@@ -1,9 +1,12 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
+using System.Data.Common;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.DataAccess.Mapper;
+using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
+
 
 namespace TaskControl.OrderModule.DAL.Repositories
 {
@@ -48,6 +51,29 @@ namespace TaskControl.OrderModule.DAL.Repositories
             }
         }
 
+        public async Task<IEnumerable<Order>> GetActiveOrdersAsync()
+        {
+            _logger.LogInformation("Получение списка активных заказов");
+            try
+            {
+                // Превращаем статусы в строки один раз, чтобы не делать этого в цикле БД
+                var completedStatus = OrderStatus.Completed.ToString();
+                var canceledStatus = OrderStatus.Canceled.ToString();
+
+                var ordersModel = await _db.Orders
+                    .Where(o => o.Status != completedStatus && o.Status != canceledStatus)
+                    .OrderByDescending(o => o.CreatedAt)
+                    .ToListAsync();
+
+                return ordersModel.Select(o => o.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении списка активных заказов");
+                throw;
+            }
+        }
+
         public async Task<int> AddAsync(Order entity)
         {
             _logger.LogInformation("Добавление нового заказа для клиента {customerId}", entity.CustomerId);
@@ -57,11 +83,11 @@ namespace TaskControl.OrderModule.DAL.Repositories
                     throw new ArgumentNullException(nameof(entity));
 
                 // Валидация типа заказа
-                if (!new[] { "Online", "Offline" }.Contains(entity.Type))
+                if (!Enum.IsDefined(typeof(DeliveryType), entity.DeliveryType))
                     throw new ArgumentException("Недопустимый тип заказа");
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {
@@ -79,8 +105,10 @@ namespace TaskControl.OrderModule.DAL.Repositories
                     return 0;
 
                 // Валидация статуса заказа
-                if (!new[] { "New", "Processing", "Delivered", "Cancelled" }.Contains(entity.Status))
-                    throw new ArgumentException("Недопустимый статус заказа");
+                if (!Enum.IsDefined(typeof(OrderStatus), entity.Status))
+                {
+                    throw new ArgumentException($"Недопустимый статус заказа: {entity.Status}");
+                }
 
                 var model = entity.ToModel();
                 return await _db.UpdateAsync(model);

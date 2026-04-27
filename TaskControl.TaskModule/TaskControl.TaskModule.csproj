@@ -7,8 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CromulentBisgetti.ContainerPacking" Version="1.0.0" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.23" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
     <PackageReference Include="linq2db" Version="5.4.1" />
     <PackageReference Include="linq2db.PostgreSQL" Version="5.4.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.23" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.7" />
     <PackageReference Include="Serilog" Version="4.3.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
@@ -20,6 +24,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaskControl.Core\TaskControl.Core.csproj" />
+    <ProjectReference Include="..\TaskControl.InformationModule\TaskControl.InformationModule.csproj" />
+    <ProjectReference Include="..\TaskControl.InventoryModule\TaskControl.InventoryModule.csproj" />
+    <ProjectReference Include="..\TaskControl.OrderModule\TaskControl.OrderModule.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Domain\TaskTypes\" />
+    <Folder Include="Presentation\Interface\" />
   </ItemGroup>
 
 </Project>

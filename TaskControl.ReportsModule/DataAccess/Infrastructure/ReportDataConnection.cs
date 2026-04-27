@@ -15,5 +15,6 @@ namespace TaskControl.ReportsModule.DataAccess.Infrastructure
         }
 
         public ITable<RawEventModel> RawEvents => this.GetTable<RawEventModel>();
+        public ITable<WorkerTaskEfficiencyModel> WorkerTaskEfficiency => this.GetTable<WorkerTaskEfficiencyModel>();
     }
 }

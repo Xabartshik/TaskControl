@@ -1,8 +1,12 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
+using System.Data.Common;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DataAccess.Model;
+using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
+using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
@@ -89,6 +93,7 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                 throw;
             }
         }
+
 
         public async Task<int> DeleteAsync(int id)
         {

@@ -1,27 +1,42 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
+using TaskControl.TaskModule.Application.Interface;
+using TaskControl.InformationModule.Application.Services;
+using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Services
 {
-    public class BaseTaskService : IService<BaseTaskDto>
+    public class BaseTaskService : IBaseTaskService
     {
         private readonly IActiveTaskRepository _repository;
+        private readonly ActiveEmployeeService _employeeService;
+        private readonly IInventoryAssignmentRepository _assignmentRepository;
+        private readonly IOrderAssemblyAssignmentRepository _assemblyAssignmentRepository;
         private readonly ILogger<BaseTaskService> _logger;
         private readonly AppSettings _appSettings;
 
         public BaseTaskService(
             IActiveTaskRepository repository,
+            ActiveEmployeeService employeeService,
+            IInventoryAssignmentRepository assignmentRepository,
+            IOrderAssemblyAssignmentRepository assemblyAssignmentRepository,
             ILogger<BaseTaskService> logger,
             IOptions<AppSettings> options)
         {
-            _repository = repository;
-            _logger = logger;
-            _appSettings = options.Value;
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _employeeService = employeeService ?? throw new ArgumentNullException(nameof(employeeService));
+            _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
+            _assemblyAssignmentRepository = assemblyAssignmentRepository ?? throw new ArgumentNullException(nameof(assemblyAssignmentRepository));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _appSettings = options?.Value ?? new AppSettings();
         }
 
         public async Task<int> Add(BaseTaskDto dto)
@@ -161,6 +176,56 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogError(ex, "Ошибка обновления активной задачи ID: {TaskId}", dto.TaskId);
                 throw;
             }
+        }
+
+        public async Task<IEnumerable<int>> GetAutoSelectedEmployeesAsync(int branchId, int requiredCount)
+        {
+            _logger.LogInformation("|   [Автоподбор] ищем {Count} сотрудников для филиала {BranchId}", requiredCount, branchId);
+            
+            var employees = await _employeeService.GetWorkingEmployeesByBranchAsync(branchId);
+            if (!employees.Any())
+            {
+                _logger.LogWarning("|   ! нет работающих сотрудников в филиале {BranchId}", branchId);
+                return new List<int>();
+            }
+
+            _logger.LogDebug("|     найдено {Count} работающих сотрудников",
+                employees.Count());
+
+            var workLoads = new List<(int EmployeeId, int ActiveCount)>();
+
+            foreach (var emp in employees)
+            {
+                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var invActiveCount = invAssignments.Count(a =>
+                    a.Status != Domain.AssignmentStatus.Completed &&
+                    a.Status != Domain.AssignmentStatus.Cancelled);
+
+                var oaAssignments = await _assemblyAssignmentRepository.GetByUserIdAsync(emp.EmployeeId);
+                var oaActiveCount = oaAssignments.Count(a =>
+                    a.Status != AssignmentStatus.Completed &&
+                    a.Status != AssignmentStatus.Cancelled);
+
+                workLoads.Add((emp.EmployeeId, invActiveCount + oaActiveCount));
+            }
+
+            // Логируем нагрузку каждого сотрудника
+            foreach (var wl in workLoads.OrderBy(w => w.ActiveCount))
+            {
+                _logger.LogDebug("|     UserId={EmployeeId}: {ActiveCount} активных задач", wl.EmployeeId, wl.ActiveCount);
+            }
+
+            // Сортируем: сначала те, у кого меньше всего активных задач, и берем нужное количество
+            var selectedIds = workLoads
+                .OrderBy(w => w.ActiveCount)
+                .Take(requiredCount)
+                .Select(w => w.EmployeeId)
+                .ToList();
+
+            _logger.LogInformation("|   [Автоподбор] выбраны: [{SelectedIds}] (из {Total} сотрудников)",
+                string.Join(", ", selectedIds), workLoads.Count);
+
+            return selectedIds;
         }
     }
 }

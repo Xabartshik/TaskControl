@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TaskControl.InventoryModule.DataAccess.Model;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DataAccess.Mapper
 {

@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UnitsNet;
 
-namespace TaskControl.OrderModule.Domain
+namespace TaskControl.InventoryModule.Domain
 {
     /// <summary>
     /// Физическое расположение товара на складе

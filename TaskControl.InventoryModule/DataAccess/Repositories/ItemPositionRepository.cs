@@ -1,9 +1,13 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DataAccess.Model;
+using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
-using TaskControl.OrderModule.Domain;
+using TaskControl.InventoryModule.DataAccess.Model;
+using TaskControl.InventoryModule.Domain;
+
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
@@ -29,6 +33,111 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при получении связи товар-позиция по ID: {id}", id);
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<ItemPosition>> GetByIdsAsync(IEnumerable<int> ids)
+        {
+            if (ids == null) throw new ArgumentNullException(nameof(ids));
+
+            // Чтобы не гонять запрос с пустым IN()
+            var idArray = ids.Distinct().ToArray();
+            if (idArray.Length == 0)
+                return Array.Empty<ItemPosition>();
+
+            _logger.LogInformation("Получение связей товар-позиция по списку ID. Count: {count}", idArray.Length);
+
+            try
+            {
+                var models = await _db.ItemPositions
+                    .Where(ip => idArray.Contains(ip.Id))
+                    .ToListAsync();
+
+                return models.Select(m => m.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении связей товар-позиция по списку ID");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId)
+        {
+            _logger.LogInformation("Получение доступных товаров для филиала {BranchId}", branchId);
+
+            // 1. Получаем физические остатки
+            var physicalStocks = await (
+                from ip in _db.GetTable<ItemPositionModel>()
+                join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
+                where p.BranchId == branchId
+                group ip by new { i.ItemId, i.Name } into g
+                select new
+                {
+                    ItemId = g.Key.ItemId,
+                    Name = g.Key.Name,
+                    TotalQuantity = g.Sum(x => x.Quantity)
+                }
+            ).ToListAsync();
+
+            if (!physicalStocks.Any()) return new List<AvailableItemDto>();
+
+            var itemIds = physicalStocks.Select(s => s.ItemId).ToList();
+
+            // 2. Получаем текущие резервы (Hard Allocation)
+            var reservedStocks = await (
+                from res in _db.GetTable<OrderReservationModel>()
+                join ip in _db.GetTable<ItemPositionModel>() on res.ItemPositionId equals ip.Id
+                join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                where p.BranchId == branchId && itemIds.Contains(ip.ItemId)
+                group res by ip.ItemId into g
+                select new
+                {
+                    ItemId = g.Key,
+                    ReservedQuantity = g.Sum(x => x.Quantity)
+                }
+            ).ToListAsync();
+
+            // 3. Формируем итоговый DTO
+            var result = new List<AvailableItemDto>();
+            foreach (var stock in physicalStocks)
+            {
+                var reserved = reservedStocks.FirstOrDefault(r => r.ItemId == stock.ItemId)?.ReservedQuantity ?? 0;
+                var availableQty = stock.TotalQuantity - reserved;
+
+                if (availableQty > 0)
+                {
+                    result.Add(new AvailableItemDto
+                    {
+                        ItemId = stock.ItemId,
+                        Name = stock.Name,
+                        AvailableQuantity = availableQty
+                    });
+                }
+            }
+
+            return result.OrderBy(r => r.Name).ToList();
+        }
+
+        public async Task<IEnumerable<ItemPosition>> GetByItemAndBranchAsync(int branchId, int itemId)
+        {
+            _logger.LogInformation("Поиск позиций товара {ItemId} в филиале {BranchId} через БД", itemId, branchId);
+            try
+            {
+                // Выполняем JOIN на уровне базы данных
+                var query = from ip in _db.ItemPositions
+                            join p in _db.PositionCells on ip.PositionId equals p.PositionId
+                            where ip.ItemId == itemId && p.BranchId == branchId
+                            select ip;
+
+                var results = await query.ToListAsync();
+                return results.Select(ip => ip.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка БД при поиске товара {ItemId} в филиале {BranchId}", itemId, branchId);
                 throw;
             }
         }

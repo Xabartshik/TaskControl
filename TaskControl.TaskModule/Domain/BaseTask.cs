@@ -10,6 +10,17 @@ using System.Threading.Tasks;
 
 namespace TaskControl.TaskModule.Domain
 {
+    public enum TaskStatus
+    {
+        New = 0,
+        Assigned = 1,
+        InProgress = 2,
+        Completed = 3,
+        Cancelled = 4,
+        OnHold = 5,
+        Blocked = 6
+    }
+
     /// <summary>
     /// Активная задача в системе
     /// </summary>
@@ -21,15 +32,20 @@ namespace TaskControl.TaskModule.Domain
         [Required]
         public int TaskId { get; set; }
 
+        [Required(ErrorMessage = "Название задачи обязательно")]
+        [StringLength(200, ErrorMessage = "Название не может превышать 200 символов")]
+        public string Title { get; set; }
+
+
+        [StringLength(2000, ErrorMessage = "Описание не может превышать 2000 символов")]
+        public string? Description { get; set; }
         /// <summary>
         /// Идентификатор филиала
         /// </summary>
-        [Required(ErrorMessage = "Не указан филиал")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный идентификатор филиала")]
         public int BranchId { get; set; }
 
         /// <summary>
-        /// Тип задачи
+        /// Тип задачи (Нужен для оптимизации работы фабрики)
         /// </summary>
         [Required(ErrorMessage = "Тип задачи обязателен")]
         [StringLength(50, ErrorMessage = "Тип задачи не может превышать 50 символов")]
@@ -50,18 +66,24 @@ namespace TaskControl.TaskModule.Domain
         /// Статус задачи
         /// </summary>
         [Required]
-        [RegularExpression("^(New|InProgress|Completed|Cancelled)$",
-            ErrorMessage = "Недопустимый статус задачи")]
-        public string Status { get; set; } = "New";
+        public TaskStatus Status { get; set; } = TaskStatus.New;
 
+
+        [Range(0, 5)]
+        public int PriorityLevel { get; set; } = 1;
+
+        public DateTime? Deadline { get; set; }
+        public string SourceType { get; set; }
         /// <summary>
-        /// Дополнительные параметры задачи в формате JSON
+        /// Дополнительные параметры задачи в формате JSON были удалены, так как являются частью БД, а не бизнес-сущности
         /// </summary>
-        public JsonDocument? JSONParams { get; set; }
 
         /// <summary>
         /// Проверяет, является ли задача активной
         /// </summary>
-        public bool IsActive() => Status != "Completed" && Status != "Cancelled";
+        public bool IsActive() => Status != TaskStatus.Completed
+            && Status != TaskStatus.Cancelled;
+
+
     }
 }

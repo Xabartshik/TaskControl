@@ -17,7 +17,8 @@ namespace TaskControl.TaskModule.Application.DTOs
 
         [Required]
         public int UserId { get; init; }
-
+        public DateTime? StartedAt { get; init; }
+        public DateTime? CompletedAt { get; init; }
         public DateTime AssignedAt { get; init; }
 
         public static TaskAssignation FromDto(TaskAssignationDto dto) => new()

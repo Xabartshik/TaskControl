@@ -18,7 +18,7 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             _logger = logger;
         }
 
-        public async Task<PositionCell?> GetByIdAsync(int id)
+        public async Task<PositionCell> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск ячейки по ID: {id}", id);
             try
@@ -44,6 +44,45 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при получении списка ячеек");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<PositionCell>> GetByIdsAsync(IEnumerable<int> ids)
+        {
+            _logger.LogInformation("Поиск ячеек по списку ID: {ids}", string.Join(", ", ids));
+            try
+            {
+                if (ids == null || !ids.Any())
+                    return Enumerable.Empty<PositionCell>();
+
+                var positions = await _db.PositionCells
+                    .Where(p => ids.Contains(p.PositionId))
+                    .ToListAsync();
+
+                return positions.Select(p => p.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении ячеек по списку ID");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<PositionCell>> GetByBranchAsync(int branchId)
+        {
+            _logger.LogInformation("Поиск ячеек по ID филиала: {branchId}", branchId);
+            try
+            {
+                var positions = await _db.PositionCells
+                    .Where(p => p.BranchId == branchId)
+                    .ToListAsync();
+
+                return positions.Select(p => p.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении ячеек по ID филиала: {branchId}", branchId);
                 throw;
             }
         }

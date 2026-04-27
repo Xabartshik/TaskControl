@@ -30,6 +30,7 @@ CREATE INDEX idx_branches_type ON branches (branch_type);
 -- Создание таблицы товаров
 CREATE TABLE IF NOT EXISTS items (
     item_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
     weight DOUBLE PRECISION NOT NULL CHECK (weight > 0),
     length DOUBLE PRECISION NOT NULL CHECK (length > 0),
     width DOUBLE PRECISION NOT NULL CHECK (width > 0),
@@ -71,29 +72,43 @@ CREATE INDEX idx_raw_events_service ON raw_events (source_service);
 CREATE INDEX idx_raw_events_event_time ON raw_events (event_time);
 CREATE INDEX idx_raw_events_params ON raw_events USING GIN (json_params);
 
--- Создание таблицы активных задач
-CREATE TABLE IF NOT EXISTS active_tasks (
+-- Создание таблицы базовых задач
+CREATE TABLE IF NOT EXISTS base_tasks (
     task_id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(2000),
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'InProgress', 'Completed', 'Cancelled')),
-    json_params JSONB
+    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Assigned', 'InProgress', 'Completed', 'Cancelled', 'OnHold', 'Blocked')) DEFAULT 'New',
+    deadline TIMESTAMP NULL,
+    priority_level INT NOT NULL DEFAULT 1,
+    source_type VARCHAR(50) NULL
 );
 
 -- Индексы для задач
-CREATE INDEX idx_active_tasks_branch ON active_tasks (branch_id);
-CREATE INDEX idx_active_tasks_status ON active_tasks (status);
-CREATE INDEX idx_active_tasks_type ON active_tasks (type);
-CREATE INDEX idx_active_tasks_created ON active_tasks (created_at);
+CREATE INDEX idx_base_tasks_branch ON base_tasks(branch_id);
+CREATE INDEX idx_base_tasks_status ON base_tasks(status);
+CREATE INDEX idx_base_tasks_type ON base_tasks(type);
+CREATE INDEX idx_base_tasks_priority ON base_tasks(priority);
+CREATE INDEX idx_base_tasks_created ON base_tasks(created_at);
+CREATE INDEX idx_base_tasks_completed ON base_tasks(completed_at);
 
 -- Создание таблицы назначенных задач
 CREATE TABLE IF NOT EXISTS active_assigned_tasks (
-    id SERIAL PRIMARY KEY,
-    task_id INT NOT NULL REFERENCES active_tasks(task_id),
-    user_id INT NOT NULL REFERENCES employees(employees_id),
-    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id           SERIAL PRIMARY KEY,
+    task_id       INT NOT NULL REFERENCES base_tasks(task_id),
+    user_id       INT NOT NULL REFERENCES employees(employees_id),
+    assigned_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at    TIMESTAMP NULL,
+    completed_at  TIMESTAMP NULL,
+
+    CONSTRAINT chk_aat_started_after_assigned
+        CHECK (started_at IS NULL OR started_at >= assigned_at),
+
+    CONSTRAINT chk_aat_completed_after_started
+        CHECK (completed_at IS NULL OR (started_at IS NOT NULL AND completed_at >= started_at))
 );
 
 -- Составной индекс для назначений
@@ -101,13 +116,16 @@ CREATE INDEX idx_assigned_tasks_user ON active_assigned_tasks (user_id);
 CREATE INDEX idx_assigned_tasks_combo ON active_assigned_tasks (task_id, user_id);
 
 -- Создание таблицы заказов
+-- Создание таблицы заказов
 CREATE TABLE IF NOT EXISTS orders (
     order_id SERIAL PRIMARY KEY,
     customer_id INT NOT NULL,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
     delivery_date TIMESTAMP,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('Online', 'Offline', 'Wholesale')),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('New', 'Processing', 'Shipped', 'Delivered', 'Cancelled')),
+    destination_address VARCHAR(500),
+    delivery_type VARCHAR(20) NOT NULL CHECK (delivery_type IN ('Pickup', 'Delivery', 'Postamat', 'Express')),
+    payment_type VARCHAR(20) NOT NULL CHECK (payment_type IN ('Prepaid', 'Postpaid')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('Created', 'Reserved', 'Assembly', 'Ready', 'InTransit', 'Completed', 'Canceled')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -121,7 +139,7 @@ CREATE INDEX idx_orders_delivery_date ON orders (delivery_date);
 CREATE TABLE IF NOT EXISTS positions (
     position_id SERIAL PRIMARY KEY,
     branch_id INT NOT NULL REFERENCES branches(branch_id),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Inactive', 'Maintenance')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('Active', 'Reserved', 'Inactive', 'Maintenance')),
     zone_code VARCHAR(10) NOT NULL,
     first_level_storage_type VARCHAR(30) NOT NULL,
     fls_number VARCHAR(20) NOT NULL,
@@ -142,14 +160,14 @@ CREATE INDEX idx_positions_zone ON positions (zone_code);
 CREATE TABLE IF NOT EXISTS order_positions (
     unique_id SERIAL PRIMARY KEY,
     order_id INT NOT NULL REFERENCES orders(order_id),
-    item_position_id INT NOT NULL REFERENCES positions(position_id),
+    item_id INT NOT NULL REFERENCES items(item_id),
     quantity INT NOT NULL CHECK (quantity > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Индекс для быстрого поиска по заказам
 CREATE INDEX idx_order_positions_order ON order_positions (order_id);
-CREATE INDEX idx_order_positions_item ON order_positions (item_position_id);
+CREATE INDEX idx_order_positions_item ON order_positions (item_id);
 
 -- Создание таблицы позиций товара
 CREATE TABLE IF NOT EXISTS item_positions (
@@ -164,6 +182,19 @@ CREATE TABLE IF NOT EXISTS item_positions (
 CREATE INDEX idx_item_positions_position ON item_positions (position_id);
 CREATE INDEX idx_item_positions_item ON item_positions (item_id);
 CREATE UNIQUE INDEX idx_item_positions_id ON item_positions (id);
+
+-- Создание таблицы резервирования товаров под заказы
+CREATE TABLE IF NOT EXISTS order_reservations (
+    id SERIAL PRIMARY KEY,
+    order_position_id INT NOT NULL REFERENCES order_positions(unique_id),
+    item_position_id INT REFERENCES item_positions(id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для резервирований
+CREATE INDEX idx_order_reservations_order_pos ON order_reservations (order_position_id);
+CREATE INDEX idx_order_reservations_item_pos ON order_reservations (item_position_id);
 
 -- Создание таблицы перемещений товара
 CREATE TABLE IF NOT EXISTS item_movements (
@@ -211,11 +242,11 @@ VALUES
     ('Сидоров', 'Алексей', NULL, 'Грузчик');
 
 -- 3. Вставка товаров
-INSERT INTO items (weight, length, width, height)
+INSERT INTO items (name, weight, length, width, height)
 VALUES
-    (1.5, 20, 15, 10),
-    (0.8, 10, 10, 5),
-    (5.0, 50, 30, 20);
+    ('Телефон No Kia', 1.5, 20, 15, 10),
+    ('Плашка ОЗУ', 0.8, 10, 10, 5),
+    ('Видеокарта ХХХ6090',5.0, 50, 30, 20);
 
 -- 4. Вставка складских позиций
 INSERT INTO positions (
@@ -235,18 +266,27 @@ VALUES
     (3, 3, 2);
 
 -- 6. Вставка заказов
-INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
+-- 6. Вставка заказов
+INSERT INTO orders (customer_id, branch_id, delivery_date, delivery_type, payment_type, status, destination_address)
 VALUES
-    (1001, 1, '2025-07-20 14:00:00', 'Online', 'Processing'),
-    (1002, 2, '2025-07-22 10:00:00', 'Offline', 'New'),
-    (1003, 1, '2025-07-25 16:00:00', 'Wholesale', 'Shipped');
-
+    (1001, 1, '2025-07-20 14:00:00', 'Express', 'Prepaid', 'Created', NULL),
+    (1002, 1, '2025-07-22 10:00:00', 'Pickup', 'Postpaid', 'Created', NULL),
+    (1003, 1, '2025-07-25 16:00:00', 'Delivery', 'Prepaid', 'InTransit', 'г. Чита, ул. Ленина, 15');
 -- 7. Вставка позиций заказа
-INSERT INTO order_positions (order_id, item_position_id, quantity)
+INSERT INTO order_positions (order_id, item_id, quantity)
 VALUES
-    (1, 1, 2),
-    (1, 2, 1),
-    (2, 3, 3);
+    (1, 1, 2), -- Заказ 1: 2 шт Телефона No Kia (item_id=1)
+    (2, 1, 1), -- Заказ 2: 1 шт Телефона
+    (2, 2, 2), -- Заказ 2: 2 шт Плашки ОЗУ
+    (2, 3, 1); -- Заказ 2: 1 шт Видеокарты
+
+-- 7.1 Вставка резервирований под позиции (order_position_id соответствует автоинкременту)
+INSERT INTO order_reservations (order_position_id, item_position_id, quantity)
+VALUES
+    (1, 1, 2), -- Под order_position 1 (Телефон, 2шт) резервируем 2шт из item_position 1
+    (2, 1, 1), -- Под order_position 2 (Телефон, 1шт) резервируем 1шт из item_position 1
+    (3, 2, 2), -- Под order_position 3 (Плата ОЗУ, 2шт) резервируем 2шт из item_position 2
+    (4, 3, 1); -- Под order_position 4 (Видеокарта, 1шт) резервируем 1шт из item_position 3
 
 -- 8. Вставка отметок сотрудников
 INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
@@ -255,28 +295,140 @@ VALUES
     (1, 1, 'out', '2025-07-16 17:30:00'),
     (2, 2, 'in', '2025-07-16 09:15:00');
 
--- 9. Вставка сырых событий
-INSERT INTO raw_events (type, json_params, event_time, source_service)
+-- 10. Вставка активных задач
+-- Очистка существующих данных (опционально)
+-- TRUNCATE TABLE base_tasks RESTART IDENTITY CASCADE;
+
+-- Вставка тестовых задач
+INSERT INTO base_tasks (title, description, branch_id, type, status, priority, created_at, completed_at)
 VALUES
+    -- Активные задачи
     (
-        'scan', 
-        '{"barcode": "123456", "location": "A-01"}', 
-        '2025-07-16 10:30:00', 
-        'ScannerService'
+        'Инвентаризация зоны A',
+        'Провести полную инвентаризацию складской зоны A с подсчетом всех товаров',
+        1,
+        'Inventory',
+        'InProgress',
+        8,
+        '2025-12-20 09:00:00',
+        NULL
     ),
     (
-        'login', 
-        '{"user_id": 2, "device": "tablet"}', 
-        '2025-07-16 09:00:00', 
-        'AuthService'
+        'Приемка товара от поставщика ООО "Снабжение"',
+        'Принять и разместить партию товаров согласно накладной № 12345',
+        1,
+        'Receipt',
+        'Assigned',
+        7,
+        '2025-12-21 10:30:00',
+        NULL
+    ),
+    (
+        'Комплектация заказа №1001',
+        'Собрать товары для заказа клиента согласно спецификации',
+        2,
+        'Picking',
+        'New',
+        6,
+        '2025-12-22 08:15:00',
+        NULL
+    ),
+    (
+        'Перемещение товаров между зонами',
+        'Переместить товары из зоны B в зону C для оптимизации хранения',
+        1,
+        'Movement',
+        'OnHold',
+        4,
+        '2025-12-22 14:00:00',
+        NULL
+    ),
+    (
+        'Срочная отгрузка для VIP-клиента',
+        'Подготовить и отгрузить заказ для приоритетного клиента',
+        3,
+        'Shipping',
+        'InProgress',
+        10,
+        '2025-12-23 07:00:00',
+        NULL
+    ),
+    
+    -- Завершенные задачи
+    (
+        'Инвентаризация зоны B',
+        'Завершена инвентаризация зоны B, обнаружено 3 расхождения',
+        1,
+        'Inventory',
+        'Completed',
+        7,
+        '2025-12-15 09:00:00',
+        '2025-12-15 16:30:00'
+    ),
+    (
+        'Упаковка заказа №998',
+        'Упаковать товары для отправки',
+        2,
+        'Packing',
+        'Completed',
+        5,
+        '2025-12-18 11:20:00',
+        '2025-12-18 12:45:00'
+    ),
+    (
+        'Маркировка новых поступлений',
+        'Нанести штрих-коды на новые товары',
+        1,
+        'Labeling',
+        'Completed',
+        3,
+        '2025-12-19 10:00:00',
+        '2025-12-19 14:30:00'
+    ),
+    
+    -- Отмененные задачи
+    (
+        'Инвентаризация зоны D',
+        'Отменена из-за технических работ в зоне',
+        3,
+        'Inventory',
+        'Cancelled',
+        5,
+        '2025-12-17 08:00:00',
+        '2025-12-17 09:15:00'
+    ),
+    (
+        'Приемка товара от ООО "Торг"',
+        'Поставщик не доставил товар в срок',
+        2,
+        'Receipt',
+        'Cancelled',
+        6,
+        '2025-12-16 13:00:00',
+        '2025-12-16 15:00:00'
+    ),
+    
+    -- Заблокированные задачи
+    (
+        'Выгрузка на транспорт',
+        'Ожидание прибытия транспортного средства',
+        1,
+        'Loading',
+        'Blocked',
+        7,
+        '2025-12-23 06:00:00',
+        NULL
+    ),
+    (
+        'Ревизия зоны C',
+        'Нет доступа к зоне из-за ремонта оборудования',
+        2,
+        'Audit',
+        'Blocked',
+        5,
+        '2025-12-22 15:30:00',
+        NULL
     );
-
--- 10. Вставка активных задач
-INSERT INTO active_tasks (branch_id, type, status, json_params)
-VALUES
-    (1, 'Переучет', 'InProgress', '{"zone": "A"}'),
-    (2, 'Приемка', 'New', '{"supplier": "ООО Поставщик"}'),
-    (1, 'Комплектация', 'Completed', '{"order_id": 1}');
 
 -- 11. Вставка назначенных задач
 INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
@@ -322,18 +474,6 @@ VALUES
     ('movement', '{"from": "A-01", "to": "B-05", "items": 5}', '2025-07-18 11:20:00', 'WMS'),
     ('alert', '{"type": "low_stock", "position": "C-12"}', '2025-07-18 15:40:00', 'Monitoring');
 
--- Дополнительные активные задачи (8 записей)
-INSERT INTO active_tasks (branch_id, type, status, json_params, created_at, completed_at)
-VALUES
-    (1, 'Инвентаризация', 'New', '{"zone": "B"}', '2025-07-17 09:00:00', NULL),
-    (2, 'Перемещение', 'InProgress', '{"target_branch": 1}', '2025-07-17 10:30:00', NULL),
-    (3, 'Приемка', 'New', '{"supplier": "ООО Снабжение"}', '2025-07-17 11:45:00', NULL),
-    (1, 'Упаковка', 'Completed', '{"order_id": 3}', '2025-07-16 13:20:00', '2025-07-16 15:40:00'),
-    (2, 'Выгрузка', 'InProgress', '{"truck": "A123BC"}', '2025-07-18 08:15:00', NULL),
-    (1, 'Маркировка', 'New', '{"items_count": 50}', '2025-07-18 10:00:00', NULL),
-    (3, 'Резервирование', 'Completed', '{"order_id": 2}', '2025-07-17 14:30:00', '2025-07-17 16:00:00'),
-    (2, 'Комплектация', 'InProgress', '{"order_id": 5}', '2025-07-18 09:30:00', NULL);
-
 -- Дополнительные назначения задач (8 записей)
 INSERT INTO active_assigned_tasks (task_id, user_id, assigned_at)
 VALUES
@@ -346,33 +486,7 @@ VALUES
     (10, 2, '2025-07-18 11:15:00'),
     (11, 3, '2025-07-18 13:40:00');
 
--- Дополнительные заказы (8 записей)
-INSERT INTO orders (customer_id, branch_id, delivery_date, type, status)
-VALUES
-    (1004, 3, '2025-07-23 12:00:00', 'Online', 'Processing'),
-    (1005, 1, '2025-07-24 15:30:00', 'Wholesale', 'New'),
-    (1006, 2, '2025-07-25 11:00:00', 'Offline', 'Shipped'),
-    (1007, 1, '2025-07-26 14:45:00', 'Online', 'Delivered'),
-    (1008, 3, '2025-07-27 10:15:00', 'Online', 'Cancelled'),
-    (1009, 2, '2025-07-28 16:20:00', 'Wholesale', 'Processing'),
-    (1010, 1, '2025-07-29 09:30:00', 'Offline', 'New'),
-    (1011, 3, '2025-07-30 13:00:00', 'Online', 'Processing');
-
--- Дополнительные позиции заказов (10 записей)
-INSERT INTO order_positions (order_id, item_position_id, quantity)
-VALUES
-    (4, 1, 3),
-    (4, 3, 1),
-    (5, 2, 4),
-    (6, 1, 2),
-    (6, 2, 2),
-    (7, 3, 1),
-    (8, 1, 5),
-    (9, 2, 3),
-    (10, 3, 2),
-    (11, 1, 4);
-
--- Дополнительные товарные позиции (8 записей)
+-- Дополнительные товарные позиции (8 записей, id 4..11)
 INSERT INTO item_positions (item_id, position_id, quantity)
 VALUES
     (1, 2, 8),
@@ -412,3 +526,194 @@ VALUES
     (8, 'Reserved', 3),
     (9, 'Defective', 1),
     (10, 'Available', 4);
+
+-- =====================================================
+-- ТАБЛИЦЫ ДЛЯ ИНВЕНТАРИЗАЦИИ
+-- =====================================================
+
+-- Создание таблицы назначений инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_assignments (
+    id SERIAL PRIMARY KEY,
+    task_id INT NOT NULL REFERENCES base_tasks(task_id),
+    assigned_to_user_id INT NOT NULL REFERENCES employees(employees_id),
+    branch_id INT NOT NULL REFERENCES branches(branch_id),
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
+    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at    TIMESTAMP NULL,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы inventory_assignments
+CREATE INDEX idx_inventory_assignments_task ON inventory_assignments(task_id);
+CREATE INDEX idx_inventory_assignments_user ON inventory_assignments(assigned_to_user_id);
+CREATE INDEX idx_inventory_assignments_branch ON inventory_assignments(branch_id);
+CREATE INDEX idx_inventory_assignments_status ON inventory_assignments(status);
+
+-- Создание таблицы строк инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_assignment_lines (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_id INT NOT NULL REFERENCES inventory_assignments(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    position_id INT NOT NULL REFERENCES positions(position_id),
+    expected_quantity INT NOT NULL CHECK (expected_quantity >= 0),
+    actual_quantity INT,
+    zone_code VARCHAR(10) NOT NULL,
+    first_level_storage_type VARCHAR(30) NOT NULL,
+    fls_number VARCHAR(20) NOT NULL,
+    second_level_storage VARCHAR(30),
+    third_level_storage VARCHAR(30)
+);
+
+-- Индексы для таблицы inventory_assignment_lines
+CREATE INDEX idx_inventory_lines_assignment ON inventory_assignment_lines(inventory_assignment_id);
+CREATE INDEX idx_inventory_lines_itemposition ON inventory_assignment_lines(item_position_id);
+CREATE INDEX idx_inventory_lines_position ON inventory_assignment_lines(position_id);
+CREATE INDEX idx_inventory_lines_zone ON inventory_assignment_lines(zone_code);
+
+-- Создание таблицы расхождений при инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_discrepancies (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_line_id INT NOT NULL REFERENCES inventory_assignment_lines(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    expected_quantity INT NOT NULL CHECK (expected_quantity >= 0),
+    actual_quantity INT NOT NULL CHECK (actual_quantity >= 0),
+    type INT NOT NULL CHECK (type IN (0, 1, 2)), -- None(0), Surplus(1), Shortage(2)
+    note TEXT,
+    identified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    resolution_status INT NOT NULL CHECK (resolution_status IN (0, 1, 2, 3)), -- Pending(0), Resolved(1), UnderInvestigation(2), WrittenOff(3)
+    CONSTRAINT positive_variance CHECK ((actual_quantity - expected_quantity) IS NOT NULL)
+);
+
+-- Индексы для таблицы inventory_discrepancies
+CREATE INDEX idx_discrepancies_line ON inventory_discrepancies(inventory_assignment_line_id);
+CREATE INDEX idx_discrepancies_itemposition ON inventory_discrepancies(item_position_id);
+CREATE INDEX idx_discrepancies_type ON inventory_discrepancies(type);
+CREATE INDEX idx_discrepancies_resolution ON inventory_discrepancies(resolution_status);
+CREATE INDEX idx_discrepancies_identified ON inventory_discrepancies(identified_at);
+
+-- Создание таблицы статистики инвентаризации
+CREATE TABLE IF NOT EXISTS inventory_statistics (
+    id SERIAL PRIMARY KEY,
+    inventory_assignment_id INT NOT NULL UNIQUE REFERENCES inventory_assignments(id),
+    total_positions INT NOT NULL CHECK (total_positions > 0),
+    counted_positions INT NOT NULL CHECK (counted_positions >= 0),
+    discrepancy_count INT NOT NULL CHECK (discrepancy_count >= 0),
+    surplus_count INT NOT NULL CHECK (surplus_count >= 0),
+    shortage_count INT NOT NULL CHECK (shortage_count >= 0),
+    total_surplus_quantity INT NOT NULL CHECK (total_surplus_quantity >= 0),
+    total_shortage_quantity INT NOT NULL CHECK (total_shortage_quantity >= 0),
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы inventory_statistics
+CREATE INDEX idx_statistics_assignment ON inventory_statistics(inventory_assignment_id);
+CREATE INDEX idx_statistics_started ON inventory_statistics(started_at);
+CREATE INDEX idx_statistics_completed ON inventory_statistics(completed_at);
+
+
+-- ДЛЯ ТЕСТОВ
+
+-- Удалить старые отметки check-out для тестовых работников
+DELETE FROM check_io_employees 
+WHERE employee_id IN (1, 2, 3) 
+  AND check_type = 'out' 
+  AND check_timestamp > NOW() - INTERVAL '1 day';
+
+-- Добавить работников на смену в филиале 1 (Центральный склад)
+INSERT INTO check_io_employees (employee_id, branch_id, check_type, check_timestamp)
+VALUES
+    (1, 1, 'in', NOW() - INTERVAL '2 hours'),  -- Иванов пришёл 2 часа назад
+    (2, 1, 'in', NOW() - INTERVAL '1 hour'),   -- Петрова пришла час назад
+    (3, 1, 'in', NOW() - INTERVAL '30 minutes'); -- Сидоров пришёл 30 минут назад
+
+-- НЕ добавляем 'out', чтобы они считались на смене
+
+-- =====================================================
+-- ТАБЛИЦЫ ДЛЯ СБОРКИ ЗАКАЗОВ
+-- =====================================================
+
+-- Создание таблицы назначений сборки
+CREATE TABLE IF NOT EXISTS order_assembly_assignments (
+    id SERIAL PRIMARY KEY,
+    task_id INT NOT NULL REFERENCES base_tasks(task_id),
+    order_id INT NOT NULL REFERENCES orders(order_id),
+    assigned_to_user_id INT NOT NULL REFERENCES employees(employees_id),
+    branch_id INT NOT NULL REFERENCES branches(branch_id),
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)), -- Assigned(0), InProgress(1), Completed(2), Cancelled(3)
+    assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Индексы для таблицы order_assembly_assignments
+CREATE INDEX idx_order_assembly_assignments_task ON order_assembly_assignments(task_id);
+CREATE INDEX idx_order_assembly_assignments_order ON order_assembly_assignments(order_id);
+CREATE INDEX idx_order_assembly_assignments_user ON order_assembly_assignments(assigned_to_user_id);
+CREATE INDEX idx_order_assembly_assignments_branch ON order_assembly_assignments(branch_id);
+CREATE INDEX idx_order_assembly_assignments_status ON order_assembly_assignments(status);
+
+-- Создание таблицы строк сборки
+CREATE TABLE IF NOT EXISTS order_assembly_lines (
+    id SERIAL PRIMARY KEY,
+    order_assembly_assignment_id INT NOT NULL REFERENCES order_assembly_assignments(id),
+    item_position_id INT NOT NULL REFERENCES item_positions(id),
+    source_position_id INT NOT NULL REFERENCES positions(position_id),
+    target_position_id INT NOT NULL REFERENCES positions(position_id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    picked_quantity INT NOT NULL DEFAULT 0,
+    status INT NOT NULL CHECK (status IN (0, 1, 2, 3)) -- Pending(0), Picked(1), Placed(2), Discrepancy(3)
+);
+
+-- Индексы для таблицы order_assembly_lines
+CREATE INDEX idx_order_assembly_lines_assignment ON order_assembly_lines(order_assembly_assignment_id);
+CREATE INDEX idx_order_assembly_lines_itemposition ON order_assembly_lines(item_position_id);
+CREATE INDEX idx_order_assembly_lines_source ON order_assembly_lines(source_position_id);
+CREATE INDEX idx_order_assembly_lines_target ON order_assembly_lines(target_position_id);
+CREATE INDEX idx_order_assembly_lines_status ON order_assembly_lines(status);
+
+-- =====================================================
+-- ПОЛЬЗОВАТЕЛИ МОБИЛЬНОГО ПРИЛОЖЕНИЯ
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS mobile_app_users (
+  id SERIAL PRIMARY KEY,
+
+  -- Логин = employee_id (уникальный номер работника)
+  employee_id INT NOT NULL UNIQUE REFERENCES employees(employees_id),
+
+  -- Хэш пароля, который задаёт администратор
+  password_hash TEXT NOT NULL,
+
+  -- Роль пользователя в приложении (например: Worker/Admin)
+  role VARCHAR(30) NOT NULL,
+
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP,
+  branch_id INTEGER
+);
+
+CREATE INDEX idx_mobile_app_users_employee ON mobile_app_users(employee_id);
+CREATE INDEX idx_mobile_app_users_role ON mobile_app_users(role);
+CREATE INDEX idx_mobile_app_users_active ON mobile_app_users(is_active);
+
+-- Универсальная структура для хранения итогов по задачам
+CREATE TABLE worker_task_efficiency (
+    id SERIAL PRIMARY KEY,
+    worker_id integer NOT NULL,
+    branch_id integer NOT NULL,
+    task_category varchar(50) NOT NULL, -- "OrderAssembly", "Inventory", "Loading" и т.д.
+    wait_time_seconds integer NOT NULL DEFAULT 0, -- Время ожидания задачи (добавлено)
+    queue_size integer NOT NULL DEFAULT 0, -- Размер очереди задач (добавлено)
+    items_processed integer NOT NULL DEFAULT 0, -- Число товаров (integer)
+    total_duration_seconds integer NOT NULL DEFAULT 0, -- Время выполнения (integer)
+    discrepancies_found integer NOT NULL DEFAULT 0, -- Ошибки/расхождения (integer)
+    completed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для быстрой выборки отчетов по датам и сотрудникам
+CREATE INDEX idx_worker_efficiency_worker_date ON worker_task_efficiency (worker_id, completed_at);
+CREATE INDEX idx_worker_efficiency_branch_date ON worker_task_efficiency (branch_id, completed_at);

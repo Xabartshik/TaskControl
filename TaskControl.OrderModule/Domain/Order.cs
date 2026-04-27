@@ -1,60 +1,74 @@
-﻿using System;
-using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TaskControl.OrderModule.Domain
 {
+    public enum OrderStatus
+    {
+        [Description("Создан")]
+        Created,
+
+        [Description("Резерв подтвержден: товары есть в наличии")]
+        Reserved,
+
+        [Description("В процессе сборки")]
+        Assembly,
+
+        [Description("Собран и ожидает выдачи/доставки")]
+        Ready,
+
+        [Description("В пути — для курьера или постамата")]
+        InTransit,
+
+        [Description("Завершен")]
+        Completed,
+
+        [Description("Отменен")]
+        Canceled
+    }
+
+    public enum DeliveryType
+    {
+        Pickup,     // Обычный самовывоз
+        Delivery,   // Доставка курьером
+        Postamat,   // Постамат
+        Express     // Сборка и выдача здесь и сейчас
+    }
+
+    public enum PaymentType
+    {
+        Prepaid,    // С предоплатой
+        Postpaid    // Без предоплаты (оплата при получении)
+    }
     /// <summary>
     /// Заказ в системе
     /// </summary>
     public class Order
     {
-        /// <summary>
-        /// Уникальный идентификатор заказа
-        /// </summary>
         [Required]
         public int OrderId { get; set; }
 
-        /// <summary>
-        /// Идентификатор клиента
-        /// </summary>
         [Required(ErrorMessage = "Не указан клиент")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный ID клиента")]
-        public int CustomerId { get; set; }
+        public int CustomerId { get; set; } // Имя клиента получаем из другого микросервиса по ID
 
-        /// <summary>
-        /// Идентификатор филиала
-        /// </summary>
         [Required(ErrorMessage = "Не указан филиал")]
-        [Range(1, int.MaxValue, ErrorMessage = "Некорректный ID филиала")]
         public int BranchId { get; set; }
 
-        /// <summary>
-        /// Дата доставки (обязательна для доставляемых заказов)
-        /// </summary>
         public DateTime? DeliveryDate { get; set; }
 
-        //TODO: Пересмотреть типы заказа (Доставка, Перегон и т.д.)
+        public string? DestinationAddress { get; set; }
 
-        /// <summary>
-        /// Тип заказа (Online/Offline/Wholesale)
-        /// </summary>
-        [Required(ErrorMessage = "Тип заказа обязателен")]
-        [RegularExpression("^(Online|Offline)$",
-            ErrorMessage = "Допустимые типы: Online, Offline")]
-        public string Type { get; set; }
-
-        /// <summary>
-        /// Статус заказа
-        /// </summary>
+        public int? PostamatId { get; set; }
+        public int? PostamatCellId { get; set; }
         [Required]
-        [RegularExpression("^(New|Processing|Delivered|Cancelled)$",
-            ErrorMessage = "Недопустимый статус заказа")]
-        public string Status { get; set; } = "New";
+        public DeliveryType DeliveryType { get; set; }
 
+        [Required]
+        public PaymentType PaymentType { get; set; }
 
+        [Required]
+        public OrderStatus Status { get; set; } = OrderStatus.Created;
+
+        public DateTime CreatedAt { get; set; }
     }
 }

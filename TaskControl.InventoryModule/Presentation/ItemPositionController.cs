@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.Application.DTOs;
+using TaskControl.OrderModule.Application.Services;
 
 namespace TaskControl.InventoryModule.Presentation.Controllers
 {
@@ -9,11 +10,11 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
     [Route("api/[controller]")]
     public class ItemPositionController : ControllerBase, ICrudController<ItemPositionDto, int>
     {
-        private readonly IService<ItemPositionDto> _service;
+        private readonly ItemPositionService _service;
         private readonly ILogger<ItemPositionController> _logger;
 
         public ItemPositionController(
-            IService<ItemPositionDto> service,
+            ItemPositionService service,
             ILogger<ItemPositionController> logger)
         {
             _service = service;
@@ -51,6 +52,15 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             var newId = await _service.Add(dto);
             _logger.LogInformation("Добавлена новая товарная позиция. ID: {PositionId}, Товар: {ItemId}", newId, dto.ItemId);
             return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
+        }
+
+
+
+        [HttpGet("available/{branchId}")]
+        public async Task<ActionResult<IEnumerable<AvailableItemDto>>> GetAvailableItems(int branchId)
+        {
+            var items = await _service.GetAvailableItemsByBranchAsync(branchId);
+            return Ok(items);
         }
 
         [HttpPut]

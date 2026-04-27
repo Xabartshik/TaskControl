@@ -1,36 +1,36 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Text.Json.Serialization;
 using TaskControl.OrderModule.Domain;
+
 
 namespace TaskControl.OrderModule.Application.DTOs
 {
-    /// <summary>
-    /// Данные заказа для API
-    /// </summary>
     public record OrderDto
     {
         public int OrderId { get; init; }
 
-        [Required(ErrorMessage = "Укажите ID клиента")]
         public int CustomerId { get; init; }
 
-        [Required(ErrorMessage = "Укажите ID филиала")]
         public int BranchId { get; init; }
 
-        [FutureDate(ErrorMessage = "Дата доставки должна быть в будущем")]
         public DateTime? DeliveryDate { get; init; }
 
-        [Required(ErrorMessage = "Укажите тип заказа")]
-        [RegularExpression("^(Online|Offline)$")]
-        public string Type { get; init; }
+        public string? DestinationAddress { get; set; }
 
-        [Required]
-        [RegularExpression("^(New|Processing|Delivered|Cancelled)$")]
-        public string Status { get; init; } = "New";
+        // Новые поля для связи с постаматами
+        public int? PostamatId { get; init; }
+
+        public int? PostamatCellId { get; init; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public DeliveryType DeliveryType { get; init; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public PaymentType PaymentType { get; init; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public OrderStatus Status { get; init; } = OrderStatus.Created;
+
+        public List<OrderPositionDto> Positions { get; set; } = new();
 
         public static Order FromDto(OrderDto dto) => new()
         {
@@ -38,7 +38,14 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = dto.CustomerId,
             BranchId = dto.BranchId,
             DeliveryDate = dto.DeliveryDate,
-            Type = dto.Type,
+            DestinationAddress = dto.DestinationAddress,
+
+            // Маппинг постаматов
+            PostamatId = dto.PostamatId,
+            PostamatCellId = dto.PostamatCellId,
+
+            DeliveryType = dto.DeliveryType,
+            PaymentType = dto.PaymentType,
             Status = dto.Status
         };
 
@@ -48,23 +55,15 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = entity.CustomerId,
             BranchId = entity.BranchId,
             DeliveryDate = entity.DeliveryDate,
-            Type = entity.Type,
+            DestinationAddress = entity.DestinationAddress,
+
+            // Маппинг постаматов
+            PostamatId = entity.PostamatId,
+            PostamatCellId = entity.PostamatCellId,
+
+            DeliveryType = entity.DeliveryType,
+            PaymentType = entity.PaymentType,
             Status = entity.Status
         };
-    }
-
-    /// <summary>
-    /// Кастомный валидатор для проверки даты в будущем
-    /// </summary>
-    public class FutureDateAttribute : ValidationAttribute
-    {
-        public override bool IsValid(object? value)
-        {
-            if (value is null) return true;
-            if (value is DateTime date)
-                return date > DateTime.UtcNow;
-
-            return false;
-        }
     }
 }

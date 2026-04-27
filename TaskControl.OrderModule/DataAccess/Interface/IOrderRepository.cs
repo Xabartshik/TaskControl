@@ -15,5 +15,6 @@ namespace TaskControl.OrderModule.DataAccess.Interface
         Task<IEnumerable<Order>> GetByCustomerAsync(int customerId);
         Task<IEnumerable<Order>> GetByBranchAsync(int branchId);
         Task<IEnumerable<Order>> GetByStatusAsync(string status);
+        Task<IEnumerable<Order>> GetActiveOrdersAsync();
     }
 }

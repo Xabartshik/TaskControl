@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 using TaskControl.InventoryModule.Domain;
 using UnitsNet;
 
@@ -13,6 +8,7 @@ namespace TaskControl.InventoryModule.Application.DTOs
     {
         public int PositionId { get; init; }
 
+        // Часть кода позиции (BranchId теперь берётся из Code)
         [Required]
         public int BranchId { get; init; }
 
@@ -32,47 +28,47 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [StringLength(20)]
         public string FLSNumber { get; init; }
 
-
         [StringLength(30)]
         public string? SecondLevelStorage { get; init; }
 
         [StringLength(30)]
         public string? ThirdLevelStorage { get; init; }
 
-        public Length Length { get; init; }
-
-        public Length Width { get; init; }
-
-        public Length Height { get; init; }
+        public double Length { get; init; }
+        public double Width { get; init; }
+        public double Height { get; init; }
 
         public static PositionCell FromDto(PositionCellDto dto) => new()
         {
             PositionId = dto.PositionId,
-            BranchId = dto.BranchId,
+            Code = new PositionCode
+            {
+                BranchId = dto.BranchId,
+                ZoneCode = dto.ZoneCode,
+                FirstLevelStorageType = dto.FirstLevelStorageType,
+                FLSNumber = dto.FLSNumber,
+                SecondLevelStorage = dto.SecondLevelStorage,
+                ThirdLevelStorage = dto.ThirdLevelStorage
+            },
             Status = dto.Status,
-            ZoneCode = dto.ZoneCode,
-            FirstLevelStorageType = dto.FirstLevelStorageType,
-            FLSNumber = dto.FLSNumber,
-            SecondLevelStorage = dto.SecondLevelStorage,
-            ThirdLevelStorage = dto.ThirdLevelStorage,
-            Length = dto.Length,
-            Width = dto.Width,
-            Height = dto.Height
+            Length = UnitsNet.Length.FromMillimeters(dto.Length),
+            Width = UnitsNet.Length.FromMillimeters(dto.Width),
+            Height = UnitsNet.Length.FromMillimeters(dto.Height)
         };
 
         public static PositionCellDto ToDto(PositionCell entity) => new()
         {
             PositionId = entity.PositionId,
-            BranchId = entity.BranchId,
+            BranchId = entity.Code.BranchId,
             Status = entity.Status,
-            ZoneCode = entity.ZoneCode,
-            FirstLevelStorageType = entity.FirstLevelStorageType,
-            FLSNumber = entity.FLSNumber,
-            SecondLevelStorage = entity.SecondLevelStorage,
-            ThirdLevelStorage = entity.ThirdLevelStorage,
-            Length = entity.Length,
-            Width = entity.Width,
-            Height = entity.Height
+            ZoneCode = entity.Code.ZoneCode,
+            FirstLevelStorageType = entity.Code.FirstLevelStorageType,
+            FLSNumber = entity.Code.FLSNumber,
+            SecondLevelStorage = entity.Code.SecondLevelStorage,
+            ThirdLevelStorage = entity.Code.ThirdLevelStorage,
+            Length = entity.Length.Millimeters,
+            Width = entity.Width.Millimeters,
+            Height = entity.Height.Millimeters
         };
     }
 }
