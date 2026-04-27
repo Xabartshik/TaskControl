@@ -10,11 +10,11 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
     [Route("api/[controller]")]
     public class ItemPositionController : ControllerBase, ICrudController<ItemPositionDto, int>
     {
-        private readonly IService<ItemPositionDto> _service;
+        private readonly ItemPositionService _service;
         private readonly ILogger<ItemPositionController> _logger;
 
         public ItemPositionController(
-            IService<ItemPositionDto> service,
+            ItemPositionService service,
             ILogger<ItemPositionController> logger)
         {
             _service = service;

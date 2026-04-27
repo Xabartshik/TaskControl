@@ -90,7 +90,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IService<ItemMovementDto>, ItemMovementService>();
 
             services.AddScoped<IItemPositionRepository, ItemPositionRepository>();
-            services.AddScoped<IService<ItemPositionDto>, ItemPositionService>();
+            services.AddScoped<ItemPositionService, ItemPositionService>();
 
             services.AddScoped<IItemStatusRepository, ItemStatusRepository>();
             services.AddScoped<IService<ItemStatusDto>, ItemStatusService>();

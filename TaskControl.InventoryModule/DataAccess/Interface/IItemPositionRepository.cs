@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DataAccess.Interface
@@ -15,5 +16,7 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         Task<int> DeleteAsync(int id);
         Task<IEnumerable<ItemPosition>> GetByItemIdAsync(int itemId);
         Task<IEnumerable<ItemPosition>> GetByPositionIdAsync(int positionId);
+        Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId);
+        
     }
 }

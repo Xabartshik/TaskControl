@@ -1,8 +1,11 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DataAccess.Model;
+using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
+using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 
 
@@ -60,6 +63,37 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             }
         }
 
+        public async Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId)
+        {
+            _logger.LogInformation("Запрос доступных товаров для филиала ID: {branchId}", branchId);
+            try
+            {
+                // Считаем реальные остатки: берем товары на полках нужного филиала
+                var query = from ip in _db.GetTable<ItemPositionModel>()
+                            join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                            join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
+                            where p.BranchId == branchId
+                            group ip by new { i.ItemId, i.Name } into g
+                            let totalQuantity = g.Sum(x => x.Quantity)
+                            where totalQuantity > 0 // Возвращаем только то, что есть в наличии
+                            select new AvailableItemDto
+                            {
+                                ItemId = g.Key.ItemId,
+                                Name = g.Key.Name,
+                                AvailableQuantity = (int)totalQuantity
+                            };
+
+                var result = await query.ToListAsync();
+                _logger.LogDebug("Для филиала {branchId} найдено {count} позиций товаров", branchId, result.Count);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении доступных товаров для филиала ID: {branchId}", branchId);
+                throw;
+            }
+        }
 
         public async Task<IEnumerable<ItemPosition>> GetAllAsync()
         {
