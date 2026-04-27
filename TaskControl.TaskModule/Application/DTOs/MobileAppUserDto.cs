@@ -111,4 +111,25 @@ namespace TaskControl.TaskModule.Application.DTOs
             entity.SetRole(dto.Role);
         }
     }
+
+    public record UpdateMobileUserPasswordDto
+    {
+        [Required(ErrorMessage = "Пароль обязателен")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Пароль должен быть от 6 символов")]
+        public string Password { get; init; } = null!;
+    }
+
+    public record UpdateMobileUserActiveDto
+    {
+        [Required]
+        public bool IsActive { get; init; }
+
+        public static void ApplyTo(MobileAppUser entity, UpdateMobileUserActiveDto dto)
+        {
+            if (dto.IsActive)
+                entity.Activate();
+            else
+                entity.Deactivate();
+        }
+    }
 }

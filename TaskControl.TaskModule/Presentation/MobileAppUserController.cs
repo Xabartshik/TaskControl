@@ -413,41 +413,51 @@ namespace TaskControl.TaskModule.Presentation
 
             try
             {
-                _logger.LogInformation("Запрос входа для пользователя: {username}", dto.Username);
+                _logger.LogInformation("Запрос входа: {username}", dto.Username);
 
-                // 1) Валидируем учётные данные существующим сервисом
-                var user = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
+                // 1) Валидируем логин/пароль через универсальный поиск
+                var userDto = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
 
-                var employee = await _employeeRepository.GetByIdAsync(user.EmployeeId);
+                string? firstName = "User";
+                string? lastName = "";
 
-                // 2) Генерируем JWT
-                var token = _jwt.CreateToken(user.EmployeeId, user.Role, user.BranchId);
+                // 2) Если это сотрудник — обогащаем данными из EmployeeRepository
+                if (userDto.EmployeeId.HasValue)
+                {
+                    var employee = await _employeeRepository.GetByIdAsync(userDto.EmployeeId.Value);
+                    if (employee != null)
+                    {
+                        firstName = employee.Name;
+                        lastName = employee.Surname;
+                    }
+                }
+                // 3) Если это покупатель — данные будут браться из CustomerRepository (при наличии)
+                else if (userDto.CustomerId.HasValue)
+                {
+                    firstName = "Покупатель"; // В будущем: запрос к CustomerRepository
+                }
 
-                // 3) Отдаём токен + user 
+                // 4) Генерируем JWT (используем либо EmployeeId, либо CustomerId как Identity)
+                var identityId = userDto.EmployeeId ?? userDto.CustomerId ?? 0;
+                var token = _jwt.CreateToken(identityId, userDto.Role, userDto.BranchId);
+
+                // 5) Формируем финальный DTO с ФИО
+                var finalUser = userDto with { FirstName = firstName, LastName = lastName };
+
                 return Ok(new LoginResponseDto
                 {
                     AccessToken = token,
                     TokenType = "Bearer",
-                    User = new MobileAppUserDto
-                    {
-                        Id = user.Id,
-                        EmployeeId = user.EmployeeId,
-                        FirstName = employee.Name,        
-                        LastName = employee.Surname,      
-                        Role = employee.Role.ToString(),
-                        IsActive = user.IsActive,
-                        CreatedAt = user.CreatedAt,
-                        UpdatedAt = user.UpdatedAt
-                    }
+                    User = finalUser
                 });
             }
             catch (InvalidOperationException)
             {
-                return Unauthorized();
+                return Unauthorized(new { error = "Неверный логин или пароль" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка входа для пользователя: {username}", dto.Username);
+                _logger.LogError(ex, "Ошибка при входе: {username}", dto.Username);
                 return BadRequest(new { error = ex.Message });
             }
         }

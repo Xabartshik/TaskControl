@@ -60,49 +60,30 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<MobileAppUserDto> AddAsync(CreateMobileAppUserDto dto)
         {
-            _logger.LogInformation("Добавление нового пользователя мобильного приложения для сотрудника {EmployeeId}",
-                                 dto.EmployeeId);
-            try
-            {
-                if (dto == null)
-                    throw new ArgumentNullException(nameof(dto));
+            _logger.LogInformation("Регистрация пользователя с логином: {Login}", dto.Login);
 
-                // Хеширование пароля
-                var passwordHash = HashPassword(dto.Password);
+            // Проверка уникальности логина перед созданием
+            var existing = await _repository.GetByLoginAsync(dto.Login);
+            if (existing != null)
+                throw new InvalidOperationException($"Логин {dto.Login} уже занят");
 
-                // Создание доменного объекта
-                var user = new MobileAppUser
-                {
-                    EmployeeId = dto.EmployeeId,
-                    PasswordHash = passwordHash,
-                    Role = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsedRole)
-                           ? parsedRole
-                           : MobileUserRole.Worker,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow,
-                    BranchId = dto.BranchId
-                };
+            var passwordHash = HashPassword(dto.Password);
 
-                // Проверка существования пользователя с таким EmployeeId
-                var existingUser = await _repository.GetByEmployeeIdAsync(dto.EmployeeId);
-                if (existingUser != null)
-                    throw new InvalidOperationException($"Пользователь с EmployeeId {dto.EmployeeId} уже существует");
+            // Создание доменного объекта через обновленный конструктор
+            var user = new MobileAppUser(
+                login: dto.Login,
+                passwordHash: passwordHash,
+                role: dto.Role,
+                employeeId: dto.EmployeeId,
+                customerId: dto.CustomerId,
+                branchId: dto.BranchId
+            );
 
-                var userId = await _repository.AddAsync(user);
-                user.Id = userId;
+            var userId = await _repository.AddAsync(user);
+            user.Id = userId;
 
-                _logger.LogInformation("Пользователь мобильного приложения добавлен с ID: {userId}", userId);
-
-                return MobileAppUserDto.ToDto(user);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при добавлении пользователя мобильного приложения для сотрудника {EmployeeId}",
-                              dto?.EmployeeId);
-                throw;
-            }
+            return MobileAppUserDto.ToDto(user);
         }
-
         public async Task<MobileAppUserDto> UpdateAsync(int id, UpdateMobileUserDto dto)
         {
             _logger.LogInformation("Обновление пользователя мобильного приложения ID: {id}", id);
@@ -236,9 +217,7 @@ namespace TaskControl.TaskModule.Application.Services
                 if (user == null)
                     throw new InvalidOperationException($"Пользователь с ID {id} не найден");
 
-                var role = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsedRole)
-                           ? parsedRole
-                           : throw new ArgumentException($"Недопустимая роль: {dto.Role}");
+                var role = dto.Role;
 
                 user.Role = role;
                 user.UpdatedAt = DateTime.UtcNow;
@@ -305,35 +284,22 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<MobileAppUserDto> ValidateCredentialsAsync(string username, string password)
         {
-            _logger.LogInformation("Проверка учетных данных для пользователя: {username}", username);
-            try
-            {
-                // В данном контексте username - это employeeId
-                if (!int.TryParse(username, out var employeeId))
-                    throw new ArgumentException("Некорректный формат имени пользователя");
+            _logger.LogInformation("Попытка входа пользователя: {username}", username);
 
-                var user = await _repository.GetByEmployeeIdAsync(employeeId);
-                if (user == null)
-                    throw new InvalidOperationException("Пользователь не найден");
+            var user = await _repository.GetByLoginAsync(username);
 
-                if (!user.IsActive)
-                    throw new InvalidOperationException("Пользователь деактивирован");
+            if (user == null)
+                throw new InvalidOperationException("Неверный логин или пароль");
 
-                var passwordHash = HashPassword(password);
-                if (user.PasswordHash != passwordHash)
-                    throw new InvalidOperationException("Неверный пароль");
+            if (!user.IsActive)
+                throw new InvalidOperationException("Аккаунт деактивирован");
 
-                _logger.LogInformation("Учетные данные для пользователя: {username} успешно проверены", username);
+            var passwordHash = HashPassword(password);
+            if (user.PasswordHash != passwordHash)
+                throw new InvalidOperationException("Неверный логин или пароль");
 
-                return MobileAppUserDto.ToDto(user);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при проверке учетных данных для пользователя: {username}", username);
-                throw;
-            }
+            return MobileAppUserDto.ToDto(user);
         }
-
         public async Task<bool> ResetPasswordAsync(int employeeId, string newPassword)
         {
             _logger.LogInformation("Сброс пароля для пользователя с ID сотрудника: {employeeId}", employeeId);

@@ -3,12 +3,14 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using TaskControl.TaskModule.Domain; // Добавлен using для MobileUserRole
 
 namespace TaskControl.TaskModule.Application.Services;
 
 public interface IJwtTokenService
 {
-    string CreateToken(int employeeId, string role, int? branchId);
+    // Изменили тип role на MobileUserRole и название employeeId на profileId
+    string CreateToken(int profileId, MobileUserRole role, int? branchId);
 }
 
 public class JwtTokenService : IJwtTokenService
@@ -17,7 +19,7 @@ public class JwtTokenService : IJwtTokenService
 
     public JwtTokenService(IConfiguration cfg) => _cfg = cfg;
 
-    public string CreateToken(int employeeId, string role, int? branchId)
+    public string CreateToken(int profileId, MobileUserRole role, int? branchId)
     {
         var jwt = _cfg.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
@@ -25,8 +27,12 @@ public class JwtTokenService : IJwtTokenService
 
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, employeeId.ToString()),
-            new Claim(ClaimTypes.Role, role)
+            // Записываем ID профиля (Сотрудника или Клиента)
+            new Claim(ClaimTypes.NameIdentifier, profileId.ToString()),
+            
+            // Преобразуем Enum в строку специально для Claims, так как ASP.NET Core 
+            // ожидает строковые роли в атрибутах [Authorize(Roles = "Admin")]
+            new Claim(ClaimTypes.Role, role.ToString())
         };
 
         if (branchId.HasValue)

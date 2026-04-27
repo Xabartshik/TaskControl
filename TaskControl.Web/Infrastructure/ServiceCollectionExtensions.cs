@@ -80,6 +80,13 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ActiveEmployeeService>();
 
+            services.AddScoped<ICourierCapabilityRepository, CourierCapabilityRepository>();
+
+            // Если будешь создавать профили клиентов:
+            services.AddScoped<ICustomerRepository, CustomerRepository>();
+            // Добавь регистрацию сервиса покупателей:
+            services.AddScoped<ICustomerService, CustomerService>();
+
             return services;
         }
 
@@ -139,6 +146,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
 
             services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
+
+
 
             return services;
         }

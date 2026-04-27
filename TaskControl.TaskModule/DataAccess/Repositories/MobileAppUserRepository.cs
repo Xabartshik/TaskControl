@@ -127,22 +127,52 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<int> DeleteByEmployeeIdAsync(int employeeId)
+        public async Task<MobileAppUser?> GetByLoginAsync(string login)
         {
-            _logger.LogInformation("Удаление пользователя мобильного приложения по ID сотрудника: {employeeId}",
-                                 employeeId);
+            _logger.LogInformation("Поиск аккаунта по логину: {login}", login);
             try
             {
-                var user = await _db.MobileAppUsers.FirstOrDefaultAsync(u => u.EmployeeId == employeeId);
-                if (user is null)
-                    return 0;
+                // Ищем в колонке login (которую мы добавили в миграции)
+                var user = await _db.MobileAppUsers
+                    .FirstOrDefaultAsync(u => u.Login == login);
 
-                return await _db.DeleteAsync(user);
+                return user?.ToDomain();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при удалении пользователя мобильного приложения по ID сотрудника: {employeeId}",
-                              employeeId);
+                _logger.LogError(ex, "Ошибка при поиске аккаунта по логину: {login}", login);
+                throw;
+            }
+        }
+
+        public async Task<MobileAppUser?> GetByCustomerIdAsync(int customerId)
+        {
+            _logger.LogInformation("Поиск аккаунта по ID покупателя: {customerId}", customerId);
+            try
+            {
+                var user = await _db.MobileAppUsers
+                    .FirstOrDefaultAsync(u => u.CustomerId == customerId);
+                return user?.ToDomain();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при поиске по ID покупателя: {customerId}", customerId);
+                throw;
+            }
+        }
+
+        public async Task<int> DeleteByEmployeeIdAsync(int employeeId)
+        {
+            _logger.LogInformation("Удаление аккаунта сотрудника: {employeeId}", employeeId);
+            try
+            {
+                return await _db.MobileAppUsers
+                    .Where(u => u.EmployeeId == employeeId)
+                    .DeleteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при удалении аккаунта сотрудника: {employeeId}", employeeId);
                 throw;
             }
         }

@@ -11,6 +11,7 @@ namespace TaskControl.InformationModule.DataAccess.Interface
         ITable<EmployeeModel> Employees { get; }
         ITable<ItemModel> Items { get; }
         ITable<CourierCapabilityModel> CourierCapabilities { get; }
+        ITable<CustomerModel> Customers { get; }
 
         Task<int> InsertAsync<T>(T entity) where T : class;
         Task<int> UpdateAsync<T>(T entity) where T : class;
