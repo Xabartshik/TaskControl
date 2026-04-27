@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.Application.DTOs
@@ -36,11 +32,10 @@ namespace TaskControl.InformationModule.Application.DTOs
         public string? MiddleName { get; init; }
 
         /// <summary>
-        /// Должность/роль сотрудника
+        /// Должность/роль сотрудника (Enum)
         /// </summary>
         [Required(ErrorMessage = "Должность обязательна для заполнения")]
-        [StringLength(150, ErrorMessage = "Название должности не может превышать 150 символов")]
-        public string Role { get; init; }
+        public WorkerRole Role { get; init; }
 
         /// <summary>
         /// Дата создания записи
@@ -52,13 +47,15 @@ namespace TaskControl.InformationModule.Application.DTOs
         /// </summary>
         public static EmployeeDto ToDto(Employee entity)
         {
+            if (entity == null) return null;
+
             return new EmployeeDto
             {
                 EmployeesId = entity.EmployeesId,
                 Surname = entity.Surname,
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
-                Role = entity.Role
+                Role = entity.Role // Теперь передаем Enum напрямую
             };
         }
 
@@ -67,15 +64,16 @@ namespace TaskControl.InformationModule.Application.DTOs
         /// </summary>
         public static Employee FromDto(EmployeeDto dto)
         {
+            if (dto == null) return null;
+
             return new Employee
             {
                 EmployeesId = dto.EmployeesId,
                 Surname = dto.Surname,
                 Name = dto.Name,
                 MiddleName = dto.MiddleName,
-                Role = dto.Role
+                Role = dto.Role // Принимаем Enum обратно
             };
         }
     }
-
 }

@@ -67,7 +67,7 @@ namespace TaskControl.InformationModule.Application.Services
                 Surname = e.Surname,
                 Name = e.Name,
                 MiddleName = e.MiddleName,
-                Role = e.Role,
+                Role = e.Role.ToString(),
                 CheckInTime = activeChecks.First(c => c.EmployeeId == e.EmployeesId).CheckTimeStamp,
                 IsCheckedOut = false
             });

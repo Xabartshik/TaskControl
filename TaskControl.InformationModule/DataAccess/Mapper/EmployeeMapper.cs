@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InformationModule.Domain;
 
@@ -20,7 +16,8 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
                 Surname = entity.Surname,
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
-                Role = entity.Role,
+                RoleId = (int)entity.Role,
+
                 CreatedAt = DateTime.UtcNow // Устанавливается при создании
             };
         }
@@ -35,7 +32,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
                 Surname = model.Surname,
                 Name = model.Name,
                 MiddleName = model.MiddleName,
-                Role = model.Role
+                Role = (WorkerRole)model.RoleId
             };
         }
     }

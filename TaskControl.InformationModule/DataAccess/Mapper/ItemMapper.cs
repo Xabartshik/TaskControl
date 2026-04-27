@@ -20,7 +20,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
 
                 ItemId = entity.ItemId,
                 Name = entity.Name,
-                Weight = entity.Weight.Kilograms,
+                Weight = entity.Weight.Grams,
                 Length = entity.Length.Millimeters,
                 Width = entity.Width.Millimeters,
                 Height = entity.Height.Millimeters,

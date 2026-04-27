@@ -2,9 +2,10 @@
 
 public enum MobileUserRole
 {
-    Worker,
-    Supervisor,
-    Admin
+    Worker = 1,
+    Supervisor = 2,
+    Admin = 3,
+    Customer = 4
 }
 
 /// <summary>
@@ -18,11 +19,9 @@ public class MobileAppUser
     /// </summary>
     public int Id { get;  set; }
 
-    /// <summary>
-    /// Идентификатор сотрудника (логин в приложении).
-    /// </summary>
-    public int EmployeeId { get;  set; }
-
+    public int? EmployeeId { get; set; }
+    public int? CustomerId { get; set; }
+    public string Login { get; set; }
     /// <summary>
     /// Хэш пароля.
     /// </summary>
@@ -57,24 +56,24 @@ public class MobileAppUser
     internal MobileAppUser() { }
 
     public MobileAppUser(
-        int employeeId,
+        string login,
         string passwordHash,
         MobileUserRole role,
-        int? branchId = null,
-        DateTime? createdAtUtc = null)
+        int? employeeId = null,
+        int? customerId = null,
+        int? branchId = null)
     {
-        if (employeeId <= 0)
-            throw new ArgumentOutOfRangeException(nameof(employeeId));
-        if (string.IsNullOrWhiteSpace(passwordHash))
-            throw new ArgumentException("Password hash cannot be empty.", nameof(passwordHash));
+        if (string.IsNullOrWhiteSpace(login))
+            throw new ArgumentException("Login cannot be empty.", nameof(login));
 
-        EmployeeId = employeeId;
+        Login = login;
         PasswordHash = passwordHash;
         Role = role;
+        EmployeeId = employeeId;
+        CustomerId = customerId;
         BranchId = branchId;
         IsActive = true;
-        CreatedAt = createdAtUtc ?? DateTime.UtcNow;
-        UpdatedAt = null;
+        CreatedAt = DateTime.UtcNow;
     }
 
     public void SetPasswordHash(string passwordHash)

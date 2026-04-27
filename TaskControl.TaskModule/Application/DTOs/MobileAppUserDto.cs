@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.DTOs
@@ -12,44 +8,64 @@ namespace TaskControl.TaskModule.Application.DTOs
     {
         public int Id { get; init; }
 
+        /// <summary>
+        /// Универсальный логин (ID для сотрудников, Email/Телефон для клиентов)
+        /// </summary>
         [Required]
-        public int EmployeeId { get; init; }
+        public string Login { get; init; } = null!;
 
+        /// <summary>
+        /// ID сотрудника (заполнено, если роль Worker/Supervisor/Admin)
+        /// </summary>
+        public int? EmployeeId { get; init; }
+
+        /// <summary>
+        /// ID покупателя (заполнено, если роль Customer)
+        /// </summary>
+        public int? CustomerId { get; init; }
+
+        /// <summary>
+        /// Роль пользователя в мобильном приложении (Enum)
+        /// </summary>
         [Required]
-        [StringLength(30)]
-        public string Role { get; init; } = null!;
+        public MobileUserRole Role { get; init; }
 
-        public string FirstName { get; set; } = null!;
-        public string LastName { get; set; } = null!;
-
-        public string FullName => $"{FirstName} {LastName}";
+        // Поля для отображения в UI (заполняются сервисом при получении данных)
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string FullName => $"{FirstName} {LastName}".Trim();
 
         public bool IsActive { get; init; }
-
         public DateTime CreatedAt { get; init; }
-
         public DateTime? UpdatedAt { get; init; }
-
         public int? BranchId { get; init; }
 
+        /// <summary>
+        /// Маппинг из DTO в доменную сущность
+        /// </summary>
         public static MobileAppUser FromDto(MobileAppUserDto dto) => new()
         {
             Id = dto.Id,
+            Login = dto.Login,
             EmployeeId = dto.EmployeeId,
-            Role = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsed)
-                   ? parsed
-                   : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role)),
+            CustomerId = dto.CustomerId,
+            Role = dto.Role,
             IsActive = dto.IsActive,
             CreatedAt = dto.CreatedAt,
             UpdatedAt = dto.UpdatedAt,
             BranchId = dto.BranchId
         };
 
+        /// <summary>
+        /// Маппинг из доменной сущности в DTO
+        /// </summary>
         public static MobileAppUserDto ToDto(MobileAppUser entity) => new()
         {
             Id = entity.Id,
+            Login = entity.Login,
             EmployeeId = entity.EmployeeId,
-            Role = entity.Role.ToString(),
+            CustomerId = entity.CustomerId,
+            Role = entity.Role,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
@@ -57,68 +73,42 @@ namespace TaskControl.TaskModule.Application.DTOs
         };
     }
 
+    /// <summary>
+    /// DTO для создания нового пользователя (как сотрудника, так и покупателя)
+    /// </summary>
     public record CreateMobileAppUserDto
     {
         [Required]
-        public int EmployeeId { get; init; }
+        public string Login { get; init; } = null!;
 
         [Required]
         public string Password { get; init; } = null!;
 
         [Required]
-        [StringLength(30)]
-        public string Role { get; init; } = "Worker";
+        public MobileUserRole Role { get; init; }
 
+        public int? EmployeeId { get; init; }
+        public int? CustomerId { get; init; }
         public int? BranchId { get; init; }
 
-        public static MobileAppUser FromDto(CreateMobileAppUserDto dto, string passwordHash) => new()
-        {
-            EmployeeId = dto.EmployeeId,
-            Role = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsed)
-                   ? parsed
-                   : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role)),
-            BranchId = dto.BranchId
-        };
-    }
-
-    public record UpdateMobileUserPasswordDto
-    {
-        [Required]
-        public string Password { get; init; } = null!;
-
-        //public static void ApplyTo(MobileAppUser entity, UpdateMobileUserPasswordDto dto, string passwordHash)
-        //{
-        //    // Логика обновления пароля будет в доменном объекте или сервисе
-        //}
+        public static MobileAppUser FromDto(CreateMobileAppUserDto dto, string passwordHash) => new(
+            login: dto.Login,
+            passwordHash: passwordHash,
+            role: dto.Role,
+            employeeId: dto.EmployeeId,
+            customerId: dto.CustomerId,
+            branchId: dto.BranchId
+        );
     }
 
     public record UpdateMobileUserRoleDto
     {
         [Required]
-        [StringLength(30)]
-        public string Role { get; init; } = null!;
+        public MobileUserRole Role { get; init; }
 
         public static void ApplyTo(MobileAppUser entity, UpdateMobileUserRoleDto dto)
         {
-            var roleEnum = Enum.TryParse<MobileUserRole>(dto.Role, ignoreCase: true, out var parsed)
-                           ? parsed
-                           : throw new ArgumentException($"Unknown mobile user role: {dto.Role}", nameof(dto.Role));
-
-            entity.SetRole(roleEnum);
-        }
-    }
-
-    public record UpdateMobileUserActiveDto
-    {
-        [Required]
-        public bool IsActive { get; init; }
-
-        public static void ApplyTo(MobileAppUser entity, UpdateMobileUserActiveDto dto)
-        {
-            if (dto.IsActive)
-                entity.Activate();
-            else
-                entity.Deactivate();
+            entity.SetRole(dto.Role);
         }
     }
 }

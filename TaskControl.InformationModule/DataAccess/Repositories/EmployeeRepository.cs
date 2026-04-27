@@ -18,6 +18,27 @@ namespace TaskControl.InformationModule.DAL.Repositories
             _logger = logger;
         }
 
+        public async Task<IEnumerable<Employee>> GetByRoleAsync(WorkerRole role)
+        {
+            _logger.LogInformation("Поиск сотрудников по роли: {role}", role);
+            try
+            {
+                // Приводим Enum к int для сравнения с колонкой RoleId в БД
+                int roleId = (int)role;
+
+                var employeesModel = await _db.Employees
+                    .Where(e => e.RoleId == roleId)
+                    .ToListAsync();
+
+                return employeesModel.Select(e => e.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении сотрудников по роли: {role}", role);
+                throw;
+            }
+        }
+
         public async Task<Employee?> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск сотрудника по ID: {id}", id);

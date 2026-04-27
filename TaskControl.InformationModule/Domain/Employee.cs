@@ -8,7 +8,13 @@ using System.Threading.Tasks;
 
 namespace TaskControl.InformationModule.Domain
 {
-
+    public enum WorkerRole
+    {
+        Storekeeper = 1,  // Сборщик заказов
+        OrderIssuer = 2,  // Кассир (Выдает заказы)
+        Manager = 3,      // Начальник
+        Courier = 4       // Курьер
+    }
     /// <summary>
     /// Сущность сотрудника компании
     /// </summary>
@@ -42,9 +48,7 @@ namespace TaskControl.InformationModule.Domain
         /// <summary>
         /// Должность/роль сотрудника в компании TODO: заменить на тип, убрав строку
         /// </summary>
-        [Required(ErrorMessage = "Должность обязательна для заполнения")]
-        [StringLength(150, ErrorMessage = "Название должности не может превышать 150 символов")]
-        public string Role { get; set; }
+        public WorkerRole Role { get; set; }
 
     }
 

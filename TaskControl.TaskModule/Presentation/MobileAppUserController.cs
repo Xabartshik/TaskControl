@@ -434,7 +434,7 @@ namespace TaskControl.TaskModule.Presentation
                         EmployeeId = user.EmployeeId,
                         FirstName = employee.Name,        
                         LastName = employee.Surname,      
-                        Role = employee.Role,
+                        Role = employee.Role.ToString(),
                         IsActive = user.IsActive,
                         CreatedAt = user.CreatedAt,
                         UpdatedAt = user.UpdatedAt

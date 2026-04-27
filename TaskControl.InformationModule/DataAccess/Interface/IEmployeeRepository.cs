@@ -41,5 +41,12 @@ namespace TaskControl.InformationModule.DataAccess.Interface
         /// <param name="id">Идентификатор сотрудника</param>
         /// <returns>Количество удаленных записей</returns>
         Task<int> DeleteAsync(int id);
+
+        /// <summary>
+        /// Получает список сотрудников по их роли
+        /// </summary>
+        /// <param name="role">Роль сотрудника (Enum)</param>
+        /// <returns>Коллекция сотрудников с указанной ролью</returns>
+        Task<IEnumerable<Employee>> GetByRoleAsync(WorkerRole role);
     }
 }
