@@ -42,12 +42,25 @@ namespace TaskControl.OrderModule.Presentation.Controllers
         [HttpPost]
         public async Task<ActionResult<int>> Add([FromBody] OrderDto dto)
         {
-            // Валидация
-            if (dto.Positions == null || !dto.Positions.Any())
-                return BadRequest("Заказ не может быть пустым (без позиций)");
-
-            var newId = await _service.Add(dto);
-            return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
+            try
+            {
+                var newId = await _service.Add(dto);
+                return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Возвращаем 409 Conflict, если невозможно выполнить упаковку в постамат
+                return Conflict(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при создании заказа");
+                return StatusCode(500, "Внутренняя ошибка сервера");
+            }
         }
 
         [HttpPut]

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.Core.AppSettings;
+using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.DataAccess.Model;
 // Подключаем модели из других модулей:
@@ -52,9 +53,9 @@ namespace TaskControl.TaskModule.Application.Services
 
                 var targetTime = DateTime.UtcNow.AddHours(2);
 
-                // Получаем подходящие заказы
+                // Получаем подходящие заказы (исключаем постаматы, так как они пакуются при создании)
                 var targetOrders = await _db.GetTable<OrderModel>()
-                    .Where(o => o.Status == "New" && o.DeliveryDate <= targetTime)
+                    .Where(o => o.Status == "Created" && o.DeliveryDate <= targetTime && o.DeliveryType != "Postamat")
                     .Select(o => new { o.OrderId, o.BranchId, o.DeliveryDate })
                     .ToListAsync();
 
@@ -67,247 +68,13 @@ namespace TaskControl.TaskModule.Application.Services
                 foreach (var order in targetOrders)
                 {
                     _logger.LogInformation("|\n| [Заказ #{OrderId}] филиал {BranchId}", order.OrderId, order.BranchId);
-                    // 1. HARD ALLOCATION: Перевод "мягких" резервов в "жесткие"
-                    var softReservations = await (from ores in _db.GetTable<OrderReservationModel>()
-                                                  join op in _db.GetTable<OrderPositionModel>() on ores.OrderPositionId equals op.UniqueId
-                                                  where op.OrderId == order.OrderId && ores.ItemPositionId == null
-                                                  select new SoftReservation
-                                                  {
-                                                      ReservationId = ores.Id,
-                                                      ItemId = op.ItemId,
-                                                      Quantity = ores.Quantity,
-                                                      OrderPositionId = op.UniqueId
-                                                  }).ToListAsync();
 
-                    if (softReservations.Any())
-                    {
-                        _logger.LogInformation("|   > Запуск Hard Allocation для {Count} позиций...", softReservations.Count);
-                        bool hardAllocationFailed = false;
+                    bool success = await ProcessOrderInternal(order.OrderId, order.BranchId, order.DeliveryDate);
 
-                        foreach (var sRes in softReservations)
-                        {
-                            int neededQty = sRes.Quantity;
-
-                            // Ищем свободные остатки (Вычитаем зарезервированные количества)
-                            var stocksQuery = from ip in _db.GetTable<ItemPositionModel>()
-                                              join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
-                                              where ip.ItemId == sRes.ItemId && p.BranchId == order.BranchId
-                                              let reservedQty = _db.GetTable<OrderReservationModel>()
-                                                                   .Where(r => r.ItemPositionId == ip.Id)
-                                                                   .Sum(r => (int?)r.Quantity) ?? 0
-                                              let availableQty = ip.Quantity - reservedQty
-                                              where availableQty > 0
-                                              select new
-                                              {
-                                                  ItemPositionId = ip.Id,
-                                                  AvailableQty = availableQty
-                                              };
-
-                            var stocks = await stocksQuery.ToListAsync();
-
-                            bool isFirst = true;
-                            foreach (var stock in stocks)
-                            {
-                                if (neededQty <= 0) break;
-
-                                int takeQty = Math.Min(neededQty, stock.AvailableQty);
-
-                                if (isFirst)
-                                {
-                                    // Обновляем текущую запись (привязываем ячейку)
-                                    await _db.GetTable<OrderReservationModel>()
-                                             .Where(r => r.Id == sRes.ReservationId)
-                                             .Set(r => r.ItemPositionId, stock.ItemPositionId)
-                                             .Set(r => r.Quantity, takeQty)
-                                             .UpdateAsync();
-                                    isFirst = false;
-                                }
-                                else
-                                {
-                                    await _db.InsertAsync(new OrderReservationModel
-                                    {
-                                        OrderPositionId = sRes.OrderPositionId,
-                                        ItemPositionId = stock.ItemPositionId,
-                                        Quantity = takeQty,
-                                        CreatedAt = DateTime.UtcNow
-                                    });
-                                }
-
-                                neededQty -= takeQty;
-                            }
-
-                            if (neededQty > 0)
-                            {
-                                _logger.LogWarning("|   ! недостаточно товара на полках для перевода в Hard Allocation (ItemId: {ItemId})", sRes.ItemId);
-                                hardAllocationFailed = true;
-                                break;
-                            }
-                        }
-
-                        if (hardAllocationFailed)
-                        {
-                            await RollbackHardAllocationAsync(order.OrderId, softReservations);
-                            skippedCount++;
-                            continue;
-                        }
-                    }
-                    // 2. Получаем позиции для сборки (с физическими координатами)
-                    var orderItems = await (from op in _db.GetTable<OrderPositionModel>()
-                                            join ores in _db.GetTable<OrderReservationModel>() on op.UniqueId equals ores.OrderPositionId
-                                            join ip in _db.GetTable<ItemPositionModel>() on ores.ItemPositionId equals ip.Id
-                                            join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
-                                            join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
-                                            where op.OrderId == order.OrderId
-                                            select new RawItemToPack
-                                            {
-                                                OrderPositionId = op.UniqueId,
-                                                ItemId = ip.ItemId,
-                                                ItemPositionId = ip.Id,
-                                                Length = i.Length,
-                                                Width = i.Width,
-                                                Height = i.Height,
-                                                SourcePositionId = p.PositionId,
-                                                Quantity = ores.Quantity
-                                            }).ToListAsync();
-
-                    if (orderItems.Count == 0)
-                    {
-                        _logger.LogWarning("|   ! нет позиций для сборки, пропуск");
+                    if (success)
+                        plannedCount++;
+                    else
                         skippedCount++;
-                        continue;
-                    }
-
-                    _logger.LogInformation("|   > найдено {Count} позиций для сборки", orderItems.Count);
-
-                    var itemsToPack = orderItems.Select(x => new ItemToPack
-                    {
-                        OrderPositionId = x.OrderPositionId,
-                        ItemId = x.ItemId,
-                        Length = x.Length,
-                        Width = x.Width,
-                        Height = x.Height,
-                        Quantity = x.Quantity
-                    }).ToList();
-
-                    // Ищем свободные ячейки PICKUP
-                    var occupiedCellIds = _db.GetTable<ItemPositionModel>().Select(ip => ip.PositionId);
-                    var availableCells = await _db.GetTable<PositionModel>()
-                        .Where(p => p.BranchId == order.BranchId
-                                 && p.ZoneCode == "PICKUP"
-                                 && p.Status == "Active"
-                                 && !occupiedCellIds.Contains(p.PositionId))
-                        .Select(p => new CellToPackInto
-                        {
-                            PositionId = p.PositionId,
-                            Length = p.Length,
-                            Width = p.Width,
-                            Height = p.Height
-                        }).ToListAsync();
-
-                    // Распределяем товары по ячейкам PICKUP
-                    var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, availableCells);
-
-                    // Проверяем флаг IsFullyPacked
-                    if (!packingResult.IsFullyPacked)
-                    {
-                        _logger.LogWarning("|   ! не удалось распланировать весь заказ: недостаточно объема в свободных ячейках PICKUP");
-                        await RollbackHardAllocationAsync(order.OrderId, softReservations);
-                        skippedCount++;
-                        continue;
-                    }
-
-                    // Резервируем ячейки PICKUP (меняем статус)
-                    var reservedCells = packingResult.PackedItems.Select(p => p.TargetPositionId).Distinct().ToList();
-                    await _db.GetTable<PositionModel>()
-                             .Where(p => reservedCells.Contains(p.PositionId))
-                             .Set(p => p.Status, "Reserved")
-                             .UpdateAsync();
-
-                    _logger.LogInformation("|   > зарезервировано {Count} ячеек PICKUP: [{CellIds}]",
-                        reservedCells.Count, string.Join(", ", reservedCells));
-
-                    // Создаем базовую задачу
-                    var baseTask = new BaseTaskModel
-                    {
-                        Title = $"Сборка заказа {order.OrderId}",
-                        Description = "Автоматически спланированная сборка заказа",
-                        BranchId = order.BranchId,
-                        Type = "OrderAssembly",
-                        Status = "New",
-                        PriorityLevel = 1,
-                        CreatedAt = DateTime.UtcNow,
-                        Deadline = order.DeliveryDate,
-                        SourceType = "Server"
-                    };
-                    var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
-
-                    _logger.LogInformation("|   > создана базовая задача TaskId={TaskId}", taskId);
-
-                    // Выбираем наименее загруженного работника
-                    var selectedWorkers = await _baseTaskService.GetAutoSelectedEmployeesAsync(order.BranchId, 1);
-                    if (!selectedWorkers.Any())
-                    {
-                        _logger.LogWarning("|   ! нет доступных работников в филиале {BranchId}, откат задачи TaskId={TaskId}",
-                            order.BranchId, taskId);
-
-                        // Откатываем ячейки PICKUP
-                        await _db.GetTable<PositionModel>()
-                                 .Where(p => reservedCells.Contains(p.PositionId))
-                                 .Set(p => p.Status, "Active")
-                                 .UpdateAsync();
-
-                        // Откатываем задачу
-                        await _db.GetTable<BaseTaskModel>()
-                                 .Where(t => t.TaskId == taskId)
-                                 .DeleteAsync();
-
-                        await RollbackHardAllocationAsync(order.OrderId, softReservations);
-                        skippedCount++;
-                        continue;
-                    }
-
-                    var assignedUserId = selectedWorkers.First();
-                    _logger.LogInformation("|   > подобран работник UserId={UserId} на задачу TaskId={TaskId}",
-                        assignedUserId, taskId);
-
-                    // Назначаем сборку
-                    var assignment = new OrderAssemblyAssignmentModel
-                    {
-                        TaskId = taskId,
-                        OrderId = order.OrderId,
-                        AssignedToUserId = assignedUserId,
-                        BranchId = order.BranchId,
-                        Status = 0, // Assigned
-                        AssignedAt = DateTime.UtcNow
-                    };
-                    assignment.Id = await _db.InsertWithInt32IdentityAsync(assignment);
-
-                    // Создаем строки сборки
-                    foreach (var packedBlock in packingResult.PackedItems)
-                    {
-                        // Находим оригинальную информацию о позиции для получения исходной ячейки
-                        var originalInfo = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
-
-                        var line = new OrderAssemblyLineModel
-                        {
-                            OrderAssemblyAssignmentId = assignment.Id,
-                            ItemPositionId = originalInfo.ItemPositionId,
-                            SourcePositionId = originalInfo.SourcePositionId,
-                            TargetPositionId = packedBlock.TargetPositionId,
-                            Quantity = packedBlock.Quantity,
-                            Status = 0 // Pending
-                        };
-                        await _db.InsertAsync(line);
-                    }
-
-                    // Обновляем статус заказа
-                    await _db.GetTable<OrderModel>()
-                             .Where(o => o.OrderId == order.OrderId)
-                             .Set(o => o.Status, "Assembling")
-                             .UpdateAsync();
-
-                    _logger.LogInformation("|   * завершено, статус -> 'Assembling', {LineCount} строк сборки", orderItems.Count);
-                    plannedCount++;
                 }
 
                 await transaction.CommitAsync();
@@ -320,6 +87,279 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogError(ex, "Ошибка при выполнении OrderAssemblyPlannerJob");
                 throw;
             }
+        }
+
+        public async Task PlanSingleOrderAsync(int orderId)
+        {
+            _logger.LogInformation(">>> СРОЧНОЕ ПЛАНИРОВАНИЕ (Hangfire): Заказ #{OrderId}", orderId);
+
+            try
+            {
+                var conn = (DataConnection)_db;
+                using var transaction = await conn.BeginTransactionAsync();
+
+                var order = await _db.GetTable<OrderModel>()
+                    .FirstOrDefaultAsync(o => o.OrderId == orderId);
+
+                if (order == null)
+                {
+                    _logger.LogWarning("Заказ #{OrderId} не найден в БД", orderId);
+                    return;
+                }
+
+                bool success = await ProcessOrderInternal(order.OrderId, order.BranchId, order.DeliveryDate);
+
+                if (success)
+                {
+                    await transaction.CommitAsync();
+                    _logger.LogInformation(">>> Срочное планирование заказа #{OrderId} успешно завершено", orderId);
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogWarning(">>> Срочное планирование заказа #{OrderId} пропущено (нехватка ячеек/остатков)", orderId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при срочном планировании заказа #{OrderId}", orderId);
+                throw;
+            }
+        }
+
+        private async Task<bool> ProcessOrderInternal(int orderId, int branchId, DateTime? deliveryDate)
+        {
+            // 1. HARD ALLOCATION: Перевод "мягких" резервов в "жесткие"
+            var softReservations = await (from ores in _db.GetTable<OrderReservationModel>()
+                                          join op in _db.GetTable<OrderPositionModel>() on ores.OrderPositionId equals op.UniqueId
+                                          where op.OrderId == orderId && ores.ItemPositionId == null
+                                          select new SoftReservation
+                                          {
+                                              ReservationId = ores.Id,
+                                              ItemId = op.ItemId,
+                                              Quantity = ores.Quantity,
+                                              OrderPositionId = op.UniqueId
+                                          }).ToListAsync();
+
+            if (softReservations.Any())
+            {
+                _logger.LogInformation("|   > Запуск Hard Allocation для {Count} позиций...", softReservations.Count);
+                bool hardAllocationFailed = false;
+
+                foreach (var sRes in softReservations)
+                {
+                    int neededQty = sRes.Quantity;
+
+                    // Ищем свободные остатки
+                    var stocksQuery = from ip in _db.GetTable<ItemPositionModel>()
+                                      join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                                      where ip.ItemId == sRes.ItemId && p.BranchId == branchId
+                                      let reservedQty = _db.GetTable<OrderReservationModel>()
+                                                           .Where(r => r.ItemPositionId == ip.Id)
+                                                           .Sum(r => (int?)r.Quantity) ?? 0
+                                      let availableQty = ip.Quantity - reservedQty
+                                      where availableQty > 0
+                                      select new
+                                      {
+                                          ItemPositionId = ip.Id,
+                                          AvailableQty = availableQty
+                                      };
+
+                    var stocks = await stocksQuery.ToListAsync();
+
+                    bool isFirst = true;
+                    foreach (var stock in stocks)
+                    {
+                        if (neededQty <= 0) break;
+
+                        int takeQty = Math.Min(neededQty, stock.AvailableQty);
+
+                        if (isFirst)
+                        {
+                            await _db.GetTable<OrderReservationModel>()
+                                     .Where(r => r.Id == sRes.ReservationId)
+                                     .Set(r => r.ItemPositionId, stock.ItemPositionId)
+                                     .Set(r => r.Quantity, takeQty)
+                                     .UpdateAsync();
+                            isFirst = false;
+                        }
+                        else
+                        {
+                            await _db.InsertAsync(new OrderReservationModel
+                            {
+                                OrderPositionId = sRes.OrderPositionId,
+                                ItemPositionId = stock.ItemPositionId,
+                                Quantity = takeQty,
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        neededQty -= takeQty;
+                    }
+
+                    if (neededQty > 0)
+                    {
+                        _logger.LogWarning("|   ! недостаточно товара на полках для перевода в Hard Allocation (ItemId: {ItemId})", sRes.ItemId);
+                        hardAllocationFailed = true;
+                        break;
+                    }
+                }
+
+                if (hardAllocationFailed)
+                {
+                    await RollbackHardAllocationAsync(orderId, softReservations);
+                    return false;
+                }
+            }
+
+            // 2. Получаем позиции для сборки (с физическими координатами)
+            var orderItems = await (from op in _db.GetTable<OrderPositionModel>()
+                                    join ores in _db.GetTable<OrderReservationModel>() on op.UniqueId equals ores.OrderPositionId
+                                    join ip in _db.GetTable<ItemPositionModel>() on ores.ItemPositionId equals ip.Id
+                                    join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
+                                    join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                                    where op.OrderId == orderId
+                                    select new RawItemToPack
+                                    {
+                                        OrderPositionId = op.UniqueId,
+                                        ItemId = ip.ItemId,
+                                        ItemPositionId = ip.Id,
+                                        Length = i.Length,
+                                        Width = i.Width,
+                                        Height = i.Height,
+                                        SourcePositionId = p.PositionId,
+                                        Quantity = ores.Quantity
+                                    }).ToListAsync();
+
+            if (orderItems.Count == 0)
+            {
+                _logger.LogWarning("|   ! нет позиций для сборки, пропуск");
+                return false;
+            }
+
+            _logger.LogInformation("|   > найдено {Count} позиций для сборки", orderItems.Count);
+
+            var itemsToPack = orderItems.Select(x => new ItemToPack
+            {
+                OrderPositionId = x.OrderPositionId,
+                ItemId = x.ItemId,
+                Length = x.Length,
+                Width = x.Width,
+                Height = x.Height,
+                Quantity = x.Quantity
+            }).ToList();
+
+            // Ищем свободные ячейки PICKUP
+            var occupiedCellIds = _db.GetTable<ItemPositionModel>().Select(ip => ip.PositionId);
+            var availableCells = await _db.GetTable<PositionModel>()
+                .Where(p => p.BranchId == branchId
+                         && p.ZoneCode == "PICKUP"
+                         && p.Status == "Active"
+                         && !occupiedCellIds.Contains(p.PositionId))
+                .Select(p => new CellToPackInto
+                {
+                    PositionId = p.PositionId,
+                    Length = p.Length,
+                    Width = p.Width,
+                    Height = p.Height
+                }).ToListAsync();
+
+            // Распределяем товары по ячейкам PICKUP
+            var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, availableCells);
+
+            if (!packingResult.IsFullyPacked)
+            {
+                _logger.LogWarning("|   ! не удалось распланировать весь заказ: недостаточно объема в свободных ячейках PICKUP");
+                await RollbackHardAllocationAsync(orderId, softReservations);
+                return false;
+            }
+
+            // Резервируем ячейки PICKUP
+            var reservedCells = packingResult.PackedItems.Select(p => p.TargetPositionId).Distinct().ToList();
+            await _db.GetTable<PositionModel>()
+                     .Where(p => reservedCells.Contains(p.PositionId))
+                     .Set(p => p.Status, "Reserved")
+                     .UpdateAsync();
+
+            _logger.LogInformation("|   > зарезервировано {Count} ячеек PICKUP: [{CellIds}]",
+                reservedCells.Count, string.Join(", ", reservedCells));
+
+            // Создаем базовую задачу
+            var baseTask = new BaseTaskModel
+            {
+                Title = $"Сборка заказа {orderId}",
+                Description = "Автоматически спланированная сборка заказа",
+                BranchId = branchId,
+                Type = "OrderAssembly",
+                Status = "New",
+                PriorityLevel = 1,
+                CreatedAt = DateTime.UtcNow,
+                Deadline = deliveryDate,
+                SourceType = "Server"
+            };
+            var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
+
+            _logger.LogInformation("|   > создана базовая задача TaskId={TaskId}", taskId);
+
+            // Выбираем наименее загруженного работника
+            var selectedWorkers = await _baseTaskService.GetAutoSelectedEmployeesAsync(branchId, 1);
+            if (!selectedWorkers.Any())
+            {
+                _logger.LogWarning("|   ! нет доступных работников в филиале {BranchId}, откат задачи TaskId={TaskId}", branchId, taskId);
+
+                // Откатываем ячейки и задачу
+                await _db.GetTable<PositionModel>()
+                         .Where(p => reservedCells.Contains(p.PositionId))
+                         .Set(p => p.Status, "Active")
+                         .UpdateAsync();
+
+                await _db.GetTable<BaseTaskModel>()
+                         .Where(t => t.TaskId == taskId)
+                         .DeleteAsync();
+
+                await RollbackHardAllocationAsync(orderId, softReservations);
+                return false;
+            }
+
+            var assignedUserId = selectedWorkers.First();
+            _logger.LogInformation("|   > подобран работник UserId={UserId} на задачу TaskId={TaskId}", assignedUserId, taskId);
+
+            // Назначаем сборку
+            var assignment = new OrderAssemblyAssignmentModel
+            {
+                TaskId = taskId,
+                OrderId = orderId,
+                AssignedToUserId = assignedUserId,
+                BranchId = branchId,
+                Status = 0, // Assigned
+                AssignedAt = DateTime.UtcNow
+            };
+            assignment.Id = await _db.InsertWithInt32IdentityAsync(assignment);
+
+            // Создаем строки сборки
+            foreach (var packedBlock in packingResult.PackedItems)
+            {
+                var originalInfo = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
+                var line = new OrderAssemblyLineModel
+                {
+                    OrderAssemblyAssignmentId = assignment.Id,
+                    ItemPositionId = originalInfo.ItemPositionId,
+                    SourcePositionId = originalInfo.SourcePositionId,
+                    TargetPositionId = packedBlock.TargetPositionId,
+                    Quantity = packedBlock.Quantity,
+                    Status = 0 // Pending
+                };
+                await _db.InsertAsync(line);
+            }
+
+            // Обновляем статус заказа
+            await _db.GetTable<OrderModel>()
+                     .Where(o => o.OrderId == orderId)
+                     .Set(o => o.Status, "Assembling")
+                     .UpdateAsync();
+
+            _logger.LogInformation("|   * завершено, статус -> 'Assembling', {LineCount} строк сборки", orderItems.Count);
+            return true;
         }
 
         private async Task RollbackHardAllocationAsync(int orderId, List<SoftReservation> originalSoftReservations)

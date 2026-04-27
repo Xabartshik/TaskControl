@@ -20,7 +20,9 @@ using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Infrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
+using TaskControl.InventoryModule.DataAccess.Repositories;
 using TaskControl.OrderModule.Application.DTOs;
+using TaskControl.OrderModule.Application.Interface;
 using TaskControl.OrderModule.Application.Services;
 using TaskControl.OrderModule.DAL.Repositories;
 using TaskControl.OrderModule.DataAccess.Infrastructure;
@@ -103,6 +105,9 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IAllocationService, AllocationService>();
 
+            services.AddScoped<IPostamatRepository, PostamatRepository>();
+            services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
+
             return services;
         }
 
@@ -132,6 +137,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
 
             services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
+
+            services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
 
             return services;
         }

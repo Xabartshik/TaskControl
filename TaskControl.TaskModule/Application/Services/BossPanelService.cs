@@ -1,8 +1,12 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.InformationModule.Application.Services;
+using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Application.DTOs;
+using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
+using TaskControl.InventoryModule.DataAccess.Repositories;
 using TaskControl.OrderModule.DataAccess.Interface;
+using TaskControl.OrderModule.Domain;
 using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
@@ -32,6 +36,10 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly TaskWorkloadAggregator _aggregator;
         private readonly IOrderRepository _orderRepository;
         private readonly ILogger<BossPanelService> _logger;
+        private readonly IPostamatRepository _postamatRepository;
+        private readonly IItemRepository _itemRepository;
+        private readonly IOrderPositionRepository _orderPositionRepository;
+        private readonly IPostamatCellRepository _postamatCellRepository;
 
         public BossPanelService(
             IInventoryProcessService inventoryProcessService,
@@ -45,6 +53,10 @@ namespace TaskControl.TaskModule.Application.Services
             IActiveTaskRepository activeTaskRepository,
             TaskWorkloadAggregator aggregator,
             IOrderRepository orderRepository,
+            IPostamatRepository postamatRepository,
+            IItemRepository itemRepository,
+            IOrderPositionRepository orderPositionRepository,
+            IPostamatCellRepository postamatCellRepository,
             ILogger<BossPanelService> logger)
         {
             _inventoryProcessService = inventoryProcessService ?? throw new ArgumentNullException(nameof(inventoryProcessService));
@@ -57,8 +69,12 @@ namespace TaskControl.TaskModule.Application.Services
             _itemPositionRepository = itemPositionRepository ?? throw new ArgumentNullException(nameof(itemPositionRepository));
             _activeTaskRepository = activeTaskRepository ?? throw new ArgumentNullException(nameof(activeTaskRepository));
             _orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _postamatRepository = postamatRepository ?? throw new ArgumentNullException(nameof(postamatRepository));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _itemRepository = itemRepository ?? throw new ArgumentNullException(nameof(itemRepository));
+            _orderPositionRepository = orderPositionRepository ?? throw new ArgumentNullException(nameof(orderPositionRepository));
+            _postamatCellRepository = postamatCellRepository ?? throw new ArgumentNullException(nameof(postamatCellRepository));
         }
 
 
@@ -129,7 +145,7 @@ namespace TaskControl.TaskModule.Application.Services
             _logger.LogInformation("|   [Boss] запрос доступных зон (филиал {BossBranchId})", bossBranchId);
 
             var cells = await _positionCellRepository.GetByBranchAsync(bossBranchId);
-            
+
             // Возвращаем уникальные префиксы, например "1-ZA-RACK"
             var zones = cells
                 .Select(c => $"{c.Code.BranchId}-{c.Code.ZoneCode}-{c.Code.FirstLevelStorageType}")
@@ -249,7 +265,7 @@ namespace TaskControl.TaskModule.Application.Services
                 var taskAssignments = assignments.Where(a => a.TaskId == task.TaskId).ToList();
                 int total = taskAssignments.Count;
                 int completed = taskAssignments.Count(a => a.Status == Domain.AssignmentStatus.Completed);
-                
+
                 string progress = total == 0 ? "Нет назначений" : $"{completed}/{total} завершено";
 
                 result.Add(new TaskReportGroupDto
@@ -276,7 +292,7 @@ namespace TaskControl.TaskModule.Application.Services
             var activeTasks = tasks.Where(t => t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled);
             var result = new List<BossPanelTaskCardDto>();
 
-            foreach(var t in activeTasks)
+            foreach (var t in activeTasks)
             {
                 var dict = new Dictionary<int, TaskAssigneeProgressDto>();
 
@@ -305,9 +321,9 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     // Для инвентаризации оригинальная логика
                     var taskAssignments = invAssignments.Where(a => a.TaskId == t.TaskId).ToList();
-                    foreach(var a in taskAssignments)
+                    foreach (var a in taskAssignments)
                     {
-                        if(!dict.ContainsKey(a.AssignedToUserId))
+                        if (!dict.ContainsKey(a.AssignedToUserId))
                         {
                             var emp = await _activeEmployeeService.GetEmployeeByIdAsync(a.AssignedToUserId);
                             dict[a.AssignedToUserId] = new TaskAssigneeProgressDto
@@ -323,7 +339,7 @@ namespace TaskControl.TaskModule.Application.Services
                         else
                         {
                             dict[a.AssignedToUserId].AssignedVolume += 1;
-                            if(a.Status == AssignmentStatus.Completed)
+                            if (a.Status == AssignmentStatus.Completed)
                                 dict[a.AssignedToUserId].CompletedVolume += 1;
                         }
                     }
@@ -355,17 +371,17 @@ namespace TaskControl.TaskModule.Application.Services
             var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
             var result = new List<EmployeeWorkloadDto>();
 
-            foreach(var emp in employees)
+            foreach (var emp in employees)
             {
                 var activeTaskDtos = new List<ActiveTaskBriefDto>();
 
                 // Задачи инвентаризации
                 var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
                 var activeInv = invAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach(var a in activeInv)
+                foreach (var a in activeInv)
                 {
                     var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if(task != null)
+                    if (task != null)
                     {
                         activeTaskDtos.Add(new ActiveTaskBriefDto
                         {
@@ -380,10 +396,10 @@ namespace TaskControl.TaskModule.Application.Services
                 // Задачи сборки заказов
                 var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
                 var activeOa = oaAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach(var a in activeOa)
+                foreach (var a in activeOa)
                 {
                     var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if(task != null)
+                    if (task != null)
                     {
                         activeTaskDtos.Add(new ActiveTaskBriefDto
                         {
@@ -451,11 +467,11 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("Получение доступных заказов для филиала {BossBranchId}", bossBranchId);
 
-            // Получаем все заказы в статусе New для этого филиала
+            // Получаем все заказы в статусе Created для этого филиала
             var allOrders = (await _orderRepository.GetByBranchAsync(bossBranchId)).ToList();
-            var newOrders = allOrders.Where(o => o.Status == "New").ToList();
-            
-            _logger.LogInformation("Найдено заказов в филиале: {Total}, из них в статусе New: {NewCount}", allOrders.Count, newOrders.Count);
+            var newOrders = allOrders.Where(o => o.Status == OrderStatus.Created).ToList();
+
+            _logger.LogInformation("Найдено заказов в филиале: {Total}, из них в статусе Created: {NewCount}", allOrders.Count, newOrders.Count);
 
             // Исключаем те, для которых уже созданы активные задания сборки
             var assemblyAssignments = await _orderAssemblyRepository.GetByBranchIdAsync(bossBranchId);
@@ -466,19 +482,128 @@ namespace TaskControl.TaskModule.Application.Services
 
             _logger.LogInformation("Активных назначений сборки в филиале: {ActiveCount}", assignedOrderIds.Count);
 
-            var availableOrders = newOrders
-                .Where(o => !assignedOrderIds.Contains(o.OrderId))
-                .Select(o => new AvailableOrderDto
+            var availableOrders = new List<AvailableOrderDto>();
+
+            foreach (var o in newOrders.Where(o => !assignedOrderIds.Contains(o.OrderId)))
+            {
+                var dto = new AvailableOrderDto
                 {
                     OrderId = o.OrderId,
                     OrderNumber = $"ORD-{o.OrderId}",
                     CreatedAt = o.CreatedAt,
-                    Type = o.Type
-                })
+                    Status = o.Status.ToString(),
+                    DeliveryType = o.DeliveryType.ToString(),
+                    PaymentType = o.PaymentType.ToString(),
+                    DestinationAddress = o.DestinationAddress
+                };
+
+                // 1. Обогащаем данными о постамате, если это доставка в постамат
+                if (o.PostamatId.HasValue)
+                {
+                    var postamat = await _postamatRepository.GetByIdAsync(o.PostamatId.Value);
+                    dto.PostamatAddress = postamat?.Address;
+
+                    if (o.PostamatCellId.HasValue)
+                    {
+                        var cell = await _postamatCellRepository.GetByIdAsync(o.PostamatCellId.Value);
+                        dto.PostamatCellNumber = cell?.CellNumber;
+                        dto.PostamatCellSize = cell?.SizeLabel;
+                    }
+                }
+
+                // 2. Обогащаем составом заказа (списком товаров)
+                var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
+                foreach (var pos in positions)
+                {
+                    var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+                    dto.Items.Add(new OrderItemDetailDto
+                    {
+                        ItemId = pos.ItemId,
+                        Name = item?.Name ?? "Неизвестный товар",
+                        Quantity = pos.Quantity
+                    });
+                }
+
+                availableOrders.Add(dto);
+            }
+
+            // 3. Сортировка (Оптимизация процессов сборки)
+            // Экспресс-заказы поднимаются наверх, остальные сортируются по времени ожидания (старые первыми)
+            var sortedOrders = availableOrders
+                .OrderByDescending(o => o.IsHighPriority)
+                .ThenBy(o => o.CreatedAt)
                 .ToList();
 
-            _logger.LogInformation("Итого доступно для выбора: {AvailableCount}", availableOrders.Count);
-            return availableOrders;
+            _logger.LogInformation("Итого доступно для выбора: {AvailableCount}", sortedOrders.Count);
+
+            return sortedOrders;
+        }
+
+
+        public async Task<IEnumerable<AvailableOrderDto>> GetAllOrdersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение всех заказов для филиала {BossBranchId}", bossBranchId);
+
+            // 1. Получаем все заказы филиала без исключений
+            var allOrders = (await _orderRepository.GetByBranchAsync(bossBranchId)).ToList();
+
+            _logger.LogInformation("Найдено заказов в филиале: {Total}", allOrders.Count);
+
+            var availableOrders = new List<AvailableOrderDto>();
+
+            foreach (var o in allOrders)
+            {
+                var dto = new AvailableOrderDto
+                {
+                    OrderId = o.OrderId,
+                    OrderNumber = $"ORD-{o.OrderId}",
+                    CreatedAt = o.CreatedAt,
+                    Status = o.Status.ToString(),
+                    DeliveryType = o.DeliveryType.ToString(),
+                    PaymentType = o.PaymentType.ToString(),
+                    DestinationAddress = o.DestinationAddress
+                };
+
+                // 2. Обогащаем данными о постамате (если применимо)
+                if (o.PostamatId.HasValue)
+                {
+                    var postamat = await _postamatRepository.GetByIdAsync(o.PostamatId.Value);
+                    dto.PostamatAddress = postamat?.Address;
+
+                    if (o.PostamatCellId.HasValue)
+                    {
+                        var cell = await _postamatCellRepository.GetByIdAsync(o.PostamatCellId.Value);
+                        dto.PostamatCellNumber = cell?.CellNumber;
+                        dto.PostamatCellSize = cell?.SizeLabel;
+                    }
+                }
+
+                // 3. Обогащаем составом заказа
+                var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
+                foreach (var pos in positions)
+                {
+                    var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+                    dto.Items.Add(new OrderItemDetailDto
+                    {
+                        ItemId = pos.ItemId,
+                        Name = item?.Name ?? "Неизвестный товар",
+                        Quantity = pos.Quantity
+                    });
+                }
+
+                availableOrders.Add(dto);
+            }
+
+            // 4. Сортировка: приоритетные вперед, затем по дате создания
+            var sortedOrders = availableOrders
+                .OrderByDescending(o => o.IsHighPriority)
+                .ThenBy(o => o.CreatedAt)
+                .ToList();
+
+            _logger.LogInformation("Итого обработано заказов: {TotalCount}", sortedOrders.Count);
+
+            return sortedOrders;
         }
     }
+
 }

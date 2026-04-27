@@ -7,10 +7,19 @@ namespace TaskControl.OrderModule.Application.DTOs
     public record OrderDto
     {
         public int OrderId { get; init; }
+
         public int CustomerId { get; init; }
+
         public int BranchId { get; init; }
+
         public DateTime? DeliveryDate { get; init; }
-        public string? DestinationAddress { get; init; }
+
+        public string? DestinationAddress { get; set; }
+
+        // Новые поля для связи с постаматами
+        public int? PostamatId { get; init; }
+
+        public int? PostamatCellId { get; init; }
 
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public DeliveryType DeliveryType { get; init; }
@@ -30,6 +39,11 @@ namespace TaskControl.OrderModule.Application.DTOs
             BranchId = dto.BranchId,
             DeliveryDate = dto.DeliveryDate,
             DestinationAddress = dto.DestinationAddress,
+
+            // Маппинг постаматов
+            PostamatId = dto.PostamatId,
+            PostamatCellId = dto.PostamatCellId,
+
             DeliveryType = dto.DeliveryType,
             PaymentType = dto.PaymentType,
             Status = dto.Status
@@ -42,6 +56,11 @@ namespace TaskControl.OrderModule.Application.DTOs
             BranchId = entity.BranchId,
             DeliveryDate = entity.DeliveryDate,
             DestinationAddress = entity.DestinationAddress,
+
+            // Маппинг постаматов
+            PostamatId = entity.PostamatId,
+            PostamatCellId = entity.PostamatCellId,
+
             DeliveryType = entity.DeliveryType,
             PaymentType = entity.PaymentType,
             Status = entity.Status

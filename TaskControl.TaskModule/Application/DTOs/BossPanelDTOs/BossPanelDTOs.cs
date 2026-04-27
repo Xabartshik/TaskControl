@@ -53,6 +53,28 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public int OrderId { get; set; }
         public string OrderNumber { get; set; }
         public DateTime CreatedAt { get; set; }
-        public string Type { get; set; }
+        public string Status { get; set; }
+        public string DeliveryType { get; set; }
+        public string PaymentType { get; set; }
+
+        // Логистика: Адрес клиента (для Delivery) или Постамата
+        public string? DestinationAddress { get; set; }
+
+        // Детали Постамата (для демонстрации OMS)
+        public string? PostamatAddress { get; set; }
+        public string? PostamatCellNumber { get; set; }
+        public string? PostamatCellSize { get; set; }
+
+        // Состав заказа (Важно для комиссии)
+        public List<OrderItemDetailDto> Items { get; set; } = new();
+
+        public bool IsHighPriority => DeliveryType == "Express";
+    }
+
+    public class OrderItemDetailDto
+    {
+        public int ItemId { get; set; }
+        public string Name { get; set; }
+        public int Quantity { get; set; }
     }
 }

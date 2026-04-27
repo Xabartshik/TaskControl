@@ -61,5 +61,11 @@ namespace TaskControl.TaskModule.Application.Interface
         /// Получить список заказов, доступных для сборки (в статусе Processing и без назначений)
         /// </summary>
         Task<IEnumerable<AvailableOrderDto>> GetAvailableOrdersAsync(int bossBranchId);
+
+
+        /// <summary>
+        /// Получить список всех заказов
+        /// </summary>
+        Task<IEnumerable<AvailableOrderDto>> GetAllOrdersAsync(int bossBranchId);
     }
 }

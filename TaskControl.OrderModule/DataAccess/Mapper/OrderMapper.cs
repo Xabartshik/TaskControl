@@ -1,6 +1,7 @@
 ﻿using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
 using TaskControl.OrderModule.Domain.TaskControl.OrderModule.Domain.Enums;
+using UnitsNet;
 
 namespace TaskControl.OrderModule.DataAccess.Mapper
 {
@@ -21,6 +22,8 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 // Трансформация для БД
                 DeliveryType = entity.DeliveryType.ToString(),
                 PaymentType = entity.PaymentType.ToString(),
+                PostamatId = entity.PostamatId,
+                PostamatCellId = entity.PostamatCellId,
                 Status = entity.Status.ToString(),
 
                 CreatedAt = entity.CreatedAt == default ? DateTime.UtcNow : entity.CreatedAt
@@ -38,7 +41,8 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 BranchId = model.BranchId,
                 DeliveryDate = model.DeliveryDate,
                 DestinationAddress = model.DestinationAddress,
-
+                PostamatId = model.PostamatId,
+                PostamatCellId = model.PostamatCellId,
                 // Безопасный парсинг из БД
                 DeliveryType = Enum.TryParse<DeliveryType>(model.DeliveryType, out var dType) ? dType : DeliveryType.Pickup,
                 PaymentType = Enum.TryParse<PaymentType>(model.PaymentType, out var pType) ? pType : PaymentType.Postpaid,

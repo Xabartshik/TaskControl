@@ -4,6 +4,7 @@ using System.Linq;
 using CromulentBisgetti.ContainerPacking;
 using CromulentBisgetti.ContainerPacking.Entities;
 using CromulentBisgetti.ContainerPacking.Algorithms;
+using TaskControl.Core.Shared.SharedInterfaces;
 
 namespace TaskControl.TaskModule.Application.Services
 {

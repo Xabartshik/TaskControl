@@ -71,6 +71,8 @@ namespace TaskControl.OrderModule.Domain
 
         public string? DestinationAddress { get; set; }
 
+        public int? PostamatId { get; set; }
+        public int? PostamatCellId { get; set; }
         [Required]
         public DeliveryType DeliveryType { get; set; }
 

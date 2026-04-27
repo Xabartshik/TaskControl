@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TaskControl.TaskModule.Application.Services
+namespace TaskControl.Core.Shared.SharedInterfaces
 {
     public class ItemToPack
     {

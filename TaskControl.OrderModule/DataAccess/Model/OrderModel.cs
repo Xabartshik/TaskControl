@@ -23,5 +23,7 @@ namespace TaskControl.OrderModule.DataAccess.Model
         // В БД статусы храним строками для читаемости и безопасности
         [Column("status"), NotNull] public string Status { get; set; }
         [Column("created_at"), NotNull] public DateTime CreatedAt { get; set; }
+        [Column("postamat_id")] public int? PostamatId { get; set; }
+        [Column("postamat_cell_id")] public int? PostamatCellId { get; set; }
     }
 }

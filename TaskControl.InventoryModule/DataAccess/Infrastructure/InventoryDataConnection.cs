@@ -6,6 +6,7 @@ using TaskControl.Core.Shared.Shared.SharedInfrastructure;
 using TaskControl.Core.Shared.SharedInfrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Model;
+using TaskControl.InventoryModule.DataAccess.Model;
 
 namespace TaskControl.InventoryModule.DataAccess.Infrastructure
 {
@@ -21,5 +22,7 @@ namespace TaskControl.InventoryModule.DataAccess.Infrastructure
         public ITable<ItemStatusModel> ItemStatuses => this.GetTable<ItemStatusModel>();
         public ITable<PositionModel> PositionCells => this.GetTable<PositionModel>();
         public ITable<OrderReservationModel> OrderReservations => this.GetTable<OrderReservationModel>();
+        public ITable<PostamatModel> Postamats => this.GetTable<PostamatModel>();
+        public ITable<PostamatCellModel> PostamatCells => this.GetTable<PostamatCellModel>();
     }
 }

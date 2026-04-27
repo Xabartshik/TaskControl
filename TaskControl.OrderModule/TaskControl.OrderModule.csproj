@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaskControl.Core\TaskControl.Core.csproj" />
+    <ProjectReference Include="..\TaskControl.InformationModule\TaskControl.InformationModule.csproj" />
   </ItemGroup>
 
 </Project>
