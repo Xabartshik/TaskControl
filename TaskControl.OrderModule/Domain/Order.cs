@@ -3,6 +3,17 @@ using System.ComponentModel.DataAnnotations;
 
 namespace TaskControl.OrderModule.Domain
 {
+    public record DeliverySlot(int Id, string Name, TimeSpan StartTime, TimeSpan EndTime);
+
+    public static class DeliverySchedule
+    {
+        public static readonly List<DeliverySlot> Slots = new()
+    {
+        new DeliverySlot(1, "Утро", new TimeSpan(10, 0, 0), new TimeSpan(14, 0, 0)),
+        new DeliverySlot(2, "День", new TimeSpan(14, 0, 0), new TimeSpan(18, 0, 0)),
+        new DeliverySlot(3, "Вечер", new TimeSpan(18, 0, 0), new TimeSpan(22, 0, 0))
+    };
+    }
     public enum OrderStatus
     {
         [Description("Создан")]
