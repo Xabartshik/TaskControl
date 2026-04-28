@@ -13,8 +13,7 @@ namespace TaskControl.InformationModule.Domain
         [Required(ErrorMessage = "Фамилия обязательна")]
         public string LastName { get; set; } = null!;
 
-        [Required(ErrorMessage = "Телефон обязателен")]
-        public string Phone { get; set; } = null!;
+        public string? Phone { get; set; }
 
         public string? Email { get; set; }
 

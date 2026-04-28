@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
@@ -27,19 +28,22 @@ namespace TaskControl.TaskModule.Presentation
         private readonly ILogger<MobileAppUserController> _logger;
         private readonly IEmployeeRepository _employeeRepository;
         private readonly TaskWorkloadAggregator _aggregator;
+        private readonly ICustomerService _customerService;
 
         public MobileAppUserController(
             IMobileAppUserService service,
             IJwtTokenService jwt,
             ILogger<MobileAppUserController> logger,
             IEmployeeRepository employeeRepository,
-            TaskWorkloadAggregator aggregator)
+            TaskWorkloadAggregator aggregator,
+            ICustomerService customerService)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _jwt = jwt ?? throw new ArgumentNullException(nameof(jwt));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _employeeRepository = employeeRepository ?? throw new ArgumentNullException(nameof(employeeRepository));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
+            _customerService = customerService ?? throw new ArgumentNullException(nameof(customerService)); 
         }
 
         /// <summary>
@@ -423,9 +427,12 @@ namespace TaskControl.TaskModule.Presentation
                 string? firstName = "User";
                 string? lastName = "";
                 WorkerRole? workerRole = null;
-
+                if (userDto == null)
+                {
+                    throw new Exception("Неверные учетные данные");
+                }
                 // 2) Если это сотрудник — обогащаем данными из EmployeeRepository
-                if (userDto.EmployeeId.HasValue)
+                if (userDto != null && userDto.EmployeeId.HasValue)
                 {
                     var employee = await _employeeRepository.GetByIdAsync(userDto.EmployeeId.Value);
                     if (employee != null)
@@ -435,10 +442,15 @@ namespace TaskControl.TaskModule.Presentation
                         workerRole = employee.Role;
                     }
                 }
-                // 3) Если это покупатель — данные будут браться из CustomerRepository (при наличии)
+                // 3) Если это покупатель — данные будут браться из CustomerRepository
                 else if (userDto.CustomerId.HasValue)
                 {
-                    firstName = "Покупатель"; // В будущем: запрос к CustomerRepository
+                    var customer = await _customerService.GetByIdAsync(userDto.CustomerId.Value);
+                    if (customer != null)
+                    {
+                        firstName = customer.FirstName; 
+                        lastName = customer.LastName;
+                    }
                 }
 
                 var token = _jwt.CreateToken(userDto.Id, userDto.Role, userDto.EmployeeId, userDto.CustomerId, userDto.BranchId);
