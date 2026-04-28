@@ -25,6 +25,8 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 PostamatCellId = entity.PostamatCellId,
                 Status = entity.Status.ToString(),
 
+                TotalPrice = entity.TotalPrice,
+
                 CreatedAt = entity.CreatedAt == default ? DateTime.UtcNow : entity.CreatedAt
             };
         }
@@ -46,7 +48,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 DeliveryType = Enum.TryParse<DeliveryType>(model.DeliveryType, out var dType) ? dType : DeliveryType.Pickup,
                 PaymentType = Enum.TryParse<PaymentType>(model.PaymentType, out var pType) ? pType : PaymentType.Postpaid,
                 Status = Enum.TryParse<OrderStatus>(model.Status, out var status) ? status : OrderStatus.Created,
-
+                TotalPrice = model.TotalPrice,
                 CreatedAt = model.CreatedAt
             };
         }

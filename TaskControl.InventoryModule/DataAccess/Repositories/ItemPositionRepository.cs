@@ -1,4 +1,5 @@
 ﻿using LinqToDB;
+using LinqToDB.DataProvider.PostgreSQL;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.DataAccess.Model;
@@ -7,6 +8,7 @@ using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
+
 
 
 namespace TaskControl.InventoryModule.DAL.Repositories
@@ -20,6 +22,74 @@ namespace TaskControl.InventoryModule.DAL.Repositories
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger;
+        }
+
+        public async Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId, string? search = null)
+        {
+            _logger.LogInformation("Получение доступных товаров для филиала {BranchId}. Поиск: {Search}", branchId, search);
+
+            // 1. Подготавливаем запрос
+            var query = from ip in _db.GetTable<ItemPositionModel>()
+                        join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                        join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
+                        where p.BranchId == branchId
+                        select new { ip, p, i };
+
+            // Применяем поиск с использованием LIKE, если передан текст
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchLower = search.ToLower();
+                query = query.Where(x => Sql.Like(x.i.Name.ToLower(), $"%{searchLower}%"));
+            }
+            // 2. Получаем физические остатки
+            var physicalStocks = await query
+                .GroupBy(x => new { x.i.ItemId, x.i.Name, x.i.Price }) // Группируем с учетом Price
+                .Select(g => new
+                {
+                    ItemId = g.Key.ItemId,
+                    Name = g.Key.Name,
+                    Price = g.Key.Price,
+                    TotalQuantity = g.Sum(x => x.ip.Quantity)
+                }).ToListAsync();
+
+            if (!physicalStocks.Any()) return new List<AvailableItemDto>();
+
+            var itemIds = physicalStocks.Select(s => s.ItemId).ToList();
+
+            // 3. Получаем текущие резервы
+            var reservedStocks = await (
+                from res in _db.GetTable<OrderReservationModel>()
+                join ip in _db.GetTable<ItemPositionModel>() on res.ItemPositionId equals ip.Id
+                join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                where p.BranchId == branchId && itemIds.Contains(ip.ItemId)
+                group res by ip.ItemId into g
+                select new
+                {
+                    ItemId = g.Key,
+                    ReservedQuantity = g.Sum(x => x.Quantity)
+                }
+            ).ToListAsync();
+
+            // 4. Формируем итоговый DTO
+            var result = new List<AvailableItemDto>();
+            foreach (var stock in physicalStocks)
+            {
+                var reserved = reservedStocks.FirstOrDefault(r => r.ItemId == stock.ItemId)?.ReservedQuantity ?? 0;
+                var availableQty = stock.TotalQuantity - reserved;
+
+                if (availableQty > 0)
+                {
+                    result.Add(new AvailableItemDto
+                    {
+                        ItemId = stock.ItemId,
+                        Name = stock.Name,
+                        Price = stock.Price, // Передаем цену
+                        AvailableQuantity = availableQty
+                    });
+                }
+            }
+
+            return result.OrderBy(r => r.Name).ToList();
         }
 
         public async Task<ItemPosition?> GetByIdAsync(int id)

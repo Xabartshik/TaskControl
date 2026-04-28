@@ -25,7 +25,25 @@ namespace TaskControl.OrderModule.Application.Services
             _logger = logger;
             _appSettings = options.Value;
         }
+        public async Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId, string? search = null)
+        {
+            if (_appSettings.EnableDetailedLogging)
+            {
+                _logger.LogTrace("Вызов процедуры GetAvailableItemsByBranchAsync для товарных позиций");
+                _logger.LogDebug("Получение доступных товаров для филиала ID: {BranchId}, Поиск: {Search}", branchId, search ?? "нет");
+            }
 
+            try
+            {
+                var items = await _repository.GetAvailableItemsByBranchAsync(branchId, search);
+                return items;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения списка доступных товаров для филиала {BranchId}", branchId);
+                throw;
+            }
+        }
         public async Task<int> Add(ItemPositionDto dto)
         {
             if (_appSettings.EnableDetailedLogging)

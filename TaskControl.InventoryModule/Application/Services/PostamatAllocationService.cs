@@ -29,6 +29,39 @@ namespace TaskControl.InventoryModule.Application.Services
             throw new NotImplementedException();
         }
 
+        public async Task<bool> CheckCapacityAsync(int postamatId, List<ItemToPack> itemsToPack)
+        {
+            var availableCells = await _cellRepository.GetAvailableCellsAsync(postamatId);
+            if (!availableCells.Any()) return false;
+
+            // Сортируем ячейки от меньшей к большей
+            var sortedCells = availableCells.OrderBy(c => c.Capacity).ToList();
+
+            foreach (var cell in sortedCells)
+            {
+                var cellToPack = new List<CellToPackInto>
+        {
+            new CellToPackInto
+            {
+                PositionId = cell.CellId,
+                Length = cell.Length.Millimeters,
+                Width = cell.Width.Millimeters,
+                Height = cell.Height.Millimeters
+            }
+        };
+
+                var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, cellToPack);
+
+                // Если алгоритм смог разместить ВСЕ товары в эту ячейку, вместимость подтверждена
+                if (packingResult.IsFullyPacked)
+                {
+                    return true;
+                }
+            }
+
+            return false; // Нет подходящей ячейки
+        }
+
         public async Task<int> ReservePostamatCellAsync(int postamatId, List<ItemToPack> itemsToPack)
         {
             var availableCells = await _cellRepository.GetAvailableCellsAsync(postamatId);

@@ -27,5 +27,8 @@ namespace TaskControl.InventoryModule.Domain
         [Range(0.01, double.MaxValue, ErrorMessage = "Количество должно быть положительным")]
         public int Quantity { get; set; }
 
+        [Required(ErrorMessage = "Укажите стоимость")]
+        public decimal Price { get; set; }
+
     }
 }

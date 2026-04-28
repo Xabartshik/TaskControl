@@ -115,6 +115,12 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IPostamatRepository, PostamatRepository>();
             services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
 
+            services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
+
+            services.AddScoped<IPostamatRepository, PostamatRepository>();
+            services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
+            services.AddScoped<IBoxPackingService, BoxPackingService>();
+
             return services;
         }
 

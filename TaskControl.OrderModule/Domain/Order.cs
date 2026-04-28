@@ -80,6 +80,8 @@ namespace TaskControl.OrderModule.Domain
         [Required]
         public OrderStatus Status { get; set; } = OrderStatus.Created;
 
+        public decimal TotalPrice { get; set; }
+
         public DateTime CreatedAt { get; set; }
     }
 }

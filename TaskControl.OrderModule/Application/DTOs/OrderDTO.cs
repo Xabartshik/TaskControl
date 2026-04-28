@@ -30,6 +30,8 @@ namespace TaskControl.OrderModule.Application.DTOs
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public OrderStatus Status { get; init; } = OrderStatus.Created;
 
+        public decimal TotalPrice { get; set; }
+
         public List<OrderPositionDto> Positions { get; set; } = new();
 
         public static Order FromDto(OrderDto dto) => new()
@@ -46,7 +48,8 @@ namespace TaskControl.OrderModule.Application.DTOs
 
             DeliveryType = dto.DeliveryType,
             PaymentType = dto.PaymentType,
-            Status = dto.Status
+            Status = dto.Status,
+            TotalPrice = dto.TotalPrice,
         };
 
         public static OrderDto ToDto(Order entity) => new()

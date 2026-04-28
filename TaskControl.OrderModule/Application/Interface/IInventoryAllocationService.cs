@@ -11,5 +11,6 @@ namespace TaskControl.OrderModule.Application.Interface
         /// </summary>
         Task<int> ReservePostamatCellAsync(int postamatId, List<ItemToPack> itemsToPack);
         Task<bool> HardAllocateOrderItemsAsync(int branchId, int orderPositionId, int itemId, int neededQuantity);
+        Task<bool> CheckCapacityAsync(int postamatId, List<ItemToPack> itemsToPack);
     }
 }

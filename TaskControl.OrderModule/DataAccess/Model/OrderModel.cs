@@ -24,6 +24,7 @@ namespace TaskControl.OrderModule.DataAccess.Model
         [Column("status"), NotNull] public string Status { get; set; }
         [Column("created_at"), NotNull] public DateTime CreatedAt { get; set; }
         [Column("postamat_id")] public int? PostamatId { get; set; }
+        [Column("total_price")] public decimal TotalPrice { get; set; }
         [Column("postamat_cell_id")] public int? PostamatCellId { get; set; }
     }
 }
