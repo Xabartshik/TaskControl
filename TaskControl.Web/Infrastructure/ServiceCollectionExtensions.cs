@@ -110,12 +110,12 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IOrderReservationRepository, OrderReservationRepository>();
 
-            services.AddScoped<IAllocationService, AllocationService>();
+            services.AddScoped<IItemAllocationService, AllocationService >();
 
             services.AddScoped<IPostamatRepository, PostamatRepository>();
             services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
 
-            services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
+            services.AddScoped<PostamatAllocationService>();
 
             services.AddScoped<IPostamatRepository, PostamatRepository>();
             services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
@@ -151,7 +151,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
 
-            services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
+            services.AddScoped<IPostamatAllocationService, PostamatAllocationService>();
 
 
 

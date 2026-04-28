@@ -5,6 +5,7 @@ using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
+using System.Linq;
 
 namespace TaskControl.InventoryModule.Presentation.Controllers
 {
@@ -31,11 +32,21 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
         /// GET /api/Postamat
         /// </summary>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Postamat>>> GetActivePostamats()
+        public async Task<ActionResult<IEnumerable<PostamatDto>>> GetActivePostamats()
         {
             _logger.LogInformation("Запрошен список активных постаматов.");
             var postamats = await _postamatRepository.GetActivePostamatsAsync();
-            return Ok(postamats);
+
+            // Преобразуем доменные модели в DTO.
+            // Убедитесь, что ваш PostamatDto содержит свойства Id и Address, 
+            // чтобы Flutter-клиент корректно распарсил JSON.
+            var dtos = postamats.Select(p => new PostamatDto
+            {
+                Id = p.PostamatId,
+                Address = p.Address
+            }).ToList();
+
+            return Ok(dtos);
         }
 
         /// <summary>
@@ -49,7 +60,6 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             {
                 return BadRequest("Некорректный запрос или пустой список товаров.");
             }
-
             _logger.LogInformation("Проверка вместимости для постамата {PostamatId}", request.PostamatId);
 
             var hasCapacity = await _allocationService.CheckCapacityAsync(request.PostamatId, request.ItemsToPack);

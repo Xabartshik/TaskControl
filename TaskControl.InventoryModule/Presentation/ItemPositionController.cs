@@ -62,15 +62,6 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
         }
 
-
-
-        [HttpGet("available/{branchId}")]
-        public async Task<ActionResult<IEnumerable<AvailableItemDto>>> GetAvailableItems(int branchId)
-        {
-            var items = await _service.GetAvailableItemsByBranchAsync(branchId);
-            return Ok(items);
-        }
-
         [HttpPut]
         public async Task<IActionResult> Update(ItemPositionDto dto)
         {

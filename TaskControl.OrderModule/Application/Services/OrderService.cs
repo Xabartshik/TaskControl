@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.DAL.Repositories;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
 using TaskControl.OrderModule.Application.DTOs;
@@ -19,7 +21,8 @@ namespace TaskControl.OrderModule.Application.Services
         private readonly ILogger<OrderService> _logger;
         private readonly IOrderPositionRepository _positionRepository;
         private readonly IEnumerable<IOrderCreatedEventHandler> _orderCreatedHandlers;
-        private readonly IInventoryAllocationService _allocationService;
+        private readonly IPostamatAllocationService _postamatAllocationService;
+        private readonly IItemAllocationService _itemAllocationService;
         private readonly IItemRepository _itemRepository;
         private readonly AppSettings _appSettings;
 
@@ -28,7 +31,9 @@ namespace TaskControl.OrderModule.Application.Services
             ILogger<OrderService> logger,
             IOptions<AppSettings> options,
             IOrderPositionRepository positionRepository,
-            IInventoryAllocationService allocationService,
+            IPostamatAllocationService postamatAllocationService,
+            IItemRepository itemRepository,
+            IItemAllocationService itemAllocationService,
             IEnumerable<IOrderCreatedEventHandler> orderCreatedHandlers)
         {
             _repository = repository;
@@ -36,12 +41,13 @@ namespace TaskControl.OrderModule.Application.Services
             _appSettings = options.Value;
             _positionRepository = positionRepository;
             _orderCreatedHandlers = orderCreatedHandlers;
-            _allocationService = allocationService;
+            _postamatAllocationService = postamatAllocationService;
+            _itemRepository = itemRepository;
+            _itemAllocationService = itemAllocationService;
         }
 
         public async Task<int> Add(OrderDto dto)
         {
-            // 1. Детальное логгирование (Trace/Debug) на входе
             if (_appSettings.EnableDetailedLogging)
             {
                 _logger.LogTrace("Вызов процедуры Add для заказа клиента {CustomerId}", dto.CustomerId);
@@ -49,29 +55,51 @@ namespace TaskControl.OrderModule.Application.Services
                     dto.DeliveryType, dto.PostamatId, dto.Positions?.Count() ?? 0);
             }
 
-            // 2. Информационное логгирование начала процесса
             _logger.LogInformation("Начало процесса создания заказа для клиента {CustomerId}, тип: {Type}", dto.CustomerId, dto.DeliveryType);
 
             try
             {
-                // 1. Валидация состава
                 if (dto.Positions == null || !dto.Positions.Any())
                 {
                     _logger.LogWarning("Попытка создания пустого заказа для клиента {CustomerId}", dto.CustomerId);
                     throw new ArgumentException("Заказ не может быть пустым.");
                 }
 
-                // 2. Обработка адреса: если не доставка (курьер/постамат), адрес = null (филиал)
                 if (dto.DeliveryType != DeliveryType.Delivery && dto.DeliveryType != DeliveryType.Postamat)
                 {
                     dto.DestinationAddress = null;
                 }
 
+                // ====================================================================
+                // 1. ВАЛИДАЦИЯ ТОВАРОВ И РАСЧЕТ СТОИМОСТИ (ФИКСАЦИЯ ЦЕНЫ)
+                // ====================================================================
+                decimal totalOrderPrice = 0;
+                var validPositions = new List<(OrderPositionDto dto, Item item)>();
+
+                foreach (var posDto in dto.Positions)
+                {
+                    // Подтягиваем товар из актуального справочника (с актуальной ценой)
+                    var item = await _itemRepository.GetByIdAsync(posDto.ItemId);
+                    if (item == null)
+                    {
+                        _logger.LogError("Товар {ItemId} не найден в справочнике при оформлении заказа", posDto.ItemId);
+                        throw new Exception($"Товар {posDto.ItemId} не найден.");
+                    }
+
+                    validPositions.Add((posDto, item));
+
+                    // Рассчитываем итоговую сумму (Цена товара * Количество)
+                    totalOrderPrice += item.Price * posDto.Quantity;
+                }
+
                 var entity = OrderDto.FromDto(dto);
                 entity.Status = OrderStatus.Created;
                 entity.CreatedAt = DateTime.UtcNow;
+                entity.TotalPrice = totalOrderPrice; // <-- ФИКСИРУЕМ ОБЩУЮ СТОИМОСТЬ ЗАКАЗА
 
-                // 3. Умное распределение для постаматов
+                // ====================================================================
+                // 2. УМНОЕ РАСПРЕДЕЛЕНИЕ ДЛЯ ПОСТАМАТОВ
+                // ====================================================================
                 if (dto.DeliveryType == DeliveryType.Postamat)
                 {
                     if (!dto.PostamatId.HasValue)
@@ -80,30 +108,18 @@ namespace TaskControl.OrderModule.Application.Services
                         throw new ArgumentException("Не выбран постамат для доставки.");
                     }
 
-                    // Подготовка данных для алгоритма упаковки
-                    var itemsToPack = new List<ItemToPack>();
-                    foreach (var posDto in dto.Positions)
+                    // Используем уже загруженные товары (validPositions), чтобы не обращаться к БД повторно
+                    var itemsToPack = validPositions.Select(vp => new ItemToPack
                     {
-                        var item = await _itemRepository.GetByIdAsync(posDto.ItemId);
-                        if (item == null)
-                        {
-                            _logger.LogError("Товар {ItemId} не найден в справочнике при оформлении заказа", posDto.ItemId);
-                            throw new Exception($"Товар {posDto.ItemId} не найден.");
-                        }
+                        ItemId = vp.item.ItemId,
+                        Length = vp.item.Length.Millimeters,
+                        Width = vp.item.Width.Millimeters,
+                        Height = vp.item.Height.Millimeters,
+                        Quantity = vp.dto.Quantity
+                    }).ToList();
 
-                        itemsToPack.Add(new ItemToPack
-                        {
-                            ItemId = item.ItemId,
-                            Length = item.Length.Millimeters,
-                            Width = item.Width.Millimeters,
-                            Height = item.Height.Millimeters,
-                            Quantity = posDto.Quantity
-                        });
-                    }
-
-                    // Поиск ячейки через Bin Packing
                     _logger.LogDebug("Запуск алгоритма упаковки для постамата {PostamatId}", dto.PostamatId);
-                    int cellId = await _allocationService.ReservePostamatCellAsync(dto.PostamatId.Value, itemsToPack);
+                    int cellId = await _postamatAllocationService.ReservePostamatCellAsync(dto.PostamatId.Value, itemsToPack);
 
                     if (cellId == -1)
                     {
@@ -117,62 +133,59 @@ namespace TaskControl.OrderModule.Application.Services
                     entity.PostamatCellId = cellId;
                 }
 
-                // 4. Сохранение заказа
+                // ====================================================================
+                // 3. СОХРАНЕНИЕ ЗАКАЗА И ПОЗИЦИЙ
+                // ====================================================================
                 int orderId = await _repository.AddAsync(entity);
 
-                // 5. Сохранение позиций
-                foreach (var pDto in dto.Positions)
+                foreach (var vp in validPositions)
                 {
                     var pos = new OrderPosition
                     {
                         OrderId = orderId,
-                        ItemId = pDto.ItemId,
-                        Quantity = pDto.Quantity
+                        ItemId = vp.dto.ItemId,
+                        Quantity = vp.dto.Quantity,
+                        Price = vp.item.Price // <-- ФИКСИРУЕМ ЦЕНУ ЗА 1 ШТ. НА МОМЕНТ ПОКУПКИ
                     };
 
-                    // Сохраняем позицию заказа и получаем ее ID
                     int orderPositionId = await _positionRepository.AddAsync(pos);
 
-                    // Сразу же выполняем ЖЕСТКУЮ АЛЛОКАЦИЮ через инвентарный сервис
-                    bool isAllocated = await _allocationService.HardAllocateOrderItemsAsync(
+                    bool isAllocated = await _itemAllocationService.HardAllocateOrderItemsAsync(
                         dto.BranchId,
                         orderPositionId,
-                        pDto.ItemId,
-                        pDto.Quantity
+                        vp.dto.ItemId,
+                        vp.dto.Quantity
                     );
 
                     if (!isAllocated)
                     {
-                        // Если кто-то успел купить товар за те 2 секунды, пока клиент оформлял заказ
-                        throw new InvalidOperationException($"Критическая ошибка: Товар {pDto.ItemId} закончился на складе в процессе оформления.");
+                        throw new InvalidOperationException($"Критическая ошибка: Товар {vp.dto.ItemId} закончился на складе в процессе оформления.");
                     }
                 }
 
-                // 6. Вызов событий (обработчиков)
+                // ====================================================================
+                // 4. ВЫЗОВ СОБЫТИЙ
+                // ====================================================================
                 if (_orderCreatedHandlers != null)
                 {
                     foreach (var handler in _orderCreatedHandlers)
                     {
-                        // Используем HandleOrderCreatedAsync согласно структуре проекта
                         await handler.HandleOrderCreatedAsync(orderId, dto.BranchId);
                     }
                 }
 
-                _logger.LogInformation("Заказ успешно создан. ID: {OrderId}, Клиент: {CustomerId}", orderId, dto.CustomerId);
+                _logger.LogInformation("Заказ успешно создан. ID: {OrderId}, Сумма: {TotalPrice}, Клиент: {CustomerId}",
+                    orderId, totalOrderPrice, dto.CustomerId);
+
                 return orderId;
             }
             catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException)
             {
-                // Логгируем только непредвиденные системные ошибки (критические)
                 _logger.LogError(ex, "Критическая ошибка при создании заказа для клиента {CustomerId}", dto.CustomerId);
                 throw;
             }
-            catch (Exception)
-            {
-                // Бизнес-исключения пробрасываем дальше (они уже могли быть частично логированы как Warning)
-                throw;
-            }
         }
+
         public async Task<bool> Delete(int id)
         {
             if (_appSettings.EnableDetailedLogging)

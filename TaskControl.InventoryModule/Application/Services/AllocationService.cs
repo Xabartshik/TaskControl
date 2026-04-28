@@ -5,15 +5,17 @@ using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
+using TaskControl.OrderModule.Application.Interface;
 
 namespace TaskControl.InventoryModule.Application.Services
 {
     public interface IAllocationService
     {
         Task SoftAllocateOrderAsync(int orderId, int branchId);
+        Task<bool> HardAllocateOrderItemsAsync(int branchId, int orderPositionId, int itemId, int neededQuantity);
     }
 
-    public class AllocationService : IAllocationService, IOrderCreatedEventHandler
+    public class AllocationService : IItemAllocationService, IOrderCreatedEventHandler
     {
         private readonly IOrderPositionRepository _orderPosRepo;
         private readonly IItemPositionRepository _itemPosRepo;

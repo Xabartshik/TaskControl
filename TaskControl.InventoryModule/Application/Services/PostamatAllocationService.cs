@@ -8,7 +8,7 @@ using TaskControl.OrderModule.Application.Interface;
 
 namespace TaskControl.InventoryModule.Application.Services
 {
-    public class PostamatAllocationService : IInventoryAllocationService
+    public class PostamatAllocationService : IPostamatAllocationService
     {
         private readonly IPostamatCellRepository _cellRepository;
         private readonly IBoxPackingService _packingService;

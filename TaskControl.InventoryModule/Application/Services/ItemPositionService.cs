@@ -35,8 +35,17 @@ namespace TaskControl.OrderModule.Application.Services
 
             try
             {
-                var items = await _repository.GetAvailableItemsByBranchAsync(branchId, search);
-                return items;
+                // Проверяем, есть ли текст для поиска
+                if (string.IsNullOrWhiteSpace(search))
+                {
+                    // Строка поиска пустая (или null) — получаем ВСЕ доступные товары
+                    return await _repository.GetAvailableItemsByBranchAsync(branchId);
+                }
+                else
+                {
+                    // Строка поиска содержит текст — вызываем метод репозитория с фильтрацией
+                    return await _repository.GetAvailableItemsByBranchAsync(branchId, search);
+                }
             }
             catch (Exception ex)
             {
@@ -44,6 +53,7 @@ namespace TaskControl.OrderModule.Application.Services
                 throw;
             }
         }
+
         public async Task<int> Add(ItemPositionDto dto)
         {
             if (_appSettings.EnableDetailedLogging)
