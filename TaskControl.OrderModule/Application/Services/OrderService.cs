@@ -24,6 +24,7 @@ namespace TaskControl.OrderModule.Application.Services
         private readonly IPostamatAllocationService _postamatAllocationService;
         private readonly IItemAllocationService _itemAllocationService;
         private readonly IItemRepository _itemRepository;
+        private readonly IBranchRepository _branchRepository;
         private readonly AppSettings _appSettings;
 
         public OrderService(
@@ -33,6 +34,7 @@ namespace TaskControl.OrderModule.Application.Services
             IOrderPositionRepository positionRepository,
             IPostamatAllocationService postamatAllocationService,
             IItemRepository itemRepository,
+            IBranchRepository branchRepository,
             IItemAllocationService itemAllocationService,
             IEnumerable<IOrderCreatedEventHandler> orderCreatedHandlers)
         {
@@ -43,6 +45,7 @@ namespace TaskControl.OrderModule.Application.Services
             _orderCreatedHandlers = orderCreatedHandlers;
             _postamatAllocationService = postamatAllocationService;
             _itemRepository = itemRepository;
+            _branchRepository = branchRepository;
             _itemAllocationService = itemAllocationService;
         }
 
@@ -63,6 +66,13 @@ namespace TaskControl.OrderModule.Application.Services
                 {
                     _logger.LogWarning("Попытка создания пустого заказа для клиента {CustomerId}", dto.CustomerId);
                     throw new ArgumentException("Заказ не может быть пустым.");
+                }
+
+                // 1. ПОДМЕНА АДРЕСА ДЛЯ САМОВЫВОЗА И ЭКСПРЕССА
+                if (dto.DeliveryType == DeliveryType.Pickup || dto.DeliveryType == DeliveryType.Express)
+                {
+                    var branch = await _branchRepository.GetByIdAsync(dto.BranchId);
+                    dto.DestinationAddress = branch?.Address ?? "Адрес филиала не указан";
                 }
 
                 if (dto.DeliveryType != DeliveryType.Delivery && dto.DeliveryType != DeliveryType.Postamat)

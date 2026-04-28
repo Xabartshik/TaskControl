@@ -143,11 +143,12 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                 join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
                 join i in _db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
                 where p.BranchId == branchId
-                group ip by new { i.ItemId, i.Name } into g
+                group ip by new { i.ItemId, i.Name, i.Price } into g
                 select new
                 {
                     ItemId = g.Key.ItemId,
                     Name = g.Key.Name,
+                    Price = g.Key.Price,
                     TotalQuantity = g.Sum(x => x.Quantity)
                 }
             ).ToListAsync();
@@ -183,6 +184,7 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                     {
                         ItemId = stock.ItemId,
                         Name = stock.Name,
+                        Price = stock.Price,
                         AvailableQuantity = availableQty
                     });
                 }
