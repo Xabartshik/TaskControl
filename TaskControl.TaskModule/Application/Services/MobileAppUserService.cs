@@ -93,12 +93,16 @@ namespace TaskControl.TaskModule.Application.Services
 
                 return MobileAppUserDto.ToDto(newUser);
             }
-            catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
             {
-                _logger.LogError(ex, "Критическая ошибка при регистрации покупателя с логином: {Login}", request.Login);
+                // Пробрасываем бизнес-исключения как есть
                 throw;
             }
-            catch (Exception) { throw; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Непредвиденная ошибка в RegisterCustomerAsync для {Login}", request.Login);
+                throw new Exception("Не удалось завершить регистрацию из-за системной ошибки.");
+            }
         }
 
         public async Task<MobileAppUserDto?> GetByIdAsync(int id)

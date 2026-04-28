@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
@@ -504,7 +505,70 @@ namespace TaskControl.TaskModule.Presentation
                 return BadRequest(new { error = ex.Message });
             }
         }
+        /// <summary>
+        /// Регистрация нового покупателя
+        /// POST /api/v1/mobileappuser/register
+        /// </summary>
+        [AllowAnonymous]
+        [HttpPost("register")]
+        [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> Register([FromBody] RegisterCustomerRequestDto request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
+            try
+            {
+                _logger.LogInformation("HTTP-запрос на регистрацию нового покупателя: {Login}", request.Login);
+
+                // 1. Делегируем всю бизнес-логику сервису
+                var userDto = await _service.RegisterCustomerAsync(request);
+
+                // 2. Генерируем токен для автоматического входа
+                var token = _jwt.CreateToken(
+                    userDto.Id,
+                    userDto.Role,
+                    userDto.EmployeeId,
+                    userDto.CustomerId,
+                    userDto.BranchId
+                );
+
+                // 3. Подготавливаем пользователя для ответа (добавляем ФИО из реквеста)
+                var finalUser = userDto with
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName
+                };
+
+                // 4. Возвращаем LoginResponseDto
+                return CreatedAtAction(nameof(GetById), new { id = userDto.Id }, new LoginResponseDto
+                {
+                    AccessToken = token,
+                    TokenType = "Bearer",
+                    User = finalUser
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Ошибка валидации при регистрации {Login}: {Message}", request.Login, ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Сюда теперь будут падать все дубликаты (логин, телефон, почта)
+                _logger.LogWarning("Конфликт регистрации {Login}: {Message}", request.Login, ex.Message);
+                return Conflict(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                // Логируем ВЕСЬ стек, чтобы не гадать, что упало
+                _logger.LogError(ex, "Критический сбой регистрации {Login}", request.Login);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { error = "Внутренняя ошибка сервера. Попробуйте позже." });
+            }
+        }
         /// <summary>
         /// Получить пользователей по роли
         /// </summary>
