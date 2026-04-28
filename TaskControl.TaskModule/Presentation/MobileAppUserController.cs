@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
@@ -420,6 +421,7 @@ namespace TaskControl.TaskModule.Presentation
 
                 string? firstName = "User";
                 string? lastName = "";
+                WorkerRole? workerRole = null;
 
                 // 2) Если это сотрудник — обогащаем данными из EmployeeRepository
                 if (userDto.EmployeeId.HasValue)
@@ -429,6 +431,7 @@ namespace TaskControl.TaskModule.Presentation
                     {
                         firstName = employee.Name;
                         lastName = employee.Surname;
+                        workerRole = employee.Role;
                     }
                 }
                 // 3) Если это покупатель — данные будут браться из CustomerRepository (при наличии)
@@ -437,12 +440,15 @@ namespace TaskControl.TaskModule.Presentation
                     firstName = "Покупатель"; // В будущем: запрос к CustomerRepository
                 }
 
-                // 4) Генерируем JWT (используем либо EmployeeId, либо CustomerId как Identity)
-                var identityId = userDto.EmployeeId ?? userDto.CustomerId ?? 0;
-                var token = _jwt.CreateToken(identityId, userDto.Role, userDto.BranchId);
+                var token = _jwt.CreateToken(userDto.Id, userDto.Role, userDto.EmployeeId, userDto.CustomerId, userDto.BranchId);
 
                 // 5) Формируем финальный DTO с ФИО
-                var finalUser = userDto with { FirstName = firstName, LastName = lastName };
+                var finalUser = userDto with
+                {
+                    FirstName = firstName,
+                    LastName = lastName,
+                    WorkerRole = workerRole 
+                };
 
                 return Ok(new LoginResponseDto
                 {

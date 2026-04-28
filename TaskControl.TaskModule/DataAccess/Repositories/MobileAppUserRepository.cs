@@ -62,7 +62,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     entity.CreatedAt = DateTime.UtcNow;
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {

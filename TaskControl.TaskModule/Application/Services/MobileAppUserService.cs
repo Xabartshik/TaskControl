@@ -4,7 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
@@ -18,14 +21,84 @@ namespace TaskControl.TaskModule.Application.Services
     public class MobileAppUserService : IMobileAppUserService
     {
         private readonly IMobileAppUserRepository _repository;
+        private readonly ICustomerService _customerService;
         private readonly ILogger<MobileAppUserService> _logger;
 
         public MobileAppUserService(
             IMobileAppUserRepository repository,
-            ILogger<MobileAppUserService> logger)
+            ILogger<MobileAppUserService> logger,
+            ICustomerService customerService)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _customerService = customerService ?? throw new ArgumentNullException(nameof(customerService));
+        }
+        public async Task<MobileAppUserDto> RegisterCustomerAsync(RegisterCustomerRequestDto request)
+        {
+            _logger.LogInformation("Начало регистрации нового покупателя с логином: {Login}", request.Login);
+
+            try
+            {
+                // 1. Проверка обязательных полей
+                if (string.IsNullOrWhiteSpace(request.Login) || string.IsNullOrWhiteSpace(request.Password))
+                {
+                    throw new ArgumentException("Логин и пароль обязательны для заполнения.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Phone) && string.IsNullOrWhiteSpace(request.Email))
+                {
+                    throw new ArgumentException("Необходимо указать хотя бы номер телефона или Email.");
+                }
+
+                // 2. Проверка уникальности логина в MobileAppUser
+                var existingUser = await _repository.GetByLoginAsync(request.Login);
+                if (existingUser != null)
+                {
+                    _logger.LogWarning("Попытка регистрации с уже существующим логином: {Login}", request.Login);
+                    throw new InvalidOperationException("Пользователь с таким логином уже существует.");
+                }
+
+                // 3. Создание профиля Customer через CustomerService
+                // CustomerService сам проверит уникальность Phone и Email
+                var customerDto = await _customerService.CreateCustomerAsync(new TaskControl.InformationModule.Application.DTOs.CustomerDto
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Phone = request.Phone, // Опционально, но желательно
+                    Email = request.Email  // Опционально
+                });
+
+                if (customerDto == null || customerDto.CustomerId == 0)
+                {
+                    throw new Exception("Не удалось создать профиль покупателя.");
+                }
+
+                // 4. Создание учетной записи MobileAppUser
+                var passwordHash = HashPassword(request.Password);
+
+                var newUser = new MobileAppUser(
+                    login: request.Login,
+                    passwordHash: passwordHash,
+                    role: MobileUserRole.Customer,
+                    employeeId: null,
+                    customerId: customerDto.CustomerId, // Привязываем созданного клиента
+                    branchId: null // Покупатели пока не привязаны к конкретному филиалу жестко
+                );
+
+                var newUserId = await _repository.AddAsync(newUser);
+                newUser.Id = newUserId;
+
+                _logger.LogInformation("Успешно зарегистрирован покупатель. UserId: {UserId}, CustomerId: {CustomerId}",
+                    newUserId, customerDto.CustomerId);
+
+                return MobileAppUserDto.ToDto(newUser);
+            }
+            catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException)
+            {
+                _logger.LogError(ex, "Критическая ошибка при регистрации покупателя с логином: {Login}", request.Login);
+                throw;
+            }
+            catch (Exception) { throw; }
         }
 
         public async Task<MobileAppUserDto?> GetByIdAsync(int id)
@@ -282,24 +355,80 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
-        public async Task<MobileAppUserDto> ValidateCredentialsAsync(string username, string password)
+        public async Task<MobileAppUserDto?> ValidateCredentialsAsync(string identifier, string password)
         {
-            _logger.LogInformation("Попытка входа пользователя: {username}", username);
+            _logger.LogInformation("Попытка авторизации для идентификатора: {Identifier}", identifier);
 
-            var user = await _repository.GetByLoginAsync(username);
+            try
+            {
+                if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(password))
+                    return null;
 
-            if (user == null)
-                throw new InvalidOperationException("Неверный логин или пароль");
+                MobileAppUser? user = null;
 
-            if (!user.IsActive)
-                throw new InvalidOperationException("Аккаунт деактивирован");
+                // 1. Пытаемся определить тип идентификатора с помощью регулярных выражений
 
-            var passwordHash = HashPassword(password);
-            if (user.PasswordHash != passwordHash)
-                throw new InvalidOperationException("Неверный логин или пароль");
+                // Простая проверка на Email (наличие @ и точки)
+                bool isEmail = Regex.IsMatch(identifier, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
 
-            return MobileAppUserDto.ToDto(user);
+                // Проверка на телефон (начинается с +, допускает цифры, скобки, пробелы и тире. Минимум 10 цифр).
+                bool isPhone = Regex.IsMatch(identifier, @"^\+?[\d\s\-\(\)]{10,20}$");
+
+                // 2. Ищем пользователя в зависимости от типа
+                if (isEmail || isPhone)
+                {
+                    _logger.LogDebug("Идентификатор '{Identifier}' распознан как {Type}",
+                        identifier, isEmail ? "Email" : "Телефон");
+
+                    // Ищем клиента в InformationModule
+                    var customer = isEmail
+                        ? await _customerService.GetByEmailAsync(identifier)
+                        : await _customerService.GetByPhoneAsync(identifier.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "")); // Нормализация телефона
+
+                    if (customer != null && customer.CustomerId > 0)
+                    {
+                        // Если клиент найден, ищем его учетку MobileAppUser по CustomerId
+                        var allUsers = await _repository.GetAllAsync();
+                        user = allUsers.FirstOrDefault(u => u.CustomerId == customer.CustomerId);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("Идентификатор '{Identifier}' распознан как обычный Логин", identifier);
+                    // Ищем по прямому логину (для сотрудников это EmployeeID строкой, для клиентов - придуманный ник)
+                    user = await _repository.GetByLoginAsync(identifier);
+                }
+
+                // 3. Проверка пароля и активности
+                if (user == null)
+                {
+                    _logger.LogWarning("Пользователь с идентификатором {Identifier} не найден", identifier);
+                    return null;
+                }
+
+                if (!user.IsActive)
+                {
+                    _logger.LogWarning("Попытка входа деактивированного пользователя: {Login}", user.Login);
+                    return null;
+                }
+
+                string inputHash = HashPassword(password);
+                if (user.PasswordHash != inputHash)
+                {
+                    _logger.LogWarning("Неверный пароль для пользователя: {Login}", user.Login);
+                    return null;
+                }
+
+                _logger.LogInformation("Успешная авторизация пользователя: {Login}", user.Login);
+                return MobileAppUserDto.ToDto(user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при валидации учетных данных для {Identifier}", identifier);
+                throw;
+            }
         }
+
         public async Task<bool> ResetPasswordAsync(int employeeId, string newPassword)
         {
             _logger.LogInformation("Сброс пароля для пользователя с ID сотрудника: {employeeId}", employeeId);

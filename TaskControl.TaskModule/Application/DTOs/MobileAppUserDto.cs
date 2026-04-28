@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
+using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.DTOs
@@ -29,6 +30,8 @@ namespace TaskControl.TaskModule.Application.DTOs
         /// </summary>
         [Required]
         public MobileUserRole Role { get; init; }
+
+        public WorkerRole? WorkerRole { get; set; }
 
         // Поля для отображения в UI (заполняются сервисом при получении данных)
         public string? FirstName { get; set; }
