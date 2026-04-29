@@ -27,6 +27,29 @@ namespace TaskControl.InformationModule.Services
             _appSettings = options.Value;
         }
 
+        public async Task<CheckIOEmployeeDto?> GetLastByEmployeeId(int employeeId)
+        {
+            _logger.LogInformation("Запрос последней отметки для сотрудника ID: {EmployeeId}", employeeId);
+            try
+            {
+                // Получаем все отметки сотрудника через репозиторий
+                var records = await _repository.GetAllAsync();
+                var lastRecord = records
+                    .Where(r => r.EmployeeId == employeeId)
+                    .OrderByDescending(r => r.CheckTimeStamp)
+                    .FirstOrDefault();
+
+                if (lastRecord == null) return null;
+
+                return CheckIOEmployeeDto.ToDto(lastRecord);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении последней отметки сотрудника {EmployeeId}", employeeId);
+                throw;
+            }
+        }
+
         public async Task<int> Add(CheckIOEmployeeDto dto)
         {
             if (_appSettings.EnableDetailedLogging)

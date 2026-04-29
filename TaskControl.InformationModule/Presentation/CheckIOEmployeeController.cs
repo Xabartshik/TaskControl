@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.InformationModule.Services;
 
 namespace TaskControl.InformationModule.Presentation.Controllers
 {
@@ -20,6 +21,17 @@ namespace TaskControl.InformationModule.Presentation.Controllers
         {
             var records = await _service.GetAll();
             return Ok(records);
+        }
+
+        [HttpGet("last/{employeeId}")]
+        public async Task<ActionResult<CheckIOEmployeeDto>> GetLastByEmployeeId(int employeeId)
+        {
+            var record = await ((CheckIOEmployeeService)_service).GetLastByEmployeeId(employeeId);
+            if (record == null)
+            {
+                return NotFound(new { Message = "Отметок не найдено" });
+            }
+            return Ok(record);
         }
 
         [HttpGet("{id}")]

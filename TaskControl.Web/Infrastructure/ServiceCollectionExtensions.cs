@@ -81,11 +81,10 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<ActiveEmployeeService>();
 
             services.AddScoped<ICourierCapabilityRepository, CourierCapabilityRepository>();
-
-            // Если будешь создавать профили клиентов:
             services.AddScoped<ICustomerRepository, CustomerRepository>();
-            // Добавь регистрацию сервиса покупателей:
             services.AddScoped<ICustomerService, CustomerService>();
+
+            services.AddSingleton<IQRTokenService, QRTokenService>();
 
             return services;
         }

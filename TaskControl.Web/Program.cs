@@ -13,6 +13,8 @@ using TaskControl.InventoryModule.DataAccess.Infrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using Hangfire;
 using Hangfire.PostgreSql;
+using TaskControl.InformationModule.Services.BackgroundServices;
+using TaskControl.InformationModule.Services.Hubs;
 
 namespace TaskControl.Web
 {
@@ -49,6 +51,8 @@ namespace TaskControl.Web
             builder.Services.AddHangfireServer();
 
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            builder.Services.AddSignalR();
+            builder.Services.AddHostedService<QRGeneratorService>();
             builder.Services.AddControllers()
             .AddJsonOptions(options =>
             {
@@ -65,6 +69,7 @@ namespace TaskControl.Web
                 app.UseSwagger();
                 app.UseSwaggerUI();
 
+                app.UseStaticFiles();
 
                 app.UseHttpsRedirection();
 
@@ -72,11 +77,13 @@ namespace TaskControl.Web
 
                 app.UseHangfireDashboard("/hangfire");
 
+
+
                 RecurringJob.AddOrUpdate<TaskControl.TaskModule.Application.Services.OrderAssemblyPlannerJob>(
                     "order-assembly-planner",
                     job => job.ExecuteAsync(),
                     "*/1 * * * *"); // Каждые 5 минут
-
+                app.MapHub<QRHub>("/qrhub");
                 app.MapControllers();
                 Log.Information("Приложение настроено и готово к работе на порту {Port}",
     builder.Configuration["urls"] ?? "default");

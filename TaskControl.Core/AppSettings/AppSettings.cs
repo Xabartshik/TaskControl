@@ -11,5 +11,6 @@ namespace TaskControl.Core.AppSettings
     {
         public const string SectionName = "AppSettings";
         public bool EnableDetailedLogging { get; set; } = false;
+        public string QrHmacSecretKey { get; set; } = string.Empty;
     }
 }
