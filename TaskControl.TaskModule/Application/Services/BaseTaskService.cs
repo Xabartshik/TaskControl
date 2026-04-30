@@ -11,6 +11,7 @@ using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -38,6 +39,8 @@ namespace TaskControl.TaskModule.Application.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _appSettings = options?.Value ?? new AppSettings();
         }
+
+
 
         public async Task<int> Add(BaseTaskDto dto)
         {
@@ -226,6 +229,36 @@ namespace TaskControl.TaskModule.Application.Services
                 string.Join(", ", selectedIds), workLoads.Count);
 
             return selectedIds;
+        }
+
+        public async Task<bool> UpdateTaskStatusAsync(int taskId, TaskStatus newStatus)
+        {
+            // 1. Достаем задачу напрямую из базы данных (Модель базы данных, а не DTO)
+            var taskModel = await _repository.GetByIdAsync(taskId);
+
+            if (taskModel == null)
+            {
+                _logger.LogWarning("Попытка обновить статус для несуществующей задачи с ID {TaskId}", taskId);
+                return false;
+            }
+
+            // 2. Если статус уже такой, какой нужно — ничего не делаем (экономим запрос к БД)
+            if (taskModel.Status == newStatus)
+            {
+                return true;
+            }
+
+            // 3. Обновляем статус
+            var oldStatus = taskModel.Status;
+            taskModel.Status = newStatus;
+
+            // 4. Сохраняем изменения в базу данных
+            await _repository.UpdateAsync(taskModel);
+
+            _logger.LogInformation("Статус базовой задачи {TaskId} изменен с {OldStatus} на {NewStatus}",
+                taskId, oldStatus, newStatus);
+
+            return true;
         }
     }
 }

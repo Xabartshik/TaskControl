@@ -187,15 +187,12 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IBoxPackingService, BoxPackingService>();
             services.AddScoped<IOrderAssemblyExecutionService, OrderAssemblyExecutionService>();
             services.AddScoped<OrderAssemblyPlannerJob>();
-
-            services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.InventoryWorkloadProvider>();
             services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.OrderAssemblyWorkloadProvider>();
             services.AddScoped<TaskWorkloadAggregator>();
 
             services.AddScoped<WorkerTasksController>();
 
-            services.AddScoped<ITaskStateProvider, OrderAssemblyTaskStateProvider>();
-            services.AddScoped<ITaskStateProvider, InventoryTaskStateProvider>();
+            services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
 
             return services;

@@ -61,7 +61,7 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                     throw new ArgumentException("Количество должно быть положительным", nameof(entity.Quantity));
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {

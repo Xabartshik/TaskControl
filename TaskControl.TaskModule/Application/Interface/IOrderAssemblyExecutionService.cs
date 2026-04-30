@@ -80,5 +80,6 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode);
         Task ReportMissingItem(int lineId, string reason);
         Task CompleteAssemblyTask(int assignmentId);
+        Task ApplyItemMovementsForCompletedTaskAsync(int taskId);
     }
 }

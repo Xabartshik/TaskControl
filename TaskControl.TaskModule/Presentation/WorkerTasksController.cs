@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.Domain;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
@@ -11,21 +13,23 @@ namespace TaskControl.TaskModule.Presentation.Controllers
     [Route("api/v1/[controller]")]
     public class WorkerTasksController : ControllerBase
     {
-        private readonly TaskWorkloadAggregator _aggregator;
+        private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly ITaskExecutionAggregator _taskExecutionAggregator;
         private readonly IBaseTaskService _baseTaskService;
+        private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService; 
 
-        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator, IBaseTaskService baseTaskService)
+        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator, IBaseTaskService baseTaskService, IOrderAssemblyExecutionService orderAssemblyExecutionService)
         {
-            _aggregator = aggregator;
+            _taskWorkloadAggregator = aggregator;
             _taskExecutionAggregator = taskExecutionAggregator;
             _baseTaskService = baseTaskService;
+            _orderAssemblyExecutionService = orderAssemblyExecutionService;
         }
 
         [HttpGet("{workerId}/pending")]
         public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPendingTasks(int workerId)
         {
-            var tasks = await _aggregator.GetAllPendingTasksAsync(workerId);
+            var tasks = await _taskWorkloadAggregator.GetAllPendingTasksAsync(workerId);
             return Ok(tasks);
         }
 
@@ -44,7 +48,12 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             }
             // Вызываем метод и получаем результат (успех/провал)
             bool isStarted = await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
-
+            // Если это первый человек, который нажал "Начать", задача переходит в работу для всех.
+            if (baseTask.Status == TaskStatus.New || baseTask.Status == TaskStatus.Assigned)
+            {
+                var updatedTask = baseTask with { Status = TaskStatus.InProgress };
+                await _baseTaskService.Update(updatedTask);
+            }
             if (!isStarted)
             {
                 // Возвращаем ошибку, если задача не найдена или не принадлежит работнику
@@ -52,6 +61,57 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             }
 
             return Ok();
+        }
+
+        [HttpPost("{taskId}/complete")]
+        public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null) return NotFound("Задача не найдена.");
+
+            // 1. Закрываем назначение для конкретного человека (и помощника, если это главный)
+            bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId);
+            if (!success) return BadRequest("Не удалось завершить назначение.");
+
+            // 2. Проверяем, закрыта ли задача полностью
+            bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
+
+            if (isFullyCompleted)
+            {
+                // 3. Закрываем глобальную задачу
+                await _baseTaskService.UpdateTaskStatusAsync(baseTask.TaskId, TaskStatus.Completed);
+                await ExecutePostCompletionLogicAsync(taskId, baseTask.Type);
+            }
+
+            return Ok(new { IsFullyCompleted = isFullyCompleted });
+        }
+
+        private async Task ExecutePostCompletionLogicAsync(int taskId, string taskType)
+        {
+            switch (taskType)
+            {
+                case "OrderAssembly":
+                    // Применяем движения товаров после сборки заказа
+                    await _orderAssemblyExecutionService.ApplyItemMovementsForCompletedTaskAsync(taskId);
+                    break;
+
+                case "Inventory":
+                    // Задел на будущее: если после инвентаризации нужно, 
+                    // например, списать недостачи или обновить статусы ячеек
+                    // await _inventoryProcessService.ApplyInventoryResultsAsync(taskId);
+                    break;
+
+                case "Relocation":
+                    // Задел на будущее: перемещение между зонами
+                    // await _relocationService.CompleteRelocationAsync(taskId);
+                    break;
+
+                default:
+                    // Если для типа задачи нет специфичной складской логики завершения — просто ничего не делаем
+                    // Можно добавить логгер, если хотите отслеживать такие случаи:
+                    // _logger.LogInformation("Для типа задачи {TaskType} не предусмотрена специфичная логика завершения", taskType);
+                    break;
+            }
         }
     }
 }

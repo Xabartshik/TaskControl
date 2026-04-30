@@ -3,7 +3,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Mapper;
 using TaskControl.TaskModule.Domain;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
@@ -12,15 +14,18 @@ namespace TaskControl.TaskModule.Application.Providers
     public class OrderAssemblyWorkloadProvider : ITaskWorkloadProvider
     {
         private readonly IOrderAssemblyAssignmentRepository _assemblyRepo;
+        //private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService;
         private readonly IBaseTaskService _baseTaskService;
 
         public string TaskType => "OrderAssembly";
 
         public OrderAssemblyWorkloadProvider(
             IOrderAssemblyAssignmentRepository assemblyRepo,
+            //IOrderAssemblyExecutionService orderAssemblyExecutionService,
             IBaseTaskService baseTaskService)
         {
             _assemblyRepo = assemblyRepo;
+            //_orderAssemblyExecutionService = orderAssemblyExecutionService;
             _baseTaskService = baseTaskService;
         }
 
@@ -38,6 +43,8 @@ namespace TaskControl.TaskModule.Application.Providers
                 .Where(t => (int)t.Status == 0 || (int)t.Status == 1)
                 .Sum(t => t.Complexity);
         }
+
+
 
         public async Task<bool> HasNewAssignmentsAsync(int workerId)
         {
@@ -74,19 +81,6 @@ namespace TaskControl.TaskModule.Application.Providers
                 });
             }
             return result;
-        }
-
-        public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
-        {
-            var userAssignments = await _assemblyRepo.GetByUserIdAsync(workerId);
-            var assignment = userAssignments.FirstOrDefault(a => a.TaskId == taskId);
-
-            if (assignment == null)
-                return false;
-
-            assignment.Status = Domain.AssignmentStatus.InProgress;
-            await _assemblyRepo.UpdateAsync(assignment);
-            return true;
         }
     }
 }

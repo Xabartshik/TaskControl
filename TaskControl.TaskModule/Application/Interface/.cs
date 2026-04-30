@@ -1,0 +1,9 @@
+﻿//namespace TaskControl.TaskModule.Application.Interface;
+
+//public interface ITaskStateProvider
+//{
+//    // Ставит на паузу все активные назначения работника в рамках конкретного модуля
+//    Task PauseActiveTasksAsync(int workerId, int excludeTaskId);
+//    // Пытается активировать задачу. Возвращает true, если задача принадлежит этому модулю и была успешно переведена в InProgress
+//    Task<bool> TryActivateTaskAsync(int taskId, int workerId);
+//}

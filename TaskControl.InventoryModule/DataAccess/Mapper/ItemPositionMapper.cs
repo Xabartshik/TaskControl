@@ -34,6 +34,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 ItemId = model.ItemId,
                 PositionId = model.PositionId,
                 Quantity = model.Quantity
+
             };
         }
     }

@@ -54,18 +54,9 @@ namespace TaskControl.TaskModule.Application.Services
                 var moduleTasks = await provider.GetAvailableTasksAsync(workerId);
                 allTasks.AddRange(moduleTasks);
             }
-            
+
             return allTasks.OrderByDescending(t => t.PriorityLevel).ThenBy(t => t.CreatedAt);
         }
 
-        public async Task<bool> StartTaskAsync(int taskId, string taskType, int workerId)
-        {
-            var provider = _providers.FirstOrDefault(p => p.TaskType == taskType);
-            
-            if (provider == null)
-                throw new ArgumentException($"Провайдер для типа задачи '{taskType}' не зарегистрирован в системе.");
-
-            return await provider.TryStartTaskAsync(taskId, workerId);
-        }
     }
 }

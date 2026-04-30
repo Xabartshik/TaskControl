@@ -16,7 +16,12 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
         private readonly ITaskDataConnection _db;
         private readonly ILogger<OrderAssemblyAssignmentRepository> _logger;
 
-
+        public async Task<List<OrderAssemblyAssignmentModel>> GetAllByTaskIdAsync(int taskId)
+        {
+            return await _db.GetTable<OrderAssemblyAssignmentModel>()
+                .Where(a => a.TaskId == taskId)
+                .ToListAsync();
+        }
         public async Task<OrderAssemblyAssignmentModel> GetByTaskAndUserAsync(int taskId, int workerId)
         {
             return await _db.GetTable<OrderAssemblyAssignmentModel>()

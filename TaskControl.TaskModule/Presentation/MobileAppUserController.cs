@@ -666,13 +666,13 @@ namespace TaskControl.TaskModule.Presentation
             return Ok(tasks);
         }
 
-        [HttpPost("start")]
-        public async Task<ActionResult> StartTask([FromBody] StartTaskRequest request)
-        {
-            bool success = await _aggregator.StartTaskAsync(request.TaskId, request.TaskType, request.WorkerId);
-            if (!success) return BadRequest("Не удалось запустить задачу");
-            return Ok();
-        }
+        //[HttpPost("start")]
+        //public async Task<ActionResult> StartTask([FromBody] StartTaskRequest request)
+        //{
+        //    bool success = await _taskExecutionAggregator.StartTaskAsync(request.TaskId, request.TaskType, request.WorkerId);
+        //    if (!success) return BadRequest("Не удалось запустить задачу");
+        //    return Ok();
+        //}
     }
 
     /// <summary>

@@ -289,11 +289,10 @@ namespace TaskControl.TaskModule.Application.Services
                 helperAssignment.Id = await _db.InsertWithInt32IdentityAsync(helperAssignment);
             }
 
-            // 6. Создание строк сборки (используем наш итоговый список finalPackedItems)
+            // 6. Создание строк сборки (Кладем товары ТОЛЬКО главному сотруднику)
             foreach (var packedBlock in finalPackedItems)
             {
                 var original = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
-                bool isHeavy = original.Weight >= _appSettings.MaxWeightPerWorker;
 
                 await _db.InsertAsync(new OrderAssemblyLineModel
                 {
@@ -305,18 +304,20 @@ namespace TaskControl.TaskModule.Application.Services
                     Status = 0
                 });
 
-                if (isHeavy && helperAssignment != null)
-                {
-                    await _db.InsertAsync(new OrderAssemblyLineModel
-                    {
-                        OrderAssemblyAssignmentId = helperAssignment.Id,
-                        ItemPositionId = original.ItemPositionId,
-                        SourcePositionId = original.SourcePositionId,
-                        TargetPositionId = packedBlock.TargetPositionId,
-                        Quantity = packedBlock.Quantity,
-                        Status = 0
-                    });
-                }
+                // ВАЖНО: БОЛЬШЕ НЕ добавляем строку в helperAssignment
+                // Помощник нужен только для отслеживания его статуса готовности, сканировать товары он не должен.
+            }
+
+            // Добавляем отправку уведомления (Push/SignalR) помощнику, если он есть
+            if (needsHelper && helperAssignment != null)
+            {
+                _logger.LogInformation("Отправка уведомления помощнику (Worker ID: {WorkerId}) о совместной задаче {TaskId}",
+                    sortedWorkers[1], taskId);
+
+                // Вызовите здесь ваш сервис уведомлений. Пример:
+                // await _notificationService.SendNotificationAsync(
+                //     sortedWorkers[1], 
+                //     $"Требуется помощь в сборке заказа #{orderId}. Нужна грузовая тележка!");
             }
 
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, "Assembly").UpdateAsync();

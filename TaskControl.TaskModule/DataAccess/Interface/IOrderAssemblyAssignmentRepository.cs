@@ -15,5 +15,6 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         Task<int> AddAsync(OrderAssemblyAssignment assignment);
         Task<int> UpdateAsync(OrderAssemblyAssignment assignment);
         Task<OrderAssemblyAssignmentModel> GetByTaskAndUserAsync(int taskId, int workerId);
+        Task<List<OrderAssemblyAssignmentModel>> GetAllByTaskIdAsync(int taskId);
     }
 }

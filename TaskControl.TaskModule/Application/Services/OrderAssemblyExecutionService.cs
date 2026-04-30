@@ -132,6 +132,83 @@ namespace TaskControl.TaskModule.Application.Services
             await _lineRepo.UpdateAsync(line);
         }
 
+        public async Task ApplyItemMovementsForCompletedTaskAsync(int taskId)
+{
+    var conn = (DataConnection)_db;
+    using var transaction = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // 1. Находим все назначения этой задачи
+        var assignmentIds = await _db.GetTable<OrderAssemblyAssignmentModel>()
+            .Where(a => a.TaskId == taskId)
+            .Select(a => a.Id)
+            .ToListAsync();
+
+        // 2. Достаем все успешно размещенные строки (Статус Placed. Обычно это int = 2)
+        var completedLines = await _db.GetTable<OrderAssemblyLineModel>()
+            .Where(l => assignmentIds.Contains(l.OrderAssemblyAssignmentId) && l.Status == 2) 
+            .ToListAsync();
+
+        foreach (var line in completedLines)
+        {
+            // 3. Достаем исходную позицию (откуда забрали)
+            var sourceItemPos = await _db.GetTable<ItemPositionModel>()
+                .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+
+            if (sourceItemPos == null) continue;
+
+            // Вычитаем количество (но не удаляем запись, если там еще что-то осталось)
+            sourceItemPos.Quantity -= line.Quantity;
+            await _db.UpdateAsync(sourceItemPos);
+
+            // 4. Ищем, есть ли уже такой товар в целевой ячейке (PICKUP или BULK)
+            var targetItemPos = await _db.GetTable<ItemPositionModel>()
+                .FirstOrDefaultAsync(ip => ip.PositionId == line.TargetPositionId && ip.ItemId == sourceItemPos.ItemId);
+
+            int newTargetItemPosId;
+
+            if (targetItemPos != null)
+            {
+                // Если товар там уже лежит — просто плюсуем количество
+                targetItemPos.Quantity += line.Quantity;
+                await _db.UpdateAsync(targetItemPos);
+                newTargetItemPosId = targetItemPos.Id;
+            }
+            else
+            {
+                // Если товара там еще не было — создаем новую запись
+                var newItemPos = new ItemPositionModel
+                {
+                    PositionId = line.TargetPositionId,
+                    ItemId = sourceItemPos.ItemId,
+                    Quantity = line.Quantity,
+                    // Добавьте другие обязательные поля, если они есть
+                };
+                newTargetItemPosId = await _db.InsertWithInt32IdentityAsync(newItemPos);
+            }
+
+            // 5. ВАЖНО: Обновляем резерв заказа!
+            // Иначе система выдачи будет думать, что товар все еще в ячейке №4
+            var reservation = await _db.GetTable<OrderReservationModel>()
+                .FirstOrDefaultAsync(r => r.ItemPositionId == line.ItemPositionId);
+
+            if (reservation != null)
+            {
+                reservation.ItemPositionId = newTargetItemPosId;
+                await _db.UpdateAsync(reservation);
+            }
+        }
+
+        await transaction.CommitAsync();
+    }
+    catch (Exception)
+    {
+        await transaction.RollbackAsync();
+        throw;
+    }
+}
+
         public async Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode)
         {
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
