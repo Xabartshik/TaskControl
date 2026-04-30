@@ -18,6 +18,7 @@ using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Models;
+using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -27,6 +28,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IBoxPackingService _packingService;
         private readonly ILogger<OrderAssemblyPlannerJob> _logger;
         private readonly AppSettings _appSettings;
+        private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly IBaseTaskService _baseTaskService;
 
         public OrderAssemblyPlannerJob(
@@ -34,6 +36,7 @@ namespace TaskControl.TaskModule.Application.Services
             IBoxPackingService packingService,
             ILogger<OrderAssemblyPlannerJob> logger,
             IOptions<AppSettings> appSettings,
+            TaskWorkloadAggregator taskWorkloadAggregator,
             IBaseTaskService baseTaskService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -41,6 +44,7 @@ namespace TaskControl.TaskModule.Application.Services
             _logger = logger;
             _appSettings = appSettings?.Value ?? new AppSettings();
             _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
+            _taskWorkloadAggregator = taskWorkloadAggregator ?? throw new ArgumentNullException(nameof(taskWorkloadAggregator));
         }
 
         public async Task ExecuteAsync()
@@ -131,7 +135,6 @@ namespace TaskControl.TaskModule.Application.Services
 
         private async Task<bool> ProcessOrderInternal(int orderId, int branchId, DateTime? deliveryDate)
         {
-            // TODO: Убрать мягкую аллокацию, ввести жесткую аллокацию
             // 1. HARD ALLOCATION: Перевод "мягких" резервов в "жесткие"
             var softReservations = await (from ores in _db.GetTable<OrderReservationModel>()
                                           join op in _db.GetTable<OrderPositionModel>() on ores.OrderPositionId equals op.UniqueId
@@ -153,7 +156,6 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     int neededQty = sRes.Quantity;
 
-                    // Ищем свободные остатки
                     var stocksQuery = from ip in _db.GetTable<ItemPositionModel>()
                                       join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
                                       where ip.ItemId == sRes.ItemId && p.BranchId == branchId
@@ -174,7 +176,6 @@ namespace TaskControl.TaskModule.Application.Services
                     foreach (var stock in stocks)
                     {
                         if (neededQty <= 0) break;
-
                         int takeQty = Math.Min(neededQty, stock.AvailableQty);
 
                         if (isFirst)
@@ -196,13 +197,12 @@ namespace TaskControl.TaskModule.Application.Services
                                 CreatedAt = DateTime.UtcNow
                             });
                         }
-
                         neededQty -= takeQty;
                     }
 
                     if (neededQty > 0)
                     {
-                        _logger.LogWarning("|   ! недостаточно товара на полках для перевода в Hard Allocation (ItemId: {ItemId})", sRes.ItemId);
+                        _logger.LogWarning("|   ! недостаточно товара на полках для (ItemId: {ItemId})", sRes.ItemId);
                         hardAllocationFailed = true;
                         break;
                     }
@@ -215,7 +215,7 @@ namespace TaskControl.TaskModule.Application.Services
                 }
             }
 
-            // 2. Получаем позиции для сборки (с физическими координатами)
+            // 2. Получаем позиции для сборки (с весом из ItemModel)
             var orderItems = await (from op in _db.GetTable<OrderPositionModel>()
                                     join ores in _db.GetTable<OrderReservationModel>() on op.UniqueId equals ores.OrderPositionId
                                     join ip in _db.GetTable<ItemPositionModel>() on ores.ItemPositionId equals ip.Id
@@ -230,18 +230,25 @@ namespace TaskControl.TaskModule.Application.Services
                                         Length = i.Length,
                                         Width = i.Width,
                                         Height = i.Height,
+                                        Weight = i.Weight, // Вес для скоринга и детекции тяжести
                                         SourcePositionId = p.PositionId,
                                         Quantity = ores.Quantity
                                     }).ToListAsync();
 
-            if (orderItems.Count == 0)
-            {
-                _logger.LogWarning("|   ! нет позиций для сборки, пропуск");
-                return false;
-            }
+            if (orderItems.Count == 0) return false;
 
-            _logger.LogInformation("|   > найдено {Count} позиций для сборки", orderItems.Count);
+            // 3. Анализ тяжести и расчет сложности
+            var heavyItems = orderItems.Where(x => x.Weight >= _appSettings.MaxWeightPerWorker).ToList();
+            bool needsHelper = heavyItems.Any();
 
+            double mainWeight = orderItems.Where(x => x.Weight < _appSettings.MaxWeightPerWorker).Sum(x => x.Weight * x.Quantity)
+                                + (heavyItems.Sum(x => x.Weight * x.Quantity) / 2);
+            double helperWeight = heavyItems.Sum(x => x.Weight * x.Quantity) / 2;
+
+            double mainComplexity = 1.0 + (mainWeight * _appSettings.WeightCoefficient);
+            double helperComplexity = needsHelper ? (0.5 + (helperWeight * _appSettings.WeightCoefficient)) : 0;
+
+            // 4. Планирование ячеек (PICKUP)
             var itemsToPack = orderItems.Select(x => new ItemToPack
             {
                 OrderPositionId = x.OrderPositionId,
@@ -252,116 +259,113 @@ namespace TaskControl.TaskModule.Application.Services
                 Quantity = x.Quantity
             }).ToList();
 
-            // Ищем свободные ячейки PICKUP
             var occupiedCellIds = _db.GetTable<ItemPositionModel>().Select(ip => ip.PositionId);
             var availableCells = await _db.GetTable<PositionModel>()
-                .Where(p => p.BranchId == branchId
-                         && p.ZoneCode == "PICKUP"
-                         && p.Status == "Active"
-                         && !occupiedCellIds.Contains(p.PositionId))
-                .Select(p => new CellToPackInto
-                {
-                    PositionId = p.PositionId,
-                    Length = p.Length,
-                    Width = p.Width,
-                    Height = p.Height
-                }).ToListAsync();
+                .Where(p => p.BranchId == branchId && p.ZoneCode == "PICKUP" && p.Status == "Active" && !occupiedCellIds.Contains(p.PositionId))
+                .Select(p => new CellToPackInto { PositionId = p.PositionId, Length = p.Length, Width = p.Width, Height = p.Height })
+                .ToListAsync();
 
-            // Распределяем товары по ячейкам PICKUP
             var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, availableCells);
-
             if (!packingResult.IsFullyPacked)
             {
-                _logger.LogWarning("|   ! не удалось распланировать весь заказ: недостаточно объема в свободных ячейках PICKUP");
                 await RollbackHardAllocationAsync(orderId, softReservations);
                 return false;
             }
 
-            // Резервируем ячейки PICKUP
-            var reservedCells = packingResult.PackedItems.Select(p => p.TargetPositionId).Distinct().ToList();
-            await _db.GetTable<PositionModel>()
-                     .Where(p => reservedCells.Contains(p.PositionId))
-                     .Set(p => p.Status, "Reserved")
-                     .UpdateAsync();
+            // 5. Подбор персонала через Агрегатор
+            var workers = await _baseTaskService.GetAutoSelectedEmployeesAsync(branchId, int.MaxValue);
+            var workerScores = new Dictionary<int, double>();
+            foreach (var w in workers)
+            {
+                workerScores[w] = await _taskWorkloadAggregator.GetTotalActiveComplexityAsync(w); // Учет всех модулей
+            }
+            var sortedWorkers = workers.OrderBy(w => workerScores[w]).ToList();
 
-            _logger.LogInformation("|   > зарезервировано {Count} ячеек PICKUP: [{CellIds}]",
-                reservedCells.Count, string.Join(", ", reservedCells));
+            int workersNeeded = needsHelper ? 2 : 1;
+            if (sortedWorkers.Count < workersNeeded)
+            {
+                await RollbackHardAllocationAsync(orderId, softReservations);
+                return false;
+            }
 
-            // Создаем базовую задачу
+            // 6. Создание задачи и назначений (с учетом Complexity и Role)
             var baseTask = new BaseTaskModel
             {
                 Title = $"Сборка заказа {orderId}",
-                Description = "Автоматически спланированная сборка заказа",
                 BranchId = branchId,
                 Type = "OrderAssembly",
                 Status = "New",
                 PriorityLevel = 1,
                 CreatedAt = DateTime.UtcNow,
-                Deadline = deliveryDate,
-                SourceType = "Server"
+                Deadline = deliveryDate
             };
             var taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
 
-            _logger.LogInformation("|   > создана базовая задача TaskId={TaskId}", taskId);
-
-            // Выбираем наименее загруженного работника
-            var selectedWorkers = await _baseTaskService.GetAutoSelectedEmployeesAsync(branchId, 1);
-            if (!selectedWorkers.Any())
-            {
-                _logger.LogWarning("|   ! нет доступных работников в филиале {BranchId}, откат задачи TaskId={TaskId}", branchId, taskId);
-
-                // Откатываем ячейки и задачу
-                await _db.GetTable<PositionModel>()
-                         .Where(p => reservedCells.Contains(p.PositionId))
-                         .Set(p => p.Status, "Active")
-                         .UpdateAsync();
-
-                await _db.GetTable<BaseTaskModel>()
-                         .Where(t => t.TaskId == taskId)
-                         .DeleteAsync();
-
-                await RollbackHardAllocationAsync(orderId, softReservations);
-                return false;
-            }
-
-            var assignedUserId = selectedWorkers.First();
-            _logger.LogInformation("|   > подобран работник UserId={UserId} на задачу TaskId={TaskId}", assignedUserId, taskId);
-
-            // Назначаем сборку
-            var assignment = new OrderAssemblyAssignmentModel
+            // Основной работник
+            var mainAssignment = new OrderAssemblyAssignmentModel
             {
                 TaskId = taskId,
                 OrderId = orderId,
-                AssignedToUserId = assignedUserId,
+                AssignedToUserId = sortedWorkers[0],
                 BranchId = branchId,
-                Status = 0, // Assigned
+                Status = 0,
+                Complexity = mainComplexity,
+                Role = (int)AssignmentRole.Main,
                 AssignedAt = DateTime.UtcNow
             };
-            assignment.Id = await _db.InsertWithInt32IdentityAsync(assignment);
+            mainAssignment.Id = await _db.InsertWithInt32IdentityAsync(mainAssignment);
 
-            // Создаем строки сборки
-            foreach (var packedBlock in packingResult.PackedItems)
+            // Помощник (если есть тяжелые товары)
+            OrderAssemblyAssignmentModel helperAssignment = null;
+            if (needsHelper)
             {
-                var originalInfo = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
-                var line = new OrderAssemblyLineModel
+                helperAssignment = new OrderAssemblyAssignmentModel
                 {
-                    OrderAssemblyAssignmentId = assignment.Id,
-                    ItemPositionId = originalInfo.ItemPositionId,
-                    SourcePositionId = originalInfo.SourcePositionId,
-                    TargetPositionId = packedBlock.TargetPositionId,
-                    Quantity = packedBlock.Quantity,
-                    Status = 0 // Pending
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    AssignedToUserId = sortedWorkers[1],
+                    BranchId = branchId,
+                    Status = 0,
+                    Complexity = helperComplexity,
+                    Role = (int)AssignmentRole.Helper,
+                    AssignedAt = DateTime.UtcNow
                 };
-                await _db.InsertAsync(line);
+                helperAssignment.Id = await _db.InsertWithInt32IdentityAsync(helperAssignment);
             }
 
-            // Обновляем статус заказа
-            await _db.GetTable<OrderModel>()
-                     .Where(o => o.OrderId == orderId)
-                     .Set(o => o.Status, "Assembly")
-                     .UpdateAsync();
+            // 7. Создание строк сборки (Helper получает только тяжелые товары)
+            foreach (var packedBlock in packingResult.PackedItems)
+            {
+                var original = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
+                bool isHeavy = original.Weight >= _appSettings.MaxWeightPerWorker;
 
-            _logger.LogInformation("|   * завершено, статус -> 'Assembly', {LineCount} строк сборки", orderItems.Count);
+                // Основному - всё
+                await _db.InsertAsync(new OrderAssemblyLineModel
+                {
+                    OrderAssemblyAssignmentId = mainAssignment.Id,
+                    ItemPositionId = original.ItemPositionId,
+                    SourcePositionId = original.SourcePositionId,
+                    TargetPositionId = packedBlock.TargetPositionId,
+                    Quantity = packedBlock.Quantity,
+                    Status = 0
+                });
+
+                // Помощнику - только тяжелое
+                if (isHeavy && helperAssignment != null)
+                {
+                    await _db.InsertAsync(new OrderAssemblyLineModel
+                    {
+                        OrderAssemblyAssignmentId = helperAssignment.Id,
+                        ItemPositionId = original.ItemPositionId,
+                        SourcePositionId = original.SourcePositionId,
+                        TargetPositionId = packedBlock.TargetPositionId,
+                        Quantity = packedBlock.Quantity,
+                        Status = 0
+                    });
+                }
+            }
+
+            await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, "Assembly").UpdateAsync();
             return true;
         }
 
@@ -402,6 +406,7 @@ namespace TaskControl.TaskModule.Application.Services
             public double Length { get; set; }
             public double Width { get; set; }
             public double Height { get; set; }
+            public double Weight { get; set; }
             public int SourcePositionId { get; set; }
             public int Quantity { get; set; }
         }

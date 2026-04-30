@@ -16,6 +16,16 @@ namespace TaskControl.TaskModule.Application.Services
             _providers = providers ?? throw new ArgumentNullException(nameof(providers));
         }
 
+        public async Task<double> GetTotalActiveComplexityAsync(int workerId)
+        {
+            double totalComplexity = 0;
+            foreach (var provider in _providers)
+            {
+                totalComplexity += await provider.GetActiveWorkloadComplexityAsync(workerId);
+            }
+            return totalComplexity;
+        }
+
         public async Task<int> GetTotalActiveWorkloadAsync(int workerId)
         {
             int total = 0;

@@ -1,5 +1,6 @@
 using LinqToDB.Mapping;
 using System;
+using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Models
 {
@@ -24,6 +25,10 @@ namespace TaskControl.TaskModule.DataAccess.Models
 
         [Column("status"), NotNull]
         public int Status { get; set; }
+        [Column("complexity"), NotNull]
+        public double Complexity { get; set; }
+        [Column("role")]
+        public int Role { get; set; }
 
         [Column("started_at")]
         public DateTime? StartedAt { get; set; }

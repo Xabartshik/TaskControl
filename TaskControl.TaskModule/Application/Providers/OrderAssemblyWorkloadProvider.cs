@@ -30,6 +30,15 @@ namespace TaskControl.TaskModule.Application.Providers
             return tasks.Count(t => (int)t.Status == 0 || (int)t.Status == 1); 
         }
 
+        public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
+        {
+            var tasks = await _assemblyRepo.GetByUserIdAsync(workerId);
+            // Берем задачи со статусом Assigned (0) или InProgress (1) и суммируем их параметр Complexity
+            return tasks
+                .Where(t => (int)t.Status == 0 || (int)t.Status == 1)
+                .Sum(t => t.Complexity);
+        }
+
         public async Task<bool> HasNewAssignmentsAsync(int workerId)
         {
             var tasks = await _assemblyRepo.GetByUserIdAsync(workerId);

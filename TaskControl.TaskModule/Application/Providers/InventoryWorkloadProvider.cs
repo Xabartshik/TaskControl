@@ -17,6 +17,14 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public string TaskType => "Inventory";
 
+        public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
+        {
+            var tasks = await _inventoryRepo.GetByUserIdAsync(workerId);
+            // Предполагаем базовую сложность 1.0 для инвентаризации
+            int count = tasks.Count(t => t.Status == AssignmentStatus.Assigned || t.Status == AssignmentStatus.InProgress);
+            return count * 1.0;
+        }
+
         public InventoryWorkloadProvider(
             IInventoryAssignmentRepository inventoryRepo, 
             IBaseTaskService baseTaskService)

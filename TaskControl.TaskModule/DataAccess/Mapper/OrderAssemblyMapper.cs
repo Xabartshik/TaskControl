@@ -20,6 +20,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 branchId: model.BranchId,
                 status: (AssignmentStatus)model.Status,
                 assignedAtUtc: model.AssignedAt,
+                complexity: model.Complexity,
+                assignedToRole: (AssignmentRole)model.Role,
                 lines: lines
             )
             {
@@ -40,6 +42,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 branchId: model.BranchId,
                 status: (AssignmentStatus)model.Status,
                 assignedAtUtc: model.AssignedAt,
+                complexity: model.Complexity,
+                assignedToRole: (AssignmentRole)model.Role,
                 lines: new List<OrderAssemblyLine>()
             )
             {
@@ -62,6 +66,8 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 Status = (int)domain.Status,
                 AssignedAt = domain.AssignedAt,
                 StartedAt = domain.StartedAt,
+                Complexity = domain.Complexity,
+                Role = (int)domain.Role,
                 CompletedAt = domain.CompletedAt
             };
         }
