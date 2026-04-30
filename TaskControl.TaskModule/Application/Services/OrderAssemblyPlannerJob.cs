@@ -135,87 +135,8 @@ namespace TaskControl.TaskModule.Application.Services
 
         private async Task<bool> ProcessOrderInternal(int orderId, int branchId, DateTime? deliveryDate)
         {
-            // 1. HARD ALLOCATION: Перевод "мягких" резервов в "жесткие"
-            var softReservations = await (from ores in _db.GetTable<OrderReservationModel>()
-                                          join op in _db.GetTable<OrderPositionModel>() on ores.OrderPositionId equals op.UniqueId
-                                          where op.OrderId == orderId && ores.ItemPositionId == null
-                                          select new SoftReservation
-                                          {
-                                              ReservationId = ores.Id,
-                                              ItemId = op.ItemId,
-                                              Quantity = ores.Quantity,
-                                              OrderPositionId = op.UniqueId
-                                          }).ToListAsync();
-
-            if (softReservations.Any())
-            {
-                _logger.LogInformation("|   > Запуск Hard Allocation для {Count} позиций...", softReservations.Count);
-                bool hardAllocationFailed = false;
-
-                foreach (var sRes in softReservations)
-                {
-                    int neededQty = sRes.Quantity;
-
-                    var stocksQuery = from ip in _db.GetTable<ItemPositionModel>()
-                                      join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
-                                      where ip.ItemId == sRes.ItemId && p.BranchId == branchId
-                                      let reservedQty = _db.GetTable<OrderReservationModel>()
-                                                           .Where(r => r.ItemPositionId == ip.Id)
-                                                           .Sum(r => (int?)r.Quantity) ?? 0
-                                      let availableQty = ip.Quantity - reservedQty
-                                      where availableQty > 0
-                                      select new
-                                      {
-                                          ItemPositionId = ip.Id,
-                                          AvailableQty = availableQty
-                                      };
-
-                    var stocks = await stocksQuery.ToListAsync();
-
-                    bool isFirst = true;
-                    foreach (var stock in stocks)
-                    {
-                        if (neededQty <= 0) break;
-                        int takeQty = Math.Min(neededQty, stock.AvailableQty);
-
-                        if (isFirst)
-                        {
-                            await _db.GetTable<OrderReservationModel>()
-                                     .Where(r => r.Id == sRes.ReservationId)
-                                     .Set(r => r.ItemPositionId, stock.ItemPositionId)
-                                     .Set(r => r.Quantity, takeQty)
-                                     .UpdateAsync();
-                            isFirst = false;
-                        }
-                        else
-                        {
-                            await _db.InsertAsync(new OrderReservationModel
-                            {
-                                OrderPositionId = sRes.OrderPositionId,
-                                ItemPositionId = stock.ItemPositionId,
-                                Quantity = takeQty,
-                                CreatedAt = DateTime.UtcNow
-                            });
-                        }
-                        neededQty -= takeQty;
-                    }
-
-                    if (neededQty > 0)
-                    {
-                        _logger.LogWarning("|   ! недостаточно товара на полках для (ItemId: {ItemId})", sRes.ItemId);
-                        hardAllocationFailed = true;
-                        break;
-                    }
-                }
-
-                if (hardAllocationFailed)
-                {
-                    await RollbackHardAllocationAsync(orderId, softReservations);
-                    return false;
-                }
-            }
-
-            // 2. Получаем позиции для сборки (с весом из ItemModel)
+            // 1. Получаем позиции для сборки (с весом из ItemModel)
+            // Жесткая резервация (ItemPositionId != null) уже была выполнена при создании заказа.
             var orderItems = await (from op in _db.GetTable<OrderPositionModel>()
                                     join ores in _db.GetTable<OrderReservationModel>() on op.UniqueId equals ores.OrderPositionId
                                     join ip in _db.GetTable<ItemPositionModel>() on ores.ItemPositionId equals ip.Id
@@ -237,7 +158,7 @@ namespace TaskControl.TaskModule.Application.Services
 
             if (orderItems.Count == 0) return false;
 
-            // 3. Анализ тяжести и расчет сложности
+            // 2. Анализ тяжести и расчет сложности
             var heavyItems = orderItems.Where(x => x.Weight >= _appSettings.MaxWeightPerWorker).ToList();
             bool needsHelper = heavyItems.Any();
 
@@ -248,7 +169,7 @@ namespace TaskControl.TaskModule.Application.Services
             double mainComplexity = 1.0 + (mainWeight * _appSettings.WeightCoefficient);
             double helperComplexity = needsHelper ? (0.5 + (helperWeight * _appSettings.WeightCoefficient)) : 0;
 
-            // 4. Планирование ячеек (PICKUP)
+            // 3. Планирование ячеек (PICKUP)
             var itemsToPack = orderItems.Select(x => new ItemToPack
             {
                 OrderPositionId = x.OrderPositionId,
@@ -268,11 +189,10 @@ namespace TaskControl.TaskModule.Application.Services
             var packingResult = _packingService.AssignItemsToPickupCells(itemsToPack, availableCells);
             if (!packingResult.IsFullyPacked)
             {
-                await RollbackHardAllocationAsync(orderId, softReservations);
                 return false;
             }
 
-            // 5. Подбор персонала через Агрегатор
+            // 4. Подбор персонала через Агрегатор
             var workers = await _baseTaskService.GetAutoSelectedEmployeesAsync(branchId, int.MaxValue);
             var workerScores = new Dictionary<int, double>();
             foreach (var w in workers)
@@ -284,11 +204,10 @@ namespace TaskControl.TaskModule.Application.Services
             int workersNeeded = needsHelper ? 2 : 1;
             if (sortedWorkers.Count < workersNeeded)
             {
-                await RollbackHardAllocationAsync(orderId, softReservations);
                 return false;
             }
 
-            // 6. Создание задачи и назначений (с учетом Complexity и Role)
+            // 5. Создание задачи и назначений (с учетом Complexity и Role)
             var baseTask = new BaseTaskModel
             {
                 Title = $"Сборка заказа {orderId}",
@@ -333,7 +252,7 @@ namespace TaskControl.TaskModule.Application.Services
                 helperAssignment.Id = await _db.InsertWithInt32IdentityAsync(helperAssignment);
             }
 
-            // 7. Создание строк сборки (Helper получает только тяжелые товары)
+            // 6. Создание строк сборки (Helper получает только тяжелые товары)
             foreach (var packedBlock in packingResult.PackedItems)
             {
                 var original = orderItems.First(o => o.OrderPositionId == packedBlock.OrderPositionId);
@@ -368,7 +287,6 @@ namespace TaskControl.TaskModule.Application.Services
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, "Assembly").UpdateAsync();
             return true;
         }
-
         private async Task RollbackHardAllocationAsync(int orderId, List<SoftReservation> originalSoftReservations)
         {
             if (originalSoftReservations == null || !originalSoftReservations.Any()) return;
