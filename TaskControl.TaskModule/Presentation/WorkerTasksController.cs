@@ -79,7 +79,12 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             if (isFullyCompleted)
             {
                 // 3. Закрываем глобальную задачу
-                await _baseTaskService.UpdateTaskStatusAsync(baseTask.TaskId, TaskStatus.Completed);
+                var updatedTask = baseTask with
+                {
+                    Status = TaskStatus.Completed,
+                    CompletedAt = DateTime.UtcNow
+                };
+                await _baseTaskService.Update(updatedTask);
                 await ExecutePostCompletionLogicAsync(taskId, baseTask.Type);
             }
 

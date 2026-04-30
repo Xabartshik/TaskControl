@@ -1,7 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System; // Добавлено для DateTime
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging; // Добавлено
+using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
@@ -18,7 +19,7 @@ namespace TaskControl.TaskModule.Application.Providers
         private readonly IOrderAssemblyAssignmentRepository _assemblyRepo;
         private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService;
         private readonly IBaseTaskService _baseTaskService;
-        private readonly ILogger<OrderAssemblyExecutionProvider> _logger; // Добавлено
+        private readonly ILogger<OrderAssemblyExecutionProvider> _logger;
 
         public string TaskType => "OrderAssembly";
 
@@ -26,7 +27,7 @@ namespace TaskControl.TaskModule.Application.Providers
             IOrderAssemblyAssignmentRepository assemblyRepo,
             IOrderAssemblyExecutionService orderAssemblyExecutionService,
             IBaseTaskService baseTaskService,
-            ILogger<OrderAssemblyExecutionProvider> logger) // Добавлено
+            ILogger<OrderAssemblyExecutionProvider> logger)
         {
             _assemblyRepo = assemblyRepo;
             _orderAssemblyExecutionService = orderAssemblyExecutionService;
@@ -50,8 +51,15 @@ namespace TaskControl.TaskModule.Application.Providers
                 return false;
             }
 
+            // Безопасное время для PostgreSQL
+            var completionTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
             // 1. Завершаем назначение текущего сотрудника
             currentAssignment.Status = (int)AssignmentStatus.Completed;
+
+
+            currentAssignment.CompletedAt = completionTime;
+
             await _assemblyRepo.UpdateAsync(currentAssignment.ToDomain());
             _logger.LogDebug("Назначение ID: {AssignmentId} переведено в статус Completed", currentAssignment.Id);
 
@@ -64,12 +72,15 @@ namespace TaskControl.TaskModule.Application.Providers
                 if (helperAssignment != null && helperAssignment.Status != (int)AssignmentStatus.Completed)
                 {
                     helperAssignment.Status = (int)AssignmentStatus.Completed;
+
+
+                    helperAssignment.CompletedAt = completionTime;
+
                     await _assemblyRepo.UpdateAsync(helperAssignment.ToDomain());
                     _logger.LogInformation("Назначение помощника ID: {HelperAssignmentId} автоматически завершено", helperAssignment.Id);
                 }
             }
 
-            // 4. ТВОРИМ МАГИЮ СКЛАДА: физически перемещаем товары
             _logger.LogInformation("Магия склада для TaskId: {TaskId} успешно выполнена", taskId);
             return true;
         }
@@ -94,25 +105,22 @@ namespace TaskControl.TaskModule.Application.Providers
             return isDone;
         }
 
-        public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
-        {
-            _logger.LogInformation("Попытка старта задачи TaskId: {TaskId} пользователем WorkerId: {WorkerId}", taskId, workerId);
+        //public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
+        //{
+        //    _logger.LogInformation("Попытка старта задачи TaskId: {TaskId} пользователем WorkerId: {WorkerId}", taskId, workerId);
 
-            var userAssignments = await _assemblyRepo.GetByUserIdAsync(workerId);
-            var assignment = userAssignments.FirstOrDefault(a => a.TaskId == taskId);
+        //    var userAssignments = await _assemblyRepo.GetByUserIdAsync(workerId);
+        //    var assignment = userAssignments.FirstOrDefault(a => a.TaskId == taskId);
 
-            if (assignment == null)
-            {
-                _logger.LogWarning("Старт невозможен: назначение для TaskId: {TaskId} у пользователя {WorkerId} не найдено", taskId, workerId);
-                return false;
-            }
+        //    if (assignment == null)
+        //    {
+        //        _logger.LogWarning("Старт невозможен: назначение для TaskId: {TaskId} у пользователя {WorkerId} не найдено", taskId, workerId);
+        //        return false;
+        //    }
 
-            assignment.Status = Domain.AssignmentStatus.InProgress;
-            await _assemblyRepo.UpdateAsync(assignment);
-
-            _logger.LogInformation("Задача TaskId: {TaskId} успешно переведена в статус InProgress для WorkerId: {WorkerId}", taskId, workerId);
-            return true;
-        }
+        //    _logger.LogInformation("Задача TaskId: {TaskId} успешно переведена в статус InProgress для WorkerId: {WorkerId}", taskId, workerId);
+        //    return true;
+        //}
 
         public async Task PauseActiveTasksAsync(int workerId, int excludeTaskId)
         {
@@ -145,6 +153,9 @@ namespace TaskControl.TaskModule.Application.Providers
             {
                 _logger.LogInformation("Активация сборки заказа. TaskID: {TaskId}, WorkerID: {WorkerId}", taskId, workerId);
                 assignment.Status = (int)AssignmentStatus.InProgress;
+                // Безопасное время для PostgreSQL
+                var startTime = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+                assignment.StartedAt = startTime;
                 await _assemblyRepo.UpdateAsync(assignment.ToDomain());
                 return true;
             }
@@ -152,6 +163,5 @@ namespace TaskControl.TaskModule.Application.Providers
             _logger.LogWarning("Не удалось активировать задачу. TaskID: {TaskId}, WorkerID: {WorkerId} - назначение не найдено", taskId, workerId);
             return false;
         }
-
     }
 }

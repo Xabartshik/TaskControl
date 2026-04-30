@@ -316,7 +316,7 @@ namespace TaskControl.TaskModule.Application.Services
                         SourceItemPositionId = line.ItemPositionId,
                         DestinationPositionId = line.TargetPositionId,
                         Quantity = line.Quantity,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
                     });
 
                     // Уменьшаем остаток на исходной полке
@@ -335,7 +335,7 @@ namespace TaskControl.TaskModule.Application.Services
                             ItemId = originalItem.ItemId,
                             PositionId = line.TargetPositionId,
                             Quantity = line.Quantity,
-                            CreatedAt = DateTime.UtcNow
+                            CreatedAt = DateTime.Now
                         });
                     }
                 }

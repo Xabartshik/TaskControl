@@ -53,15 +53,15 @@ namespace TaskControl.TaskModule.Application.Services
             return activated;
         }
 
-        public async Task<bool> StartTaskAsync(int taskId, string taskType, int workerId)
-        {
-            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+        //public async Task<bool> StartTaskAsync(int taskId, string taskType, int workerId)
+        //{
+        //    var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
 
-            if (provider == null)
-                throw new ArgumentException($"Провайдер для типа задачи '{taskType}' не зарегистрирован в системе.");
+        //    if (provider == null)
+        //        throw new ArgumentException($"Провайдер для типа задачи '{taskType}' не зарегистрирован в системе.");
 
-            return await provider.TryStartTaskAsync(taskId, workerId);
-        }
+        //    return await provider.TryStartTaskAsync(taskId, workerId);
+        //}
 
         public async Task<bool> CompleteAssignmentAsync(int taskId, string taskType, int workerId)
         {
