@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Mapper;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Providers
@@ -45,13 +46,13 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<bool> TryActivateTaskAsync(int taskId, int workerId)
         {
-            var assignment = await _repository.GetByTaskIdAsync(taskId);
+            var assignment = await _repository.GetByTaskAndUserAsync(taskId, workerId);
 
-            if (assignment != null && assignment.AssignedToUserId == workerId)
+            if (assignment != null)
             {
                 _logger.LogInformation("Активация сборки заказа. TaskID: {TaskId}, WorkerID: {WorkerId}", taskId, workerId);
-                assignment.Status = AssignmentStatus.InProgress;
-                await _repository.UpdateAsync(assignment);
+                assignment.Status = (int)AssignmentStatus.InProgress;
+                await _repository.UpdateAsync(assignment.ToDomain());
                 return true;
             }
 

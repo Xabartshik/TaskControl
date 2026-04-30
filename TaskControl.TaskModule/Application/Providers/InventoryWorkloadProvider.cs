@@ -78,11 +78,13 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
         {
-            var assignment = await _inventoryRepo.GetByIdAsync(taskId);
-            if (assignment == null || assignment.AssignedToUserId != workerId) 
+            var userAssignments = await _inventoryRepo.GetByUserIdAsync(workerId);
+            var assignment = userAssignments.FirstOrDefault(a => a.TaskId == taskId);
+
+            if (assignment == null)
                 return false;
 
-            assignment.Status = AssignmentStatus.InProgress; 
+            assignment.Status = AssignmentStatus.InProgress;
             await _inventoryRepo.UpdateAsync(assignment);
             return true;
         }

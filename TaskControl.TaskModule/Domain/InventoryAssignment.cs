@@ -104,7 +104,7 @@ namespace TaskControl.TaskModule.Domain
             DateTime assignedAtUtc,
             IEnumerable<InventoryAssignmentLine> lines,
             string? zoneCode = null)
-            : base(id, taskId, assignedToUserId, branchId, status, assignedAtUtc)
+            : base(id, taskId, assignedToUserId, branchId, 0, status, assignedAtUtc)
         {
             if (lines == null) throw new ArgumentNullException(nameof(lines));
 
@@ -125,7 +125,7 @@ namespace TaskControl.TaskModule.Domain
             int branchId,
             DateTime assignedAtUtc = default,
             string? zoneCode = null)
-            : base(taskId, assignedToUserId, branchId, assignedAtUtc)
+            : base(taskId, assignedToUserId, branchId, 0, assignedAtUtc)
         {
             ZoneCode = zoneCode;
         }

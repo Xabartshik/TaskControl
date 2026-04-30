@@ -148,8 +148,6 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderPositionRepository, OrderPositionRepository>();
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
 
-            services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
-
             services.AddScoped<IPostamatAllocationService, PostamatAllocationService>();
 
 

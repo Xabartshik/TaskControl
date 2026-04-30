@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Interface
@@ -13,5 +14,6 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         Task<List<OrderAssemblyAssignment>> GetByBranchIdAsync(int branchId);
         Task<int> AddAsync(OrderAssemblyAssignment assignment);
         Task<int> UpdateAsync(OrderAssemblyAssignment assignment);
+        Task<OrderAssemblyAssignmentModel> GetByTaskAndUserAsync(int taskId, int workerId);
     }
 }

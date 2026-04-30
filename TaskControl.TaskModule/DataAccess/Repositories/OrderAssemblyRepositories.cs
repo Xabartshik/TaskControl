@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Mapper;
+using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Repositories
@@ -15,6 +16,12 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
         private readonly ITaskDataConnection _db;
         private readonly ILogger<OrderAssemblyAssignmentRepository> _logger;
 
+
+        public async Task<OrderAssemblyAssignmentModel> GetByTaskAndUserAsync(int taskId, int workerId)
+        {
+            return await _db.GetTable<OrderAssemblyAssignmentModel>()
+                .FirstOrDefaultAsync(a => a.TaskId == taskId && a.AssignedToUserId == workerId);
+        }
         public OrderAssemblyAssignmentRepository(
             ITaskDataConnection db,
             ILogger<OrderAssemblyAssignmentRepository> logger)
