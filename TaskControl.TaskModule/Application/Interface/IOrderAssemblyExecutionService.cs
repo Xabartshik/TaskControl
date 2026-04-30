@@ -27,6 +27,9 @@ namespace TaskControl.TaskModule.Application.Interface
         public DateTime? CreatedDate { get; set; }
         public DateTime? Deadline { get; set; }
         public int TotalLines { get; set; }
+        public bool IsCooperative { get; set; }
+        public string? PartnerName { get; set; } // Имя напарника, чтобы знать, кого искать
+        public AssignmentStatus? PartnerStatus { get; set; } // Нажал ли напарник "Начать"?
         public List<CellPlacementInfoDto> CellPlacements { get; set; } = new();
     }
 

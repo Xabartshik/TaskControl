@@ -14,6 +14,7 @@ using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
+using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.Application.Services
@@ -344,7 +345,19 @@ namespace TaskControl.TaskModule.Application.Services
 
             var baseTasks = _db.GetTable<BaseTaskModel>();
             var taskModel = await baseTasks.FirstOrDefaultAsync(t => t.TaskId == a.TaskId);
+            var allTaskAssignments = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                                              .Where(x => x.TaskId == a.TaskId)
+                                              .ToListAsync();
+            var partnerAssignment = allTaskAssignments.FirstOrDefault(x => x.Id != assignmentId);
+            bool isCooperative = partnerAssignment != null;
+            string partnerName = null;
 
+            if (isCooperative)
+            {
+                // Достаем имя напарника из таблицы пользователей (MobileAppUser / Employee)
+                var partnerUser = await _db.GetTable<EmployeeModel>().FirstOrDefaultAsync(u => u.EmployeesId == partnerAssignment.AssignedToUserId);
+                partnerName = partnerUser?.FullName ?? $"ID: {partnerAssignment.AssignedToUserId}";
+            }
             var dto = new WorkerAssemblyTaskDto
             {
                 AssignmentId = a.Id,
@@ -354,12 +367,16 @@ namespace TaskControl.TaskModule.Application.Services
                 Status = a.Status,
                 Deadline = taskModel?.Deadline,
                 CreatedDate = taskModel?.CreatedAt,
-                TotalLines = a.TotalLines
+                TotalLines = a.TotalLines,
+                IsCooperative = isCooperative,
+                PartnerName = partnerName,
+                PartnerStatus = (AssignmentStatus)partnerAssignment?.Status
             };
 
             var positions = _db.GetTable<PositionModel>();
             var itemPositions = _db.GetTable<ItemPositionModel>();
             var items = _db.GetTable<ItemModel>();
+
 
             // Группировка по целевой ячейке (куда нужно положить)
             var cellGroups = a.Lines.GroupBy(l => l.TargetPositionId);
@@ -409,13 +426,59 @@ namespace TaskControl.TaskModule.Application.Services
             }
             return dto;
         }
-        public async Task<bool> StartAssemblyAsync(int id)
+        public async Task<bool> StartAssemblyAsync(int assignmentId)
         {
-            var a = await _assignmentRepo.GetByIdAsync(id);
-            if (a == null) return false;
-            a.Start(DateTime.UtcNow); // Доменный метод базового класса
-            await _assignmentRepo.UpdateAsync(a);
-            return true;
+            // 1. Получаем текущее назначение через репозиторий
+            var currentAssignment = await _assignmentRepo.GetByIdAsync(assignmentId);
+            if (currentAssignment == null) return false;
+
+            // 2. Получаем ВСЕ назначения для этой задачи напрямую из таблицы моделей.
+            // ВАЖНО: Используем .ToListAsync(), чтобы получить List в памяти.
+            // Это решает ошибку с "Count" (у List есть свойство Count) 
+            // и ошибку с определением типов в .First() / .FirstOrDefault()
+            var allAssignments = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                                          .Where(a => a.TaskId == currentAssignment.TaskId)
+                                          .ToListAsync();
+
+            // 3. Если задача одиночная (всего одно назначение в списке)
+            if (allAssignments.Count == 1)
+            {
+                currentAssignment.Start(DateTime.UtcNow);
+                await _assignmentRepo.UpdateAsync(currentAssignment);
+
+                // Переводим саму базовую задачу в статус "InProgress"
+                await _db.GetTable<BaseTaskModel>()
+                         .Where(t => t.TaskId == currentAssignment.TaskId)
+                         .Set(t => t.Status, "InProgress")
+                         .UpdateAsync();
+
+                return true;
+            }
+
+            // 4. КООПЕРАТИВНАЯ ЗАДАЧА:
+            // Отмечаем текущего сотрудника как начавшего работу
+            currentAssignment.Status = AssignmentStatus.InProgress;
+            currentAssignment.StartedAt = DateTime.UtcNow;
+            await _assignmentRepo.UpdateAsync(currentAssignment);
+
+            // Ищем напарника среди загруженного списка (уже в памяти)
+            // Явно указываем условие поиска
+            var partner = allAssignments.FirstOrDefault(a => a.Id != assignmentId);
+
+            // Если напарник найден и он уже нажал "Начать" (статус InProgress)
+            if (partner != null && partner.Status == (int)AssignmentStatus.InProgress)
+            {
+                // Только когда ОБА в процессе, переводим саму задачу BaseTask в статус "InProgress"
+                await _db.GetTable<BaseTaskModel>()
+                         .Where(t => t.TaskId == currentAssignment.TaskId)
+                         .Set(t => t.Status, "InProgress")
+                         .UpdateAsync();
+
+                return true;
+            }
+
+            // Если напарник еще не нажал кнопку, возвращаем false (мобилка покажет ожидание)
+            return false;
         }
 
         public async Task<bool> PauseAssemblyAsync(int id)
