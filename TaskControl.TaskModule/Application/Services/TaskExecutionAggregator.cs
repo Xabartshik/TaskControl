@@ -71,6 +71,22 @@ namespace TaskControl.TaskModule.Application.Services
             return await provider.TryCompleteAssignmentAsync(taskId, workerId);
         }
 
+        public async Task<bool> PauseTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null) return false;
+
+            return await provider.TryPauseTaskAsync(taskId, workerId);
+        }
+
+        public async Task<bool> CancelTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null) return false;
+
+            return await provider.TryCancelTaskAsync(taskId, workerId);
+        }
+
         public async Task<bool> IsTaskFullyCompletedAsync(int taskId, string taskType)
         {
             var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);

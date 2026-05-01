@@ -81,5 +81,20 @@ namespace TaskControl.TaskModule.Application.Services
             return allWorkerIds.Distinct();
         }
 
+        public async Task<MobileBaseTaskDto?> GetTaskDetailsAsync(int taskId, int workerId)
+        {
+            foreach (var provider in _providers)
+            {
+                var tasks = await provider.GetAvailableTasksAsync(workerId);
+                var task = tasks.FirstOrDefault(t => t.TaskId == taskId);
+                if (task != null)
+                {
+                    return task;
+                }
+            }
+
+            return null;
+        }
+
     }
 }
