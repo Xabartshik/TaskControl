@@ -5,6 +5,7 @@ using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Mapper;
 using TaskControl.TaskModule.Domain;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
@@ -52,7 +53,8 @@ namespace TaskControl.TaskModule.Presentation.Controllers
                 return BadRequest(new { Message = $"Тип задачи {baseTask.Type} пока не поддерживает details endpoint." });
             }
 
-            var assignment = await _orderAssemblyAssignmentRepository.GetByTaskAndUserAsync(taskId, workerId);
+            var assignmentModel = await _orderAssemblyAssignmentRepository.GetByTaskAndUserAsync(taskId, workerId);
+            var assignment = assignmentModel.ToDomain();
             if (assignment == null)
             {
                 return NotFound(new { Message = $"Назначение для задачи {taskId} и сотрудника {workerId} не найдено." });
