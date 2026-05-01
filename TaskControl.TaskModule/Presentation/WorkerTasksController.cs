@@ -87,9 +87,7 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             {
                 return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
             }
-            // Вызываем метод и получаем результат (успех/провал)
             bool isStarted = await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
-            // Если это первый человек, который нажал "Начать", задача переходит в работу для всех.
             if (baseTask.Status == TaskStatus.New || baseTask.Status == TaskStatus.Assigned)
             {
                 var updatedTask = baseTask with { Status = TaskStatus.InProgress };
@@ -146,16 +144,13 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
-            // 1. Закрываем назначение для конкретного человека (и помощника, если это главный)
             bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId);
             if (!success) return BadRequest(new { Message = $"Не удалось завершить назначение для задачи {taskId} и работника {workerId}." });
 
-            // 2. Проверяем, закрыта ли задача полностью
             bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
 
             if (isFullyCompleted)
             {
-                // 3. Закрываем глобальную задачу
                 var updatedTask = baseTask with
                 {
                     Status = TaskStatus.Completed,
@@ -173,25 +168,16 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             switch (taskType)
             {
                 case "OrderAssembly":
-                    // Применяем движения товаров после сборки заказа
                     await _orderAssemblyExecutionService.ApplyItemMovementsForCompletedTaskAsync(taskId);
                     break;
 
                 case "Inventory":
-                    // Задел на будущее: если после инвентаризации нужно, 
-                    // например, списать недостачи или обновить статусы ячеек
-                    // await _inventoryProcessService.ApplyInventoryResultsAsync(taskId);
                     break;
 
                 case "Relocation":
-                    // Задел на будущее: перемещение между зонами
-                    // await _relocationService.CompleteRelocationAsync(taskId);
                     break;
 
                 default:
-                    // Если для типа задачи нет специфичной складской логики завершения — просто ничего не делаем
-                    // Можно добавить логгер, если хотите отслеживать такие случаи:
-                    // _logger.LogInformation("Для типа задачи {TaskType} не предусмотрена специфичная логика завершения", taskType);
                     break;
             }
         }
