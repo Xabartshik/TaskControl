@@ -2,6 +2,8 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Serilog;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Infrastructure;
@@ -58,6 +60,8 @@ namespace TaskControl.Web
             builder.Services.AddControllers()
             .AddJsonOptions(options =>
             {
+                options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
                 options.JsonSerializerOptions.Converters.Add(new Web.Infrastructure.UtcDateTimeConverter());
             });
 
