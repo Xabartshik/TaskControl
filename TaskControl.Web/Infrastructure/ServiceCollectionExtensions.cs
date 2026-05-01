@@ -195,6 +195,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<WorkerTasksController>();
 
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
+            services.AddScoped<ITaskExecutionProvider, InventoryExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
 
             services.AddScoped<INotificationService, NotificationService>();

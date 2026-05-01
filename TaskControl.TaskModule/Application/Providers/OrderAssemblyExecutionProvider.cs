@@ -105,6 +105,48 @@ namespace TaskControl.TaskModule.Application.Providers
             return isDone;
         }
 
+        public async Task<bool> TryPauseTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                _logger.LogWarning("Пауза невозможна: назначение не найдено. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Paused;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            _logger.LogInformation("Назначение поставлено на паузу. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
+            return true;
+        }
+
+        public async Task<bool> TryCancelTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                _logger.LogWarning("Отмена невозможна: назначение не найдено. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Cancelled;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            _logger.LogInformation("Назначение отменено. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
+            return true;
+        }
+
+        public async Task<object?> GetTaskDetailsAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                _logger.LogWarning("Не удалось получить детали назначения. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
+                return null;
+            }
+
+            return assignment;
+        }
+
         //public async Task<bool> TryStartTaskAsync(int taskId, int workerId)
         //{
         //    _logger.LogInformation("Попытка старта задачи TaskId: {TaskId} пользователем WorkerId: {WorkerId}", taskId, workerId);
@@ -162,6 +204,32 @@ namespace TaskControl.TaskModule.Application.Providers
 
             _logger.LogWarning("Не удалось активировать задачу. TaskID: {TaskId}, WorkerID: {WorkerId} - назначение не найдено", taskId, workerId);
             return false;
+        }
+
+        public async Task<bool> TryPauseTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Paused;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            return true;
+        }
+
+        public async Task<bool> TryCancelTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Cancelled;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            return true;
         }
     }
 }

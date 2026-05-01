@@ -98,7 +98,43 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             if (!isStarted)
             {
                 // Возвращаем ошибку, если задача не найдена или не принадлежит работнику
-                return NotFound(new { message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+                return NotFound(new { Message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+            }
+
+            return Ok();
+        }
+
+        [HttpPost("{taskId}/pause")]
+        public async Task<IActionResult> PauseTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
+            var success = await _taskExecutionAggregator.PauseTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success)
+            {
+                return BadRequest(new { Message = $"Не удалось поставить на паузу задачу {taskId} для работника {workerId}." });
+            }
+
+            return Ok();
+        }
+
+        [HttpPost("{taskId}/cancel")]
+        public async Task<IActionResult> CancelTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
+            var success = await _taskExecutionAggregator.CancelTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success)
+            {
+                return BadRequest(new { Message = $"Не удалось отменить задачу {taskId} для работника {workerId}." });
             }
 
             return Ok();
@@ -108,11 +144,11 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId)
         {
             var baseTask = await _baseTaskService.GetById(taskId);
-            if (baseTask == null) return NotFound("Задача не найдена.");
+            if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
             // 1. Закрываем назначение для конкретного человека (и помощника, если это главный)
             bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId);
-            if (!success) return BadRequest("Не удалось завершить назначение.");
+            if (!success) return BadRequest(new { Message = $"Не удалось завершить назначение для задачи {taskId} и работника {workerId}." });
 
             // 2. Проверяем, закрыта ли задача полностью
             bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
