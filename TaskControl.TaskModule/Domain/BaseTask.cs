@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
@@ -19,6 +20,21 @@ namespace TaskControl.TaskModule.Domain
         Cancelled = 4,
         OnHold = 5,
         Blocked = 6
+    }
+
+    public enum TaskPriority
+    {
+        [Description("Фоновый процесс")]
+        Background = 0,
+
+        [Description("Норма")]
+        Normal = 1,
+
+        [Description("Повышенный")]
+        High = 2,
+
+        [Description("Критический")]
+        Critical = 3
     }
 
     /// <summary>
@@ -68,9 +84,7 @@ namespace TaskControl.TaskModule.Domain
         [Required]
         public TaskStatus Status { get; set; } = TaskStatus.New;
 
-
-        [Range(0, 5)]
-        public int PriorityLevel { get; set; } = 1;
+        public TaskPriority PriorityLevel { get; set; } = TaskPriority.Normal;
 
         public DateTime? Deadline { get; set; }
         public string SourceType { get; set; }

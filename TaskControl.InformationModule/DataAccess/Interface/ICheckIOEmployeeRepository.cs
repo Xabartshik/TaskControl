@@ -41,5 +41,11 @@ namespace TaskControl.InformationModule.DataAccess.Interface
         /// <param name="id">Идентификатор записи</param>
         /// <returns>Количество удаленных записей</returns>
         Task<int> DeleteAsync(int id);
+        /// <summary>
+        /// Получает последнюю по времени запись учета для конкретного сотрудника
+        /// </summary>
+        /// <param name="employeeId">Идентификатор сотрудника</param>
+        /// <returns>Последняя запись или null</returns>
+        Task<CheckIOEmployee?> GetLastRecordByEmployeeIdAsync(int employeeId);
     }
 }

@@ -48,17 +48,41 @@ namespace TaskControl.TaskModule.DataAccess.Repositories
             return assignment.ToDomainWithLines(domainLines);
         }
 
-        public async Task<OrderAssemblyAssignment> GetByTaskIdAsync(int taskId)
+        public async Task<IEnumerable<OrderAssemblyAssignment>> GetByTaskIdAsync(int taskId)
         {
-            var assignment = await _db.OrderAssemblyAssignments.FirstOrDefaultAsync(a => a.TaskId == taskId);
-            if (assignment == null) return null;
-
-            var lines = await _db.OrderAssemblyLines
-                .Where(l => l.OrderAssemblyAssignmentId == assignment.Id)
+            // 1. Получаем все назначения для данной задачи (используем Where вместо FirstOrDefault)
+            var assignments = await _db.OrderAssemblyAssignments
+                .Where(a => a.TaskId == taskId)
                 .ToListAsync();
 
-            var domainLines = lines.Select(l => l.ToDomain()).ToList();
-            return assignment.ToDomainWithLines(domainLines);
+            if (!assignments.Any())
+            {
+                // Возвращаем пустой список, если назначений нет
+                return Enumerable.Empty<OrderAssemblyAssignment>();
+            }
+
+            // 2. Собираем ID всех найденных назначений
+            var assignmentIds = assignments.Select(a => a.Id).ToList();
+
+            // 3. Загружаем все строки (lines) для всех этих назначений одним запросом
+            var allLines = await _db.OrderAssemblyLines
+                .Where(l => assignmentIds.Contains(l.OrderAssemblyAssignmentId))
+                .ToListAsync();
+
+            // 4. Формируем список доменных моделей
+            var result = assignments.Select(assignment =>
+            {
+                // Отбираем строки только для текущего назначения и преобразуем их в доменные
+                var domainLines = allLines
+                    .Where(l => l.OrderAssemblyAssignmentId == assignment.Id)
+                    .Select(l => l.ToDomain())
+                    .ToList();
+
+                // Собираем итоговую модель
+                return assignment.ToDomainWithLines(domainLines);
+            }).ToList();
+
+            return result;
         }
 
         public async Task<List<OrderAssemblyAssignment>> GetByUserIdAsync(int userId)

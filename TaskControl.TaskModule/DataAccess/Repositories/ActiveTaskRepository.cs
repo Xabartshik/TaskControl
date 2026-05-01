@@ -23,6 +23,36 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _logger = logger;
         }
 
+        public async Task<IEnumerable<BaseTask>> GetPendingTasksWithDeadlinesAsync()
+        {
+            _logger.LogInformation("Получение ожидающих задач с дедлайнами");
+            try
+            {
+                // Предварительно преобразуем статусы в строки, 
+                // так как в базе данных (и в модели БД) они хранятся как string
+                var completedStatus = TaskStatus.Completed.ToString();
+                var cancelledStatus = TaskStatus.Cancelled.ToString();
+
+                var tasks = await _db.ActiveTasks
+                    .Where(t =>
+                        t.Deadline != null &&
+                        t.Status != completedStatus &&
+                        t.Status != cancelledStatus &&
+                        (int)t.PriorityLevel < 3)   // Не берем те, что уже Highest
+                    .ToListAsync();
+
+                _logger.LogInformation("Найдено {Count} ожидающих задач с дедлайнами", tasks.Count);
+
+                // Преобразуем сущности базы данных в доменные модели
+                return tasks.Select(t => t.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении ожидающих задач с дедлайнами");
+                throw;
+            }
+        }
+
         public async Task<BaseTask> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск задачи по ID: {id}", id);
@@ -67,8 +97,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     throw new ArgumentException($"Недопустимый статус задачи: {entity.Status}");
 
                 // Валидация приоритета
-                if (entity.PriorityLevel < 0 || entity.PriorityLevel > 5)
-                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 5.");
+                if ((int)entity.PriorityLevel < 0 || (int)entity.PriorityLevel > 3)
+                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 3.");
 
                 var model = entity.ToModel();
                 // InsertWithInt32IdentityAsync возвращает реальный ID новой записи из IDENTITY-колонки
@@ -97,8 +127,8 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     throw new ArgumentException($"Недопустимый статус задачи: {entity.Status}");
 
                 // Валидация приоритета
-                if (entity.PriorityLevel < 0 || entity.PriorityLevel > 5)
-                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 5.");
+                if ((int)entity.PriorityLevel < 0 || (int)entity.PriorityLevel > 3)
+                    throw new ArgumentException($"Недопустимый приоритет задачи: {entity.PriorityLevel}. Должен быть от 0 до 3.");
 
                 var model = entity.ToModel();
                 var result = await _db.UpdateAsync(model);

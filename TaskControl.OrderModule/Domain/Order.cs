@@ -19,8 +19,8 @@ namespace TaskControl.OrderModule.Domain
         [Description("Создан")]
         Created,
 
-        [Description("Резерв подтвержден: товары есть в наличии")]
-        Reserved,
+        //[Description("Резерв подтвержден: товары есть в наличии")]
+        //Reserved,
 
         [Description("В процессе сборки")]
         Assembly,

@@ -35,4 +35,12 @@ public class MobileAppUserModel
 
     [Column("branch_id")]
     public int? BranchId { get; set; }
+    [Column("is_on_break")]
+    public bool IsOnBreak { get; set; } = false;
+
+    [Column("last_break_end_at")]
+    public DateTime? LastBreakEndTime { get; set; }
+
+    [Column("current_break_start_at")]
+    public DateTime? CurrentBreakStartTime { get; set; }
 }

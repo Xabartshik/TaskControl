@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,7 @@ using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.Application.Services.Hubs;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -44,6 +46,26 @@ namespace TaskControl.TaskModule.Presentation
             _employeeRepository = employeeRepository ?? throw new ArgumentNullException(nameof(employeeRepository));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
             _customerService = customerService ?? throw new ArgumentNullException(nameof(customerService)); 
+        }
+
+        [HttpPost("test-push/{employeeId}")]
+        public async Task<IActionResult> SendTest(int employeeId, [FromServices] INotificationService notificationService)
+        {
+            await notificationService.SendNotificationAsync(employeeId, "ТЕСТ", "Работает!", "priority_escalated_2");
+            return Ok();
+        }
+
+        [HttpPost("test-all")]
+        public async Task<IActionResult> SendToAll([FromServices] IHubContext<TaskNotificationHub> hubContext)
+        {
+            // Отправляем пуш вообще всем, кто сейчас подключен к хабу
+            await hubContext.Clients.All.SendAsync("ReceiveNotification", new
+            {
+                title = "БРОАДКАСТ",
+                message = "Связь есть!",
+                type = "priority_escalated_2"
+            });
+            return Ok("Отправлено всем");
         }
 
         /// <summary>

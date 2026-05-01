@@ -19,6 +19,25 @@ namespace TaskControl.InformationModule.DAL.Repositories
             _logger = logger;
         }
 
+        public async Task<CheckIOEmployee?> GetLastRecordByEmployeeIdAsync(int employeeId)
+        {
+            _logger.LogInformation("Поиск последней отметки для сотрудника ID: {employeeId}", employeeId);
+            try
+            {
+                var lastRecordModel = await _db.CheckIOEmployees
+                    .Where(e => e.EmployeeId == employeeId)
+                    .OrderByDescending(e => e.CheckTimeStamp)
+                    .FirstOrDefaultAsync();
+
+                return lastRecordModel?.ToDomain();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении последней отметки для сотрудника ID: {employeeId}", employeeId);
+                throw;
+            }
+        }
+
         public async Task<CheckIOEmployee?> GetByIdAsync(int id)
         {
             _logger.LogInformation("Поиск записи учета прихода на работу сотрудника по ID: {id}", id);

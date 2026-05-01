@@ -32,12 +32,8 @@ namespace TaskControl.InformationModule.Services
             _logger.LogInformation("Запрос последней отметки для сотрудника ID: {EmployeeId}", employeeId);
             try
             {
-                // Получаем все отметки сотрудника через репозиторий
-                var records = await _repository.GetAllAsync();
-                var lastRecord = records
-                    .Where(r => r.EmployeeId == employeeId)
-                    .OrderByDescending(r => r.CheckTimeStamp)
-                    .FirstOrDefault();
+                // Вместо вызова GetAllAsync() и фильтрации в памяти:
+                var lastRecord = await _repository.GetLastRecordByEmployeeIdAsync(employeeId);
 
                 if (lastRecord == null) return null;
 

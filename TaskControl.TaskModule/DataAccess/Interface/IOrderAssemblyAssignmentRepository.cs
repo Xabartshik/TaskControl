@@ -8,7 +8,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
     public interface IOrderAssemblyAssignmentRepository
     {
         Task<OrderAssemblyAssignment> GetByIdAsync(int id);
-        Task<OrderAssemblyAssignment> GetByTaskIdAsync(int taskId);
+        Task<IEnumerable<OrderAssemblyAssignment>> GetByTaskIdAsync(int taskId);
         Task<List<OrderAssemblyAssignment>> GetByUserIdAsync(int userId);
         Task<List<OrderAssemblyAssignment>> GetByStatusAsync(AssignmentStatus status);
         Task<List<OrderAssemblyAssignment>> GetByBranchIdAsync(int branchId);

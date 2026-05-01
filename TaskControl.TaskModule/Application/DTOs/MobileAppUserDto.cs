@@ -43,6 +43,11 @@ namespace TaskControl.TaskModule.Application.DTOs
         public DateTime? UpdatedAt { get; init; }
         public int? BranchId { get; init; }
 
+        // Новые поля для системы перерывов
+        public bool IsOnBreak { get; init; }
+        public DateTime? LastBreakEndTime { get; init; }
+        public DateTime? CurrentBreakStartTime { get; init; }
+
         /// <summary>
         /// Маппинг из DTO в доменную сущность
         /// </summary>
@@ -56,7 +61,10 @@ namespace TaskControl.TaskModule.Application.DTOs
             IsActive = dto.IsActive,
             CreatedAt = dto.CreatedAt,
             UpdatedAt = dto.UpdatedAt,
-            BranchId = dto.BranchId
+            BranchId = dto.BranchId,
+            IsOnBreak = dto.IsOnBreak,
+            LastBreakEndTime = dto.LastBreakEndTime,
+            CurrentBreakStartTime = dto.CurrentBreakStartTime
         };
 
         /// <summary>
@@ -72,7 +80,10 @@ namespace TaskControl.TaskModule.Application.DTOs
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
-            BranchId = entity.BranchId
+            BranchId = entity.BranchId,
+            IsOnBreak = entity.IsOnBreak,
+            LastBreakEndTime = entity.LastBreakEndTime,
+            CurrentBreakStartTime = entity.CurrentBreakStartTime
         };
     }
 

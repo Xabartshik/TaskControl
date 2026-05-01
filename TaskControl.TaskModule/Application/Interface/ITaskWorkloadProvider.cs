@@ -10,5 +10,7 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<double> GetActiveWorkloadComplexityAsync(int workerId);
         Task<bool> HasNewAssignmentsAsync(int workerId);
         Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId);
+        Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId);
+        Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId);
     }
 }

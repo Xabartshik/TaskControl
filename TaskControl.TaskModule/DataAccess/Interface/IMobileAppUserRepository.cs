@@ -23,5 +23,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         /// Найти пользователя, привязанного к конкретному покупателю
         /// </summary>
         Task<MobileAppUser?> GetByCustomerIdAsync(int customerId);
+        Task<List<int>> GetEmployeesOnBreakAsync(IEnumerable<int> employeeIds);
+        Task<IEnumerable<MobileAppUser>> GetUsersOnBreakAsync();
     }
 }

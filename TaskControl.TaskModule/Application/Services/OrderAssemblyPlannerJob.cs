@@ -1,3 +1,4 @@
+using Hangfire.Server;
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,6 @@ using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.DataAccess.Model;
-// Подключаем модели из других модулей:
 using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
 
@@ -30,6 +30,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly AppSettings _appSettings;
         private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly IBaseTaskService _baseTaskService;
+        private readonly INotificationService _notificationService;
 
         public OrderAssemblyPlannerJob(
             ITaskDataConnection db,
@@ -37,11 +38,13 @@ namespace TaskControl.TaskModule.Application.Services
             ILogger<OrderAssemblyPlannerJob> logger,
             IOptions<AppSettings> appSettings,
             TaskWorkloadAggregator taskWorkloadAggregator,
+            INotificationService notificationService,
             IBaseTaskService baseTaskService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _packingService = packingService ?? throw new ArgumentNullException(nameof(packingService));
             _logger = logger;
+            _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
             _appSettings = appSettings?.Value ?? new AppSettings();
             _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
             _taskWorkloadAggregator = taskWorkloadAggregator ?? throw new ArgumentNullException(nameof(taskWorkloadAggregator));
@@ -314,12 +317,16 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogInformation("Отправка уведомления помощнику (Worker ID: {WorkerId}) о совместной задаче {TaskId}",
                     sortedWorkers[1], taskId);
 
-                // Вызовите здесь ваш сервис уведомлений. Пример:
-                // await _notificationService.SendNotificationAsync(
-                //     sortedWorkers[1], 
-                //     $"Требуется помощь в сборке заказа #{orderId}. Нужна грузовая тележка!");
+                await _notificationService.NotifyHelperRequiredAsync(sortedWorkers[1], orderId);
             }
-
+            if (baseTask.PriorityLevel == 3)
+            {
+                await _notificationService.NotifyHighPriorityTaskAsync(sortedWorkers[0], taskId, baseTask.Title);
+            }
+            else
+            {
+                await _notificationService.NotifyNewTaskAsync(sortedWorkers[0], taskId, baseTask.Title);
+            }
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, "Assembly").UpdateAsync();
             _logger.LogInformation("|   [Заказ #{OrderId}] Успешно спланирован (с учетом зоны BULK).", orderId);
 

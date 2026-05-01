@@ -82,5 +82,42 @@ namespace TaskControl.TaskModule.Application.Providers
             }
             return result;
         }
+
+        public async Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId)
+        {
+            var assignments = await _assemblyRepo.GetByTaskIdAsync(taskId);
+            var completedStatus = AssignmentStatus.Completed.ToString();
+            var cancelledStatus = AssignmentStatus.Cancelled.ToString();
+            return assignments
+                .Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled)
+                .Select(a => a.AssignedToUserId)
+                .Distinct()
+                .ToList();
+        }
+
+        public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
+        {
+            var assignments = await _assemblyRepo.GetByUserIdAsync(workerId);
+            var activeAssignments = assignments.Where(t =>
+                t.Status == AssignmentStatus.InProgress).ToList();
+
+            var result = new List<MobileBaseTaskDto>();
+            foreach (var a in activeAssignments)
+            {
+                var baseTask = await _baseTaskService.GetById(a.TaskId);
+                result.Add(new MobileBaseTaskDto
+                {
+                    TaskId = a.TaskId,
+                    Title = baseTask?.Title ?? $"Сборка заказа #{a.OrderId}",
+                    TaskType = this.TaskType,
+                    PriorityLevel = baseTask?.PriorityLevel ?? 1,
+                    Status = TaskStatus.Assigned,
+                    AssignmentStatus = a.Status,
+                    CreatedAt = a.AssignedAt,
+                    Deadline = baseTask?.Deadline
+                });
+            }
+            return result;
+        }
     }
 }

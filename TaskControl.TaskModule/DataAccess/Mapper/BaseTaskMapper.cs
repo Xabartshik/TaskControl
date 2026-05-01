@@ -26,7 +26,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 CompletedAt = entity.CompletedAt,
                 Status = entity.Status.ToString(),  // Enum → INT для БД
                 Deadline = entity.Deadline,
-                PriorityLevel = entity.PriorityLevel,
+                PriorityLevel = (int)entity.PriorityLevel,
                 SourceType = entity.SourceType
             };
         }
@@ -50,7 +50,7 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 CompletedAt = model.CompletedAt,
                 Status = Enum.Parse<TaskStatus>(model.Status),
                 Deadline = model.Deadline,
-                PriorityLevel = model.PriorityLevel,
+                PriorityLevel = (TaskPriority)model.PriorityLevel,
                 SourceType = model.SourceType
             };
         }

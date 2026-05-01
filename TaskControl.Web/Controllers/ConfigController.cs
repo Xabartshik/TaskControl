@@ -22,7 +22,10 @@ namespace TaskControl.Web.Controllers
             {
                 _settings.PickupWindowLimitHours,
                 _settings.DeliveryWindowLimitHours,
-                _settings.WeightCoefficient
+                _settings.WeightCoefficient,
+                _settings.MaxConcurrentBreaksPercentage,
+                _settings.BreakDurationMinutes,
+                _settings.WorkMinutesRequiredForBreak
             });
         }
     }

@@ -17,6 +17,23 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger;
         }
+        public async Task<IEnumerable<MobileAppUser>> GetUsersOnBreakAsync()
+        {
+            _logger.LogInformation("Получение всех пользователей мобильного приложения, находящихся на перерыве");
+            try
+            {
+                var users = await _db.MobileAppUsers
+                    .Where(u => u.IsOnBreak)
+                    .ToListAsync();
+
+                return users.Select(u => u.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении списка пользователей мобильного приложения на перерыве");
+                throw;
+            }
+        }
 
         public async Task<MobileAppUser?> GetByIdAsync(int id)
         {
@@ -33,6 +50,32 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
+        public async Task<List<int>> GetEmployeesOnBreakAsync(IEnumerable<int> employeeIds)
+        {
+            _logger.LogInformation("Получение списка сотрудников, находящихся на перерыве");
+            try
+            {
+                if (employeeIds == null || !employeeIds.Any())
+                {
+                    return new List<int>();
+                }
+
+                var onBreakIds = await _db.MobileAppUsers
+                    // Проверяем, что EmployeeId не null, входит в искомый список и сотрудник на перерыве
+                    .Where(u => u.EmployeeId.HasValue
+                             && employeeIds.Contains(u.EmployeeId.Value)
+                             && u.IsOnBreak)
+                    .Select(u => u.EmployeeId.Value)
+                    .ToListAsync();
+
+                return onBreakIds;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении списка сотрудников на перерыве");
+                throw;
+            }
+        }
         public async Task<IEnumerable<MobileAppUser>> GetAllAsync()
         {
             _logger.LogInformation("Получение всех пользователей мобильного приложения");

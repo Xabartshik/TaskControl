@@ -17,15 +17,16 @@ public class MobileAppUser
     /// <summary>
     /// Идентификатор записи (из БД).
     /// </summary>
-    public int Id { get;  set; }
+    public int Id { get; set; }
 
     public int? EmployeeId { get; set; }
     public int? CustomerId { get; set; }
     public string Login { get; set; }
+
     /// <summary>
     /// Хэш пароля.
     /// </summary>
-    public string PasswordHash { get;  set; }
+    public string PasswordHash { get; set; }
 
     /// <summary>
     /// Роль пользователя в мобильном приложении.
@@ -53,6 +54,11 @@ public class MobileAppUser
     /// </summary>
     public DateTime? UpdatedAt { get; set; }
 
+    // Новые поля для системы перерывов
+    public bool IsOnBreak { get; set; }
+    public DateTime? LastBreakEndTime { get; set; }
+    public DateTime? CurrentBreakStartTime { get; set; }
+
     internal MobileAppUser() { }
 
     public MobileAppUser(
@@ -61,7 +67,10 @@ public class MobileAppUser
         MobileUserRole role,
         int? employeeId = null,
         int? customerId = null,
-        int? branchId = null)
+        int? branchId = null,
+        bool isOnBreak = false,
+        DateTime? lastBreakEndTime = null,
+        DateTime? currentBreakStartTime = null)
     {
         if (string.IsNullOrWhiteSpace(login))
             throw new ArgumentException("Login cannot be empty.", nameof(login));
@@ -74,6 +83,9 @@ public class MobileAppUser
         BranchId = branchId;
         IsActive = true;
         CreatedAt = DateTime.UtcNow;
+        IsOnBreak = isOnBreak;
+        LastBreakEndTime = lastBreakEndTime;
+        CurrentBreakStartTime = currentBreakStartTime;
     }
 
     public void SetPasswordHash(string passwordHash)

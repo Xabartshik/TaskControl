@@ -71,6 +71,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ICheckIOEmployeeRepository, CheckIOEmployeeRepository>();
             services.AddScoped<IService<CheckIOEmployeeDto>, CheckIOEmployeeService>();
+            services.AddScoped<CheckIOEmployeeService>();
 
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<IService<EmployeeDto>, EmployeeService>();
@@ -194,6 +195,10 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
+
+            services.AddScoped<INotificationService, NotificationService>();
+
+            services.AddScoped<IWorkerBreakService, WorkerBreakService>();
 
             return services;
         }

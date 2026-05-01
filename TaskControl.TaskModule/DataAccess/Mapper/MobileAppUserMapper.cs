@@ -20,7 +20,10 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 IsActive = entity.IsActive,
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
-                BranchId = entity.BranchId
+                BranchId = entity.BranchId,
+                IsOnBreak = entity.IsOnBreak,
+                LastBreakEndTime = entity.LastBreakEndTime,
+                CurrentBreakStartTime = entity.CurrentBreakStartTime
             };
         }
 
@@ -39,7 +42,10 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
                 IsActive = model.IsActive,
                 CreatedAt = model.CreatedAt,
                 UpdatedAt = model.UpdatedAt,
-                BranchId = model.BranchId
+                BranchId = model.BranchId,
+                IsOnBreak = model.IsOnBreak,
+                LastBreakEndTime = model.LastBreakEndTime,
+                CurrentBreakStartTime = model.CurrentBreakStartTime
             };
         }
     }

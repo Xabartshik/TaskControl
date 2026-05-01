@@ -299,22 +299,36 @@ namespace TaskControl.TaskModule.Application.Services
                 if (t.Type == "OrderAssembly")
                 {
                     // Для задач сборки заказов берём данные из репозитория сборки
-                    var oaAssignment = await _orderAssemblyRepository.GetByTaskIdAsync(t.TaskId);
-                    if (oaAssignment != null)
-                    {
-                        var emp = await _activeEmployeeService.GetEmployeeByIdAsync(oaAssignment.AssignedToUserId);
-                        int total = oaAssignment.TotalLines;
-                        int completed = oaAssignment.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed);
+                    // Получаем список назначений (переименовали переменную во множественное число для понятности)
+                    var oaAssignments = await _orderAssemblyRepository.GetByTaskIdAsync(t.TaskId);
 
-                        dict[oaAssignment.AssignedToUserId] = new TaskAssigneeProgressDto
+                    // Проверяем, что список не пустой
+                    if (oaAssignments != null && oaAssignments.Any())
+                    {
+                        // Проходимся циклом по каждому назначению на эту задачу
+                        foreach (var assignment in oaAssignments)
                         {
-                            EmployeeId = oaAssignment.AssignedToUserId,
-                            FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {oaAssignment.AssignedToUserId}",
-                            AssignedVolume = total,
-                            CompletedVolume = completed,
-                            Status = oaAssignment.Status == AssignmentStatus.InProgress ? "В процессе"
-                                     : oaAssignment.Status == AssignmentStatus.Completed ? "Завершено" : "Назначено"
-                        };
+                            // Получаем информацию о сотруднике
+                            var emp = await _activeEmployeeService.GetEmployeeByIdAsync(assignment.AssignedToUserId);
+
+                            int total = assignment.TotalLines;
+                            int completed = assignment.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed);
+
+                            // Добавляем или обновляем запись в словаре по ID сотрудника
+                            dict[assignment.AssignedToUserId] = new TaskAssigneeProgressDto
+                            {
+                                EmployeeId = assignment.AssignedToUserId,
+                                FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {assignment.AssignedToUserId}",
+                                AssignedVolume = total,
+                                CompletedVolume = completed,
+
+                                // Если Status у вас в доменной модели — это строка (как мы выяснили в прошлых ответах), 
+                                // то не забудьте добавить .ToString() к AssignmentStatus, например:
+                                // assignment.Status == AssignmentStatus.InProgress.ToString()
+                                Status = assignment.Status == AssignmentStatus.InProgress ? "В процессе"
+                                         : assignment.Status == AssignmentStatus.Completed ? "Завершено" : "Назначено"
+                            };
+                        }
                     }
                 }
                 else

@@ -16,6 +16,17 @@ namespace TaskControl.TaskModule.Application.Services
             _providers = providers ?? throw new ArgumentNullException(nameof(providers));
         }
 
+        public async Task<IEnumerable<MobileBaseTaskDto>> GetAllActiveTasksAsync(int workerId)
+        {
+            var allActiveTasks = new List<MobileBaseTaskDto>();
+            foreach (var provider in _providers)
+            {
+                var moduleTasks = await provider.GetActiveTasksAsync(workerId);
+                allActiveTasks.AddRange(moduleTasks);
+            }
+            return allActiveTasks;
+        }
+
         public async Task<double> GetTotalActiveComplexityAsync(int workerId)
         {
             double totalComplexity = 0;
@@ -56,6 +67,18 @@ namespace TaskControl.TaskModule.Application.Services
             }
 
             return allTasks.OrderByDescending(t => t.PriorityLevel).ThenBy(t => t.CreatedAt);
+        }
+
+        public async Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId)
+        {
+            var allWorkerIds = new List<int>();
+
+            foreach (var provider in _providers)
+            {
+                var workerIds = await provider.GetAssignedEmployeeIdsAsync(taskId);
+                allWorkerIds.AddRange(workerIds);
+            }
+            return allWorkerIds.Distinct();
         }
 
     }
