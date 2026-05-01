@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.Domain;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
@@ -17,13 +18,17 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         private readonly ITaskExecutionAggregator _taskExecutionAggregator;
         private readonly IBaseTaskService _baseTaskService;
         private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService; 
+        private readonly IOrderAssemblyAssignmentRepository _orderAssemblyAssignmentRepository;
+        private readonly ITaskDetailsBuilder _taskDetailsBuilder;
 
-        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator, IBaseTaskService baseTaskService, IOrderAssemblyExecutionService orderAssemblyExecutionService)
+        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator, IBaseTaskService baseTaskService, IOrderAssemblyExecutionService orderAssemblyExecutionService, IOrderAssemblyAssignmentRepository orderAssemblyAssignmentRepository, ITaskDetailsBuilder taskDetailsBuilder)
         {
             _taskWorkloadAggregator = aggregator;
             _taskExecutionAggregator = taskExecutionAggregator;
             _baseTaskService = baseTaskService;
             _orderAssemblyExecutionService = orderAssemblyExecutionService;
+            _orderAssemblyAssignmentRepository = orderAssemblyAssignmentRepository;
+            _taskDetailsBuilder = taskDetailsBuilder;
         }
 
         [HttpGet("{workerId}/pending")]
@@ -31,6 +36,42 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         {
             var tasks = await _taskWorkloadAggregator.GetAllPendingTasksAsync(workerId);
             return Ok(tasks);
+        }
+
+        [HttpGet("{workerId}/{taskId}/details")]
+        public async Task<ActionResult<MobileBaseTaskDto>> GetDetails(int workerId, int taskId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
+            if (baseTask.Type != "OrderAssembly")
+            {
+                return BadRequest(new { Message = $"Тип задачи {baseTask.Type} пока не поддерживает details endpoint." });
+            }
+
+            var assignment = await _orderAssemblyAssignmentRepository.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                return NotFound(new { Message = $"Назначение для задачи {taskId} и сотрудника {workerId} не найдено." });
+            }
+
+            var dto = new MobileBaseTaskDto
+            {
+                TaskId = assignment.TaskId,
+                Title = baseTask.Title ?? $"Сборка заказа #{assignment.OrderId}",
+                TaskType = baseTask.Type,
+                PriorityLevel = baseTask.PriorityLevel,
+                Status = baseTask.Status,
+                AssignmentStatus = assignment.Status,
+                CreatedAt = assignment.AssignedAt,
+                Deadline = baseTask.Deadline,
+                TaskDetails = _taskDetailsBuilder.BuildOrderAssemblyDetails(assignment)
+            };
+
+            return Ok(dto);
         }
 
         /// <summary>
