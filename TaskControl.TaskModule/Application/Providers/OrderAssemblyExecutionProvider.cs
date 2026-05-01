@@ -163,5 +163,31 @@ namespace TaskControl.TaskModule.Application.Providers
             _logger.LogWarning("Не удалось активировать задачу. TaskID: {TaskId}, WorkerID: {WorkerId} - назначение не найдено", taskId, workerId);
             return false;
         }
+
+        public async Task<bool> TryPauseTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Paused;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            return true;
+        }
+
+        public async Task<bool> TryCancelTaskAsync(int taskId, int workerId)
+        {
+            var assignment = await _assemblyRepo.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
+            {
+                return false;
+            }
+
+            assignment.Status = (int)AssignmentStatus.Cancelled;
+            await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+            return true;
+        }
     }
 }
