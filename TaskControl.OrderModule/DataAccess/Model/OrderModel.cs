@@ -1,9 +1,5 @@
 ﻿using LinqToDB.Mapping;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TaskControl.OrderModule.DataAccess.Model
 {
@@ -14,6 +10,9 @@ namespace TaskControl.OrderModule.DataAccess.Model
         [Column("customer_id"), NotNull] public int CustomerId { get; set; }
         [Column("branch_id"), NotNull] public int BranchId { get; set; }
         [Column("delivery_date")] public DateTime? DeliveryDate { get; set; }
+
+        // Новое поле для БД
+        [Column("delivery_slot_id")] public int? DeliverySlotId { get; set; }
 
         // Поля логистики
         [Column("destination_address")] public string? DestinationAddress { get; set; }

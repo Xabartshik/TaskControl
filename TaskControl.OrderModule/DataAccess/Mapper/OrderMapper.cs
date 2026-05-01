@@ -1,6 +1,5 @@
 ﻿using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
-using UnitsNet;
 
 namespace TaskControl.OrderModule.DataAccess.Mapper
 {
@@ -16,6 +15,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = entity.CustomerId,
                 BranchId = entity.BranchId,
                 DeliveryDate = entity.DeliveryDate,
+                DeliverySlotId = entity.DeliverySlotId, // Маппинг слота
                 DestinationAddress = entity.DestinationAddress,
 
                 // Трансформация для БД
@@ -41,6 +41,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = model.CustomerId,
                 BranchId = model.BranchId,
                 DeliveryDate = model.DeliveryDate,
+                DeliverySlotId = model.DeliverySlotId, // Маппинг слота
                 DestinationAddress = model.DestinationAddress,
                 PostamatId = model.PostamatId,
                 PostamatCellId = model.PostamatCellId,

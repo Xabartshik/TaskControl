@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using System;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.Interface;
 
@@ -21,45 +20,15 @@ namespace TaskControl.TaskModule.Presentation
             _logger = logger;
         }
 
-        [HttpGet("worker/{userId}/assignments")]
-        public async Task<IActionResult> GetHeaders(int userId)
-        {
-            return Ok(await _executionService.GetAssignmentsHeaderForWorkerAsync(userId));
-        }
+        // --- УДАЛЕННЫЕ ЭНДПОИНТЫ ---
+        // GetHeaders (worker/{userId}/assignments) -> Используйте v1/WorkerTasks/{workerId}/pending
+        // GetDetails (assignment/{id}/details)     -> Используйте v1/WorkerTasks/{taskId}/details
+        // Start (assignment/{id}/start)            -> Используйте v1/WorkerTasks/{taskId}/start
+        // Pause (assignment/{id}/pause)            -> Используйте v1/WorkerTasks/{taskId}/pause (если добавлено в агрегатор)
+        // Cancel (assignment/{id}/cancel)          -> Используйте v1/WorkerTasks/{taskId}/cancel (если добавлено в агрегатор)
+        // Complete (complete/{assignmentId})       -> Используйте v1/WorkerTasks/{taskId}/complete
 
-        [HttpGet("assignment/{id}/details")]
-        public async Task<IActionResult> GetDetails(int id)
-        {
-            try
-            {
-                return Ok(await _executionService.GetAssemblyTaskDetailsAsync(id));
-            }
-            catch (Exception ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-        }
-
-        [HttpPost("assignment/{id}/start")]
-        public async Task<IActionResult> Start(int id)
-        {
-            var result = await _executionService.StartAssemblyAsync(id);
-            return result ? Ok() : NotFound();
-        }
-
-        [HttpPost("assignment/{id}/pause")]
-        public async Task<IActionResult> Pause(int id)
-        {
-            var result = await _executionService.PauseAssemblyAsync(id);
-            return result ? Ok() : NotFound();
-        }
-
-        [HttpPost("assignment/{id}/cancel")]
-        public async Task<IActionResult> Cancel(int id)
-        {
-            var result = await _executionService.CancelAssemblyAsync(id);
-            return result ? Ok() : NotFound();
-        }
+        // --- ОСТАВЛЕННЫЕ УНИКАЛЬНЫЕ ЭНДПОИНТЫ ---
 
         [HttpPost("scan-pick")]
         public async Task<IActionResult> ScanAndPick([FromBody] ScanPickRequest req)
@@ -79,13 +48,6 @@ namespace TaskControl.TaskModule.Presentation
         public async Task<IActionResult> ReportMissing([FromBody] ReportMissingRequest req)
         {
             await _executionService.ReportMissingItem(req.LineId, req.Reason);
-            return Ok();
-        }
-
-        [HttpPost("complete/{assignmentId}")]
-        public async Task<IActionResult> CompleteTask(int assignmentId)
-        {
-            await _executionService.CompleteAssemblyTask(assignmentId);
             return Ok();
         }
     }

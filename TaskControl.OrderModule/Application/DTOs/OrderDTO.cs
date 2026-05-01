@@ -1,7 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 using TaskControl.OrderModule.Domain;
 
-
 namespace TaskControl.OrderModule.Application.DTOs
 {
     public record OrderDto
@@ -13,6 +12,9 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int BranchId { get; init; }
 
         public DateTime? DeliveryDate { get; init; }
+
+        // Поле для передачи выбранного окна
+        public int? DeliverySlotId { get; init; }
 
         public string? DestinationAddress { get; set; }
 
@@ -40,6 +42,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = dto.CustomerId,
             BranchId = dto.BranchId,
             DeliveryDate = dto.DeliveryDate,
+            DeliverySlotId = dto.DeliverySlotId, // Маппинг
             DestinationAddress = dto.DestinationAddress,
 
             // Маппинг постаматов
@@ -58,6 +61,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = entity.CustomerId,
             BranchId = entity.BranchId,
             DeliveryDate = entity.DeliveryDate,
+            DeliverySlotId = entity.DeliverySlotId, // Маппинг
             DestinationAddress = entity.DestinationAddress,
 
             // Маппинг постаматов
@@ -66,7 +70,8 @@ namespace TaskControl.OrderModule.Application.DTOs
 
             DeliveryType = entity.DeliveryType,
             PaymentType = entity.PaymentType,
-            Status = entity.Status
+            Status = entity.Status,
+            TotalPrice = entity.TotalPrice // Восстановлен вывод суммы
         };
     }
 }
