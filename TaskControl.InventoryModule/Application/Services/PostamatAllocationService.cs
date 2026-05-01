@@ -1,5 +1,7 @@
 ﻿// TaskControl.InventoryModule/Application/Services/PostamatAllocationService.cs
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.Domain;
@@ -12,25 +14,57 @@ namespace TaskControl.InventoryModule.Application.Services
     {
         private readonly IPostamatCellRepository _cellRepository;
         private readonly IBoxPackingService _packingService;
+        private readonly AppSettings _appSettings;
         private readonly ILogger<PostamatAllocationService> _logger;
 
         public PostamatAllocationService(
             IPostamatCellRepository cellRepository,
             IBoxPackingService packingService,
+            IOptions<AppSettings> appSettings,
             ILogger<PostamatAllocationService> logger)
         {
             _cellRepository = cellRepository;
             _packingService = packingService;
+            _appSettings = appSettings.Value;
             _logger = logger;
         }
-        //TODO: Заглушка. Потом разделить
-        public Task<bool> HardAllocateOrderItemsAsync(int branchId, int orderPositionId, int itemId, int neededQuantity)
+
+        // Приватный метод грубой проверки
+        private bool PassesRoughDimensionCheck(List<ItemToPack> itemsToPack)
         {
-            throw new NotImplementedException();
+            double totalWeight = 0;
+
+            foreach (var item in itemsToPack)
+            {
+                // Если товар вращать можно, логичнее сортировать измерения товара и ячейки.
+                // Для простейшей проверки предполагаем, что у товара (L, W, H) ни одно измерение 
+                // не должно превышать абсолютный максимум постамата (L).
+                // Упрощенный вариант проверки (сортируем грани товара по убыванию: Max, Mid, Min)
+                var dimensions = new[] { item.Length, item.Width, item.Height }.OrderByDescending(x => x).ToArray();
+                var maxLimits = new[] { _appSettings.PostamatMaxItemLengthMm, _appSettings.PostamatMaxItemWidthMm, _appSettings.PostamatMaxItemHeightMm }.OrderByDescending(x => x).ToArray();
+
+                if (dimensions[0] > maxLimits[0] || dimensions[1] > maxLimits[1] || dimensions[2] > maxLimits[2])
+                {
+                    return false; // Товар физически не пролезет ни в одну ячейку
+                }
+
+                // Можно также суммировать вес, если у ItemToPack есть свойство Weight
+                totalWeight += item.Weight * item.Quantity;
+            }
+
+            if (totalWeight > _appSettings.PostamatMaxWeightGrams) return false;
+
+            return true;
         }
 
         public async Task<bool> CheckCapacityAsync(int postamatId, List<ItemToPack> itemsToPack)
         {
+            // 1. Быстрая (грубая) проверка габаритов ДО запроса к БД
+            if (!PassesRoughDimensionCheck(itemsToPack))
+            {
+                _logger.LogWarning("Заказ отклонен: содержит товары, превышающие максимально допустимые габариты постамата.");
+                return false;
+            }
             var availableCells = await _cellRepository.GetAvailableCellsAsync(postamatId);
             if (!availableCells.Any()) return false;
 

@@ -193,6 +193,7 @@ namespace TaskControl.TaskModule.Application.Services
                 Length = x.Length,
                 Width = x.Width,
                 Height = x.Height,
+                Weight = x.Weight,
                 Quantity = x.Quantity
             }).ToList();
 

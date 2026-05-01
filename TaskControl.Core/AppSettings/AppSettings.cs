@@ -20,5 +20,25 @@ namespace TaskControl.Core.AppSettings
         public int WorkMinutesRequiredForBreak { get; set; } = 50; // Число минут непрерывного труда для накопления перерыва
         public int BreakDurationMinutes { get; set; } = 10;        // Длительность перерыва по ТК РФ
         public int MaxConcurrentBreaksPercentage { get; set; } = 20; // Лимит отдыхающих (20% от смены)
+        // --- Ограничения постаматов (Грубая проверка) ---
+        /// <summary>
+        /// Максимально допустимая длина одного товара для постамата (в миллиметрах)
+        /// </summary>
+        public int PostamatMaxItemLengthMm { get; set; } = 600;
+
+        /// <summary>
+        /// Максимально допустимая ширина одного товара для постамата (в миллиметрах)
+        /// </summary>
+        public int PostamatMaxItemWidthMm { get; set; } = 400;
+
+        /// <summary>
+        /// Максимально допустимая высота одного товара для постамата (в миллиметрах)
+        /// </summary>
+        public int PostamatMaxItemHeightMm { get; set; } = 400;
+
+        /// <summary>
+        /// Максимально допустимый вес одного товара (или всего заказа) для постамата (в граммах)
+        /// </summary>
+        public int PostamatMaxWeightGrams { get; set; } = 15000; // 15 кг
     }
 }

@@ -125,6 +125,7 @@ namespace TaskControl.OrderModule.Application.Services
                         Length = vp.item.Length.Millimeters,
                         Width = vp.item.Width.Millimeters,
                         Height = vp.item.Height.Millimeters,
+                        Weight = vp.item.Weight.Grams,
                         Quantity = vp.dto.Quantity
                     }).ToList();
 
