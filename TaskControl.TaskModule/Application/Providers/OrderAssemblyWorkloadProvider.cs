@@ -14,19 +14,19 @@ namespace TaskControl.TaskModule.Application.Providers
     public class OrderAssemblyWorkloadProvider : ITaskWorkloadProvider
     {
         private readonly IOrderAssemblyAssignmentRepository _assemblyRepo;
-        //private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService;
         private readonly IBaseTaskService _baseTaskService;
+        private readonly ITaskDetailsBuilder _taskDetailsBuilder;
 
         public string TaskType => "OrderAssembly";
 
         public OrderAssemblyWorkloadProvider(
             IOrderAssemblyAssignmentRepository assemblyRepo,
-            //IOrderAssemblyExecutionService orderAssemblyExecutionService,
-            IBaseTaskService baseTaskService)
+            IBaseTaskService baseTaskService,
+            ITaskDetailsBuilder taskDetailsBuilder)
         {
             _assemblyRepo = assemblyRepo;
-            //_orderAssemblyExecutionService = orderAssemblyExecutionService;
             _baseTaskService = baseTaskService;
+            _taskDetailsBuilder = taskDetailsBuilder;
         }
 
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
@@ -72,12 +72,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     AssignmentStatus = a.Status,
                     CreatedAt = a.AssignedAt,
                     Deadline = baseTask?.Deadline,
-                    TaskDetails = new
-                    {
-                        AssignmentId = a.Id,
-                        totalLines = a.TotalLines,
-                        completedLines = a.Lines?.Count(l => l.Status == Domain.OrderAssemblyLineStatus.Placed) ?? 0
-                    }
+                    TaskDetails = _taskDetailsBuilder.BuildOrderAssemblyDetails(a)
                 });
             }
             return result;

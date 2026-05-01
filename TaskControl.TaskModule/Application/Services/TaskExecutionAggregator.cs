@@ -66,9 +66,49 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task<bool> CompleteAssignmentAsync(int taskId, string taskType, int workerId)
         {
             var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
-            if (provider == null) return false;
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для типа задачи {TaskType}", taskType);
+                return false;
+            }
 
             return await provider.TryCompleteAssignmentAsync(taskId, workerId);
+        }
+
+        public async Task<bool> PauseTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для паузы задачи типа {TaskType}", taskType);
+                return false;
+            }
+
+            return await provider.TryPauseTaskAsync(taskId, workerId);
+        }
+
+        public async Task<bool> CancelTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для отмены задачи типа {TaskType}", taskType);
+                return false;
+            }
+
+            return await provider.TryCancelTaskAsync(taskId, workerId);
+        }
+
+        public async Task<object?> GetTaskDetailsAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для получения деталей задачи типа {TaskType}", taskType);
+                return null;
+            }
+
+            return await provider.GetTaskDetailsAsync(taskId, workerId);
         }
 
         public async Task<bool> IsTaskFullyCompletedAsync(int taskId, string taskType)

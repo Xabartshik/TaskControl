@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.Domain;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
@@ -16,21 +17,18 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly ITaskExecutionAggregator _taskExecutionAggregator;
         private readonly IBaseTaskService _baseTaskService;
-        private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService;
-        private readonly IInventoryProcessService _inventoryProcessService;
+        private readonly IOrderAssemblyExecutionService _orderAssemblyExecutionService; 
+        private readonly IOrderAssemblyAssignmentRepository _orderAssemblyAssignmentRepository;
+        private readonly ITaskDetailsBuilder _taskDetailsBuilder;
 
-        public WorkerTasksController(
-            TaskWorkloadAggregator aggregator,
-            ITaskExecutionAggregator taskExecutionAggregator,
-            IBaseTaskService baseTaskService,
-            IOrderAssemblyExecutionService orderAssemblyExecutionService,
-            IInventoryProcessService inventoryProcessService)
+        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator, IBaseTaskService baseTaskService, IOrderAssemblyExecutionService orderAssemblyExecutionService, IOrderAssemblyAssignmentRepository orderAssemblyAssignmentRepository, ITaskDetailsBuilder taskDetailsBuilder)
         {
             _taskWorkloadAggregator = aggregator;
             _taskExecutionAggregator = taskExecutionAggregator;
             _baseTaskService = baseTaskService;
             _orderAssemblyExecutionService = orderAssemblyExecutionService;
-            _inventoryProcessService = inventoryProcessService;
+            _orderAssemblyAssignmentRepository = orderAssemblyAssignmentRepository;
+            _taskDetailsBuilder = taskDetailsBuilder;
         }
 
         [HttpGet("{workerId}/pending")]
@@ -40,52 +38,40 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             return Ok(tasks);
         }
 
-        [HttpGet("{taskId}/details")]
-        public async Task<IActionResult> GetTaskDetails(int taskId)
+        [HttpGet("{workerId}/{taskId}/details")]
+        public async Task<ActionResult<MobileBaseTaskDto>> GetDetails(int workerId, int taskId)
         {
             var baseTask = await _baseTaskService.GetById(taskId);
-            if (baseTask == null) return NotFound("Задача не найдена.");
-
-            return baseTask.Type switch
+            if (baseTask == null)
             {
-                "Inventory" => Ok(await _inventoryProcessService.GetInventoryTaskDetailsAsync(taskId)),
-                "OrderAssembly" => Ok(await _orderAssemblyExecutionService.GetAssemblyTaskDetailsAsync(taskId)),
-                _ => BadRequest($"Получение деталей не поддерживается для типа задачи '{baseTask.Type}'.")
-            };
-        }
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
 
-        [HttpPost("{taskId}/pause")]
-        public async Task<IActionResult> PauseTask(int taskId)
-        {
-            var baseTask = await _baseTaskService.GetById(taskId);
-            if (baseTask == null) return NotFound("Задача не найдена.");
-
-            var success = baseTask.Type switch
+            if (baseTask.Type != "OrderAssembly")
             {
-                "Inventory" => await _inventoryProcessService.PauseInventoryAsync(taskId),
-                "OrderAssembly" => await _orderAssemblyExecutionService.PauseAssemblyAsync(taskId),
-                _ => false
-            };
+                return BadRequest(new { Message = $"Тип задачи {baseTask.Type} пока не поддерживает details endpoint." });
+            }
 
-            if (!success) return BadRequest("Не удалось поставить задачу на паузу.");
-            return Ok();
-        }
-
-        [HttpPost("{taskId}/cancel")]
-        public async Task<IActionResult> CancelTask(int taskId)
-        {
-            var baseTask = await _baseTaskService.GetById(taskId);
-            if (baseTask == null) return NotFound("Задача не найдена.");
-
-            var success = baseTask.Type switch
+            var assignment = await _orderAssemblyAssignmentRepository.GetByTaskAndUserAsync(taskId, workerId);
+            if (assignment == null)
             {
-                "Inventory" => await _inventoryProcessService.CancelInventoryAsync(taskId),
-                "OrderAssembly" => await _orderAssemblyExecutionService.CancelAssemblyAsync(taskId),
-                _ => false
+                return NotFound(new { Message = $"Назначение для задачи {taskId} и сотрудника {workerId} не найдено." });
+            }
+
+            var dto = new MobileBaseTaskDto
+            {
+                TaskId = assignment.TaskId,
+                Title = baseTask.Title ?? $"Сборка заказа #{assignment.OrderId}",
+                TaskType = baseTask.Type,
+                PriorityLevel = baseTask.PriorityLevel,
+                Status = baseTask.Status,
+                AssignmentStatus = assignment.Status,
+                CreatedAt = assignment.AssignedAt,
+                Deadline = baseTask.Deadline,
+                TaskDetails = _taskDetailsBuilder.BuildOrderAssemblyDetails(assignment)
             };
 
-            if (!success) return BadRequest("Не удалось отменить задачу.");
-            return Ok();
+            return Ok(dto);
         }
 
         /// <summary>
@@ -109,7 +95,44 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             }
             if (!isStarted)
             {
-                return NotFound(new { message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+                // Возвращаем ошибку, если задача не найдена или не принадлежит работнику
+                return NotFound(new { Message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+            }
+
+            return Ok();
+        }
+
+        [HttpPost("{taskId}/pause")]
+        public async Task<IActionResult> PauseTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
+            var success = await _taskExecutionAggregator.PauseTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success)
+            {
+                return BadRequest(new { Message = $"Не удалось поставить на паузу задачу {taskId} для работника {workerId}." });
+            }
+
+            return Ok();
+        }
+
+        [HttpPost("{taskId}/cancel")]
+        public async Task<IActionResult> CancelTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
+            var success = await _taskExecutionAggregator.CancelTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success)
+            {
+                return BadRequest(new { Message = $"Не удалось отменить задачу {taskId} для работника {workerId}." });
             }
 
             return Ok();
@@ -119,10 +142,10 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId)
         {
             var baseTask = await _baseTaskService.GetById(taskId);
-            if (baseTask == null) return NotFound("Задача не найдена.");
+            if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
             bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId);
-            if (!success) return BadRequest("Не удалось завершить назначение.");
+            if (!success) return BadRequest(new { Message = $"Не удалось завершить назначение для задачи {taskId} и работника {workerId}." });
 
             bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
 
