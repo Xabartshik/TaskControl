@@ -39,7 +39,7 @@ namespace TaskControl.TaskModule.Application.Interface
     /// </summary>
     public class CellPlacementInfoDto
     {
-        public int TargetPositionId { get; set; }
+        public int? TargetPositionId { get; set; }
         public string? CellCode { get; set; }
         public string? CellDisplayName { get; set; }
         public List<PlacementLineDto> Items { get; set; } = new();
@@ -72,7 +72,7 @@ namespace TaskControl.TaskModule.Application.Interface
     {
         Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId);
         Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId);
-
+        Task<bool> HandoverExpressOrderAsync(int assignmentId, string qrToken);
         Task<bool> StartAssemblyAsync(int assignmentId);
         Task<bool> PauseAssemblyAsync(int assignmentId);
         Task<bool> CancelAssemblyAsync(int assignmentId);

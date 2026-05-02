@@ -19,7 +19,7 @@ namespace TaskControl.TaskModule.Domain
         public int OrderAssemblyAssignmentId { get; internal set; }
         public int ItemPositionId { get; internal set; }
         public int SourcePositionId { get; internal set; }
-        public int TargetPositionId { get; internal set; }
+        public int? TargetPositionId { get; internal set; }
         public int Quantity { get; internal set; }
         public int PickedQuantity { get; internal set; }
         public OrderAssemblyLineStatus Status { get; internal set; }
@@ -34,7 +34,7 @@ namespace TaskControl.TaskModule.Domain
             int orderAssemblyAssignmentId,
             int itemPositionId,
             int sourcePositionId,
-            int targetPositionId,
+            int? targetPositionId,
             int quantity,
             OrderAssemblyLineStatus status)
         {

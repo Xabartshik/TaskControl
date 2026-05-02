@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Services;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -26,6 +27,45 @@ namespace TaskControl.TaskModule.Presentation
         {
             Response.Headers.Append("Warning", $"299 - Deprecated API. Use {replacement}");
             Response.Headers.Append("X-Api-Deprecated", "true");
+        }
+
+        public class ExpressHandoverRequest
+        {
+            public string QrToken { get; set; }
+        }
+
+        /// <summary>
+        /// Эндпоинт для выдачи экспресс-заказа "из рук в руки" через сканирование QR клиента
+        /// </summary>
+        [HttpPost("assignment/{assignmentId}/express-handover")]
+        public async Task<IActionResult> HandoverExpressOrder(int assignmentId, [FromBody] ExpressHandoverRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request?.QrToken))
+            {
+                return BadRequest(new { message = "QR-токен не может быть пустым." });
+            }
+
+            try
+            {
+                await _executionService.HandoverExpressOrderAsync(assignmentId, request.QrToken);
+                return Ok(new { message = "Товар успешно передан клиенту, заказ завершен." });
+            }
+            catch (ArgumentException ex)
+            {
+                // ДОБАВЛЕНО ЛОГИРОВАНИЕ: Теперь ты увидишь это в консоли желтым цветом
+                _logger.LogWarning("Ошибка валидации при выдаче (AssignmentId: {Id}): {Message}", assignmentId, ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning("Конфликт при выдаче (AssignmentId: {Id}): {Message}", assignmentId, ex.Message);
+                return Conflict(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при экспресс-выдаче (AssignmentId: {AssignmentId})", assignmentId);
+                return StatusCode(500, "Внутренняя ошибка сервера.");
+            }
         }
 
         /// <summary>DEPRECATED: используйте GET /api/v1/WorkerTasks/{workerId}/pending.</summary>

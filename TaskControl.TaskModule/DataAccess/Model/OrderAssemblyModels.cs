@@ -56,8 +56,8 @@ namespace TaskControl.TaskModule.DataAccess.Models
         [Column("source_position_id"), NotNull]
         public int SourcePositionId { get; set; }
 
-        [Column("target_position_id"), NotNull]
-        public int TargetPositionId { get; set; }
+        [Column("target_position_id")]
+        public int? TargetPositionId { get; set; }
 
         [Column("quantity"), NotNull]
         public int Quantity { get; set; }

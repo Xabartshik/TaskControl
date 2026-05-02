@@ -24,7 +24,7 @@ namespace TaskControl.Core.Shared.SharedInterfaces
     public class PackedItemResult
     {
         public int OrderPositionId { get; set; }
-        public int TargetPositionId { get; set; }
+        public int? TargetPositionId { get; set; }
         public int Quantity { get; set; }
     }
 

@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.Application.Interface;
 
@@ -12,13 +13,39 @@ namespace TaskControl.OrderModule.Presentation.Controllers
     {
         private readonly IOrderService _service;
         private readonly ILogger<OrdersController> _logger;
-
+        private readonly IQRTokenService _qrTokenService; 
         public OrdersController(
             IOrderService service,
-            ILogger<OrdersController> logger)
+            ILogger<OrdersController> logger,
+            IQRTokenService qrTokenService)
         {
             _service = service;
             _logger = logger;
+            _qrTokenService = qrTokenService;
+        }
+
+        /// <summary>
+        /// Получить строку для генерации QR-кода выдачи
+        /// </summary>
+        [HttpGet("{id}/pickup-qr")]
+        public async Task<ActionResult> GetPickupQr(int id)
+        {
+            var order = await _service.GetById(id);
+            if (order == null)
+            {
+                return NotFound("Заказ не найден");
+            }
+
+            // Опционально: Проверка, что заказ вообще собран и готов к выдаче
+            // if (order.Status != OrderStatus.ReadyForPickup && order.DeliveryType != DeliveryType.Express)
+            // {
+            //      return BadRequest("Заказ еще не готов к выдаче");
+            // }
+
+            // Генерируем токен (до следующей полуночи МСК)
+            var token = _qrTokenService.GenerateOrderPickupToken(order.CustomerId, order.OrderId);
+
+            return Ok(new { qrToken = token });
         }
 
         [HttpGet("customer/{customerId}")]

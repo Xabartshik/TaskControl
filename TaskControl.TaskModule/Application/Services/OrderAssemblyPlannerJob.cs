@@ -317,13 +317,10 @@ namespace TaskControl.TaskModule.Application.Services
 
             if (order.DeliveryType == DeliveryType.Express.ToString())
             {
-                var issueCellId = await GetActiveZoneCellIdAsync(order.BranchId, "ISSUE", "EXPRESS");
-                if (issueCellId == 0) issueCellId = bulkCellId;
-
                 finalPackedItems.AddRange(orderItems.Select(item => new PackedItemResult
                 {
                     OrderPositionId = item.OrderPositionId,
-                    TargetPositionId = issueCellId,
+                    TargetPositionId = null, // <-- Теперь это виртуальная передача из рук в руки
                     Quantity = item.Quantity
                 }));
             }

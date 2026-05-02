@@ -6,28 +6,26 @@ using TaskControl.Core.AppSettings;
 
 namespace TaskControl.InformationModule.Application.Services
 {
-    /// <summary>
-    /// Интерфейс для генерации и валидации временных токенов QR-кодов.
-    /// </summary>
     public interface IQRTokenService
     {
+        // Старые методы для сотрудников
         string GenerateTokenPayload();
         bool ValidateTokenPayload(string payload, out string errorMessage);
+
+        // НОВЫЕ методы для выдачи заказов
+        string GenerateOrderPickupToken(int customerId, int orderId);
+        bool ValidateOrderPickupToken(string payload, out int customerId, out int orderId, out string errorMessage);
     }
 
-    /// <summary>
-    /// Реализация сервиса QR-токенов с использованием HMAC-подписи и проверкой времени жизни.
-    /// </summary>
     public class QRTokenService : IQRTokenService
     {
         private readonly string _secretKey;
-        private readonly int _validityWindowMinutes = 2; // Код живет 1 минуту + 1 минута на рассинхрон
+        private readonly int _validityWindowMinutes = 2; // Окно действия для токенов сотрудников
 
         public QRTokenService(IOptions<AppSettings> options)
         {
             _secretKey = options.Value.QrHmacSecretKey;
 
-            // Защита от запуска без конфигурации
             if (string.IsNullOrWhiteSpace(_secretKey))
             {
                 throw new ArgumentNullException(
@@ -37,9 +35,8 @@ namespace TaskControl.InformationModule.Application.Services
             }
         }
 
-        /// <summary>
-        /// Генерирует строку для QR-кода в формате "timestamp|signature"
-        /// </summary>
+        #region Методы для пропусков сотрудников (Обратная совместимость)
+
         public string GenerateTokenPayload()
         {
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
@@ -47,11 +44,59 @@ namespace TaskControl.InformationModule.Application.Services
             return $"{timestamp}|{signature}";
         }
 
-        /// <summary>
-        /// Проверяет подпись и актуальность времени QR-кода.
-        /// </summary>
         public bool ValidateTokenPayload(string payload, out string errorMessage)
         {
+            errorMessage = string.Empty;
+            if (string.IsNullOrWhiteSpace(payload)) { errorMessage = "Пустой QR-код."; return false; }
+
+            var parts = payload.Split('|');
+            if (parts.Length != 2) { errorMessage = "Неверный формат QR-кода."; return false; }
+
+            var timestampStr = parts[0];
+            var signature = parts[1];
+            var expectedSignature = GenerateSignature(timestampStr);
+
+            if (signature != expectedSignature) { errorMessage = "QR-код недействителен (неверная подпись)."; return false; }
+
+            if (long.TryParse(timestampStr, out long timestamp))
+            {
+                var tokenTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+                var currentTime = DateTimeOffset.UtcNow;
+
+                if (currentTime > tokenTime.AddMinutes(_validityWindowMinutes)) { errorMessage = "Срок действия QR-кода истек."; return false; }
+                if (tokenTime > currentTime.AddMinutes(1)) { errorMessage = "Ошибка времени (QR-код из будущего)."; return false; }
+
+                return true;
+            }
+
+            errorMessage = "Ошибка чтения времени из QR-кода.";
+            return false;
+        }
+
+        #endregion
+
+        #region Методы для выдачи заказов
+
+        /// <summary>
+        /// Генерирует QR-код клиента со сроком жизни до следующей полуночи по МСК
+        /// Формат: customerId|orderId|expiresAt|signature
+        /// </summary>
+        public string GenerateOrderPickupToken(int customerId, int orderId)
+        {
+            var expiresAt = GetNextMidnightMskUnixTime();
+            var dataToSign = $"{customerId}|{orderId}|{expiresAt}";
+            var signature = GenerateSignature(dataToSign);
+
+            return $"{dataToSign}|{signature}";
+        }
+
+        /// <summary>
+        /// Проверяет подпись и срок жизни QR-кода клиента
+        /// </summary>
+        public bool ValidateOrderPickupToken(string payload, out int customerId, out int orderId, out string errorMessage)
+        {
+            customerId = 0;
+            orderId = 0;
             errorMessage = string.Empty;
 
             if (string.IsNullOrWhiteSpace(payload))
@@ -61,51 +106,76 @@ namespace TaskControl.InformationModule.Application.Services
             }
 
             var parts = payload.Split('|');
-            if (parts.Length != 2)
+            if (parts.Length != 4)
             {
-                errorMessage = "Неверный формат QR-кода.";
+                errorMessage = "Неверный формат QR-кода заказа.";
                 return false;
             }
 
-            var timestampStr = parts[0];
-            var signature = parts[1];
+            var customerIdStr = parts[0];
+            var orderIdStr = parts[1];
+            var expiresAtStr = parts[2];
+            var signature = parts[3];
 
-            // 1. Проверяем подпись (защита от подделки)
-            var expectedSignature = GenerateSignature(timestampStr);
+            // 1. Проверяем подпись (защита от подмены данных)
+            var expectedSignature = GenerateSignature($"{customerIdStr}|{orderIdStr}|{expiresAtStr}");
             if (signature != expectedSignature)
             {
                 errorMessage = "QR-код недействителен (неверная подпись).";
                 return false;
             }
 
-            // 2. Проверяем время (защита от использования старых фото/копий)
-            if (long.TryParse(timestampStr, out long timestamp))
+            // 2. Проверяем срок действия
+            if (!long.TryParse(expiresAtStr, out long expiresAtUnix))
             {
-                var tokenTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
-                var currentTime = DateTimeOffset.UtcNow;
-
-                if (currentTime > tokenTime.AddMinutes(_validityWindowMinutes))
-                {
-                    errorMessage = "Срок действия QR-кода истек.";
-                    return false;
-                }
-
-                // Опционально: проверка на "будущее" время (если часы на клиенте сильно спешат)
-                if (tokenTime > currentTime.AddMinutes(1))
-                {
-                    errorMessage = "Ошибка времени (QR-код из будущего).";
-                    return false;
-                }
-
-                return true;
+                errorMessage = "Ошибка чтения времени из QR-кода.";
+                return false;
             }
 
-            errorMessage = "Ошибка чтения времени из QR-кода.";
-            return false;
+            if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiresAtUnix)
+            {
+                errorMessage = "Срок действия QR-кода истек. Пожалуйста, обновите код в приложении.";
+                return false;
+            }
+
+            // 3. Извлекаем данные
+            if (!int.TryParse(customerIdStr, out customerId) || !int.TryParse(orderIdStr, out orderId))
+            {
+                errorMessage = "Ошибка обработки идентификаторов в QR-коде.";
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
-        /// Создает HMACSHA256 подпись для данных.
+        /// Вычисляет Unix Timestamp для 00:00 следующего дня по Московскому времени
+        /// </summary>
+        private long GetNextMidnightMskUnixTime()
+        {
+            TimeZoneInfo mskZone;
+            try
+            {
+                // Для Linux/Docker сред
+                mskZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                // Для Windows сред
+                mskZone = TimeZoneInfo.FindSystemTimeZoneById("Russian Standard Time");
+            }
+
+            var nowMsk = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, mskZone);
+            var nextMidnightMsk = nowMsk.Date.AddDays(1); // 00:00 следующего дня
+
+            var nextMidnightUtc = TimeZoneInfo.ConvertTimeToUtc(nextMidnightMsk, mskZone);
+            return new DateTimeOffset(nextMidnightUtc).ToUnixTimeSeconds();
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Создает HMACSHA256 подпись для строки данных
         /// </summary>
         private string GenerateSignature(string data)
         {
