@@ -27,6 +27,21 @@ namespace TaskControl.TaskModule.Application.Services
             return allActiveTasks;
         }
 
+        public async Task<MobileBaseTaskDto?> GetTaskDetailsAsync(int taskId, int workerId)
+        {
+            foreach (var provider in _providers)
+            {
+                // Делегируем запрос деталей конкретному провайдеру
+                var taskDetails = await provider.GetTaskDetailsAsync(taskId, workerId);
+                if (taskDetails != null)
+                {
+                    return taskDetails;
+                }
+            }
+
+            return null;
+        }
+
         public async Task<double> GetTotalActiveComplexityAsync(int workerId)
         {
             double totalComplexity = 0;

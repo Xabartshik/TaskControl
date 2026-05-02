@@ -187,6 +187,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderAssemblyLineRepository, OrderAssemblyLineRepository>();
             services.AddScoped<IBoxPackingService, BoxPackingService>();
             services.AddScoped<IOrderAssemblyExecutionService, OrderAssemblyExecutionService>();
+            services.AddScoped<ITaskDetailsBuilder, TaskDetailsBuilder>();
             services.AddScoped<OrderAssemblyPlannerJob>();
             services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.OrderAssemblyWorkloadProvider>();
             services.AddScoped<TaskWorkloadAggregator>();
@@ -194,6 +195,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<WorkerTasksController>();
 
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
+            //services.AddScoped<ITaskExecutionProvider, InventoryExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
 
             services.AddScoped<INotificationService, NotificationService>();
