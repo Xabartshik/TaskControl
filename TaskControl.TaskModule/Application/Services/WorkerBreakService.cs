@@ -41,7 +41,7 @@ public class WorkerBreakService : IWorkerBreakService
 
     public async Task<BreakStatusDto> GetBreakStatusAsync(int employeeId)
     {
-        var user = await _userRepository.GetByIdAsync(employeeId);
+        var user = await _userRepository.GetByEmployeeIdAsync(employeeId);
         if (user == null) throw new Exception("Пользователь не найден");
 
         // 1. Проверяем активные задачи через агрегатор

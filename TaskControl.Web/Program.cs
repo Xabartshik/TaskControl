@@ -88,7 +88,7 @@ namespace TaskControl.Web
                 RecurringJob.AddOrUpdate<TaskControl.TaskModule.Application.Services.OrderAssemblyPlannerJob>(
                     "order-assembly-planner",
                     job => job.ExecuteAsync(),
-                    "*/5 * * * *"); // Каждые 5 минут
+                    "*/1 * * * *"); // Каждые 5 минут
                 RecurringJob.AddOrUpdate<AutoEndBreakJob>(
                     "auto-end-expired-breaks",
                     job => job.ExecuteAsync(),

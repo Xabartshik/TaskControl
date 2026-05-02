@@ -447,7 +447,7 @@ namespace TaskControl.TaskModule.Application.Services
                 TotalLines = a.TotalLines,
                 IsCooperative = isCooperative,
                 PartnerName = partnerName,
-                PartnerStatus = (AssignmentStatus)partnerAssignment?.Status
+                PartnerStatus = (AssignmentStatus?)partnerAssignment?.Status
             };
 
             var positions = _db.GetTable<PositionModel>();
