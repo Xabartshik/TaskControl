@@ -123,5 +123,14 @@ namespace TaskControl.TaskModule.Presentation.Controllers
 
             return Ok(new { IsFullyCompleted = isFullyCompleted });
         }
+                    break;
+
+                default:
+                    // Если для типа задачи нет специфичной складской логики завершения — просто ничего не делаем
+                    // Можно добавить логгер, если хотите отслеживать такие случаи:
+                    // _logger.LogInformation("Для типа задачи {TaskType} не предусмотрена специфичная логика завершения", taskType);
+                    break;
+            }
+        }
     }
 }
