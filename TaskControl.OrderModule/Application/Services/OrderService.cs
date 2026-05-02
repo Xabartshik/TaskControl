@@ -15,7 +15,7 @@ using TaskControl.OrderModule.Domain;
 
 namespace TaskControl.OrderModule.Application.Services
 {
-    public class OrderService : IService<OrderDto>
+    public class OrderService : IOrderService
     {
         private readonly IOrderRepository _repository;
         private readonly ILogger<OrderService> _logger;
@@ -49,6 +49,31 @@ namespace TaskControl.OrderModule.Application.Services
             _itemAllocationService = itemAllocationService;
         }
 
+        public async Task<IEnumerable<OrderDto>> GetByCustomerAsync(int customerId)
+        {
+            if (_appSettings.EnableDetailedLogging)
+            {
+                _logger.LogTrace("Вызов процедуры GetByCustomerAsync для клиента {CustomerId}", customerId);
+            }
+
+            try
+            {
+                // Вызываем уже готовый метод из репозитория
+                var orders = await _repository.GetByCustomerAsync(customerId);
+
+                // Маппим доменные модели в DTO для отправки на клиент
+                var result = orders.Select(OrderDto.ToDto).ToList();
+
+                _logger.LogInformation("Получено {Count} заказов для клиента {CustomerId}", result.Count, customerId);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения списка заказов для клиента {CustomerId}", customerId);
+                throw;
+            }
+        }
+
         public async Task<int> Add(OrderDto dto)
         {
             if (_appSettings.EnableDetailedLogging)
@@ -69,7 +94,7 @@ namespace TaskControl.OrderModule.Application.Services
                 }
 
                 // 1. ПОДМЕНА АДРЕСА ДЛЯ САМОВЫВОЗА И ЭКСПРЕССА
-                if (dto.DeliveryType == DeliveryType.Pickup || dto.DeliveryType == DeliveryType.Express)
+                if (dto.DestinationAddress is null || dto.DeliveryType == DeliveryType.Pickup || dto.DeliveryType == DeliveryType.Express)
                 {
                     var branch = await _branchRepository.GetByIdAsync(dto.BranchId);
                     dto.DestinationAddress = branch?.Address ?? "Адрес филиала не указан";
@@ -262,6 +287,7 @@ namespace TaskControl.OrderModule.Application.Services
 
             try
             {
+                // 1. Получаем доменную модель заказа
                 var order = await _repository.GetByIdAsync(id);
                 if (order == null)
                 {
@@ -269,8 +295,39 @@ namespace TaskControl.OrderModule.Application.Services
                     return null;
                 }
 
-                _logger.LogInformation("Заказ ID: {OrderId} получен", id);
-                return OrderDto.ToDto(order);
+                // 2. Маппим базовые свойства в DTO
+                var dto = OrderDto.ToDto(order);
+
+                // 3. Получаем позиции заказа через репозиторий позиций
+                var positions = await _positionRepository.GetByOrderIdAsync(id);
+
+                // 4. Обогащаем DTO позициями
+                if (positions != null && positions.Any())
+                {
+                    var enrichedPositions = new List<OrderPositionDto>();
+
+                    foreach (var pos in positions)
+                    {
+                        var posDto = OrderPositionDto.ToDto(pos);
+
+                        // Запрашиваем товар из справочника через уже готовый репозиторий
+                        var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+
+                        // Прописываем читаемое имя
+                        posDto.ItemName = item?.Name ?? "Неизвестный товар";
+
+                        enrichedPositions.Add(posDto);
+                    }
+
+                    dto.Positions = enrichedPositions;
+                }
+                else
+                {
+                    dto.Positions = new List<OrderPositionDto>();
+                }
+
+                _logger.LogInformation("Заказ ID: {OrderId} успешно получен с позициями", id);
+                return dto;
             }
             catch (Exception ex)
             {
@@ -278,7 +335,6 @@ namespace TaskControl.OrderModule.Application.Services
                 throw;
             }
         }
-
         public async Task<bool> Update(OrderDto dto)
         {
             if (_appSettings.EnableDetailedLogging)

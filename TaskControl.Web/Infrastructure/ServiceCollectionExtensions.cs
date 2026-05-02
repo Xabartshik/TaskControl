@@ -36,6 +36,7 @@ using TaskControl.ReportsModule.DataAccess.Interface;
 using TaskControl.ReportsModule.DataAccess.Providers;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.Handlers;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Providers;
 using TaskControl.TaskModule.Application.Services;
@@ -144,7 +145,7 @@ namespace TaskControl.Core.Infrastructure
         {
             services.AddScoped<IOrderDataConnection, OrderDataConnection>();
             services.AddScoped<IOrderRepository, OrderRepository>();
-            services.AddScoped<IService<OrderDto>, OrderService>();
+            services.AddScoped<IOrderService, OrderService>();
 
             services.AddScoped<IOrderPositionRepository, OrderPositionRepository>();
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
@@ -193,6 +194,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<TaskWorkloadAggregator>();
 
             services.AddScoped<WorkerTasksController>();
+            services.AddScoped<IOrderCreatedEventHandler, OrderCreatedHandler>();
 
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
             //services.AddScoped<ITaskExecutionProvider, InventoryExecutionProvider>();

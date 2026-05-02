@@ -23,6 +23,7 @@ namespace TaskControl.OrderModule.Application.DTOs
 
         [Required]
         public decimal Price { get; set; }
+        public string? ItemName { get; set; }
 
         public static OrderPosition FromDto(OrderPositionDto dto) => new()
         {

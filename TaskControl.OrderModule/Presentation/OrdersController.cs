@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.OrderModule.Application.DTOs;
+using TaskControl.OrderModule.Application.Interface;
 
 namespace TaskControl.OrderModule.Presentation.Controllers
 {
@@ -9,15 +10,30 @@ namespace TaskControl.OrderModule.Presentation.Controllers
     [Route("api/[controller]")]
     public class OrdersController : ControllerBase, ICrudController<OrderDto, int>
     {
-        private readonly IService<OrderDto> _service;
+        private readonly IOrderService _service;
         private readonly ILogger<OrdersController> _logger;
 
         public OrdersController(
-            IService<OrderDto> service,
+            IOrderService service,
             ILogger<OrdersController> logger)
         {
             _service = service;
             _logger = logger;
+        }
+
+        [HttpGet("customer/{customerId}")]
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetByCustomer(int customerId)
+        {
+            var records = await _service.GetByCustomerAsync(customerId);
+
+            if (records == null || !records.Any())
+            {
+                // Для мобильного приложения пустой список — это нормально, но можно логировать
+                _logger.LogInformation("У клиента {CustomerId} пока нет заказов", customerId);
+                return Ok(new List<OrderDto>());
+            }
+
+            return Ok(records);
         }
 
         [HttpGet]
