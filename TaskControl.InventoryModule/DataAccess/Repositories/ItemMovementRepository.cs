@@ -1,9 +1,10 @@
 ﻿using LinqToDB;
 using Microsoft.Extensions.Logging;
-using System.Data.Common;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
-using TaskControl.InformationModule.DataAccess.Model;
-using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
 using TaskControl.InventoryModule.DataAccess.Model;
@@ -24,147 +25,59 @@ namespace TaskControl.InventoryModule.DAL.Repositories
 
         public async Task<ItemMovement?> GetByIdAsync(int id)
         {
-            _logger.LogInformation("Поиск перемещения товара по ID: {id}", id);
-            try
-            {
-                var movement = await _db.ItemMovements.FirstOrDefaultAsync(m => m.Id == id);
-                return movement?.ToDomain();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении перемещения товара по ID: {id}", id);
-                throw;
-            }
+            _logger.LogInformation("Поиск перемещения по ID: {id}", id);
+            var model = await _db.ItemMovements.FirstOrDefaultAsync(m => m.Id == id);
+            return model?.ToDomain();
         }
 
         public async Task<IEnumerable<ItemMovement>> GetAllAsync()
         {
-            _logger.LogInformation("Получение всех перемещений товаров");
-            try
-            {
-                var movements = await _db.ItemMovements.ToListAsync();
-                return movements.Select(m => m.ToDomain());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении списка перемещений товаров");
-                throw;
-            }
+            var models = await _db.ItemMovements.ToListAsync();
+            return models.Select(m => m.ToDomain());
         }
 
         public async Task<int> AddAsync(ItemMovement entity)
         {
-            _logger.LogInformation("Добавление нового перемещения товара");
-            try
-            {
-                if (entity == null)
-                    throw new ArgumentNullException(nameof(entity));
-
-                if (entity.Quantity <= 0)
-                    throw new ArgumentException("Количество должно быть положительным", nameof(entity.Quantity));
-
-                var model = entity.ToModel();
-                return await _db.InsertAsync(model);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при добавлении перемещения товара");
-                throw;
-            }
+            if (entity.Quantity <= 0) throw new ArgumentException("Количество должно быть > 0");
+            var model = entity.ToModel();
+            return await _db.InsertAsync(model);
         }
 
         public async Task<int> UpdateAsync(ItemMovement entity)
         {
-            _logger.LogInformation("Обновление перемещения товара ID: {id}", entity.Id);
-            try
-            {
-                if (entity == null)
-                    return 0;
-
-                if (entity.Quantity <= 0)
-                    throw new ArgumentException("Количество должно быть положительным", nameof(entity.Quantity));
-
-                var model = entity.ToModel();
-                return await _db.UpdateAsync(model);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при обновлении перемещения товара ID: {id}", entity?.Id);
-                throw;
-            }
+            var model = entity.ToModel();
+            return await _db.UpdateAsync(model);
         }
-
 
         public async Task<int> DeleteAsync(int id)
         {
-            _logger.LogInformation("Удаление перемещения товара ID: {id}", id);
-            try
-            {
-                var movement = await _db.ItemMovements.FirstOrDefaultAsync(m => m.Id == id);
-                if (movement is null)
-                    return 0;
-
-                return await _db.DeleteAsync(movement);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при удалении перемещения товара ID: {id}", id);
-                throw;
-            }
+            return await _db.ItemMovements.Where(m => m.Id == id).DeleteAsync();
         }
 
-        public async Task<IEnumerable<ItemMovement>> GetBySourcePositionAsync(int itemPositionId)
+        public async Task<IEnumerable<ItemMovement>> GetBySourcePositionAsync(int positionId)
         {
-            _logger.LogInformation("Получение перемещений из позиции ID: {itemPositionId}", itemPositionId);
-            try
-            {
-                var movements = await _db.ItemMovements
-                    .Where(m => m.SourceItemPositionId == itemPositionId)
-                    .ToListAsync();
-
-                return movements.Select(m => m.ToDomain());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении перемещений из позиции ID: {itemPositionId}", itemPositionId);
-                throw;
-            }
+            var models = await _db.ItemMovements.Where(m => m.SourcePositionId == positionId).ToListAsync();
+            return models.Select(m => m.ToDomain());
         }
 
-        public async Task<IEnumerable<ItemMovement>> GetByDestinationPositionAsync(int itemPositionId)
+        public async Task<IEnumerable<ItemMovement>> GetByDestinationPositionAsync(int positionId)
         {
-            _logger.LogInformation("Получение перемещений в позицию ID: {itemPositionId}", itemPositionId);
-            try
-            {
-                var movements = await _db.ItemMovements
-                    .Where(m => m.DestinationPositionId == itemPositionId)
-                    .ToListAsync();
-
-                return movements.Select(m => m.ToDomain());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении перемещений в позицию ID: {itemPositionId}", itemPositionId);
-                throw;
-            }
+            var models = await _db.ItemMovements.Where(m => m.DestinationPositionId == positionId).ToListAsync();
+            return models.Select(m => m.ToDomain());
         }
 
         public async Task<IEnumerable<ItemMovement>> GetByBranchAsync(int branchId)
         {
-            _logger.LogInformation("Получение перемещений по филиалу ID: {branchId}", branchId);
-            try
-            {
-                var movements = await _db.ItemMovements
-                    .Where(m => m.SourceBranchId == branchId || m.DestinationBranchId == branchId)
-                    .ToListAsync();
+            var models = await _db.ItemMovements
+                .Where(m => m.SourceBranchId == branchId || m.DestinationBranchId == branchId)
+                .ToListAsync();
+            return models.Select(m => m.ToDomain());
+        }
 
-                return movements.Select(m => m.ToDomain());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при получении перемещений по филиалу ID: {branchId}", branchId);
-                throw;
-            }
+        public async Task<IEnumerable<ItemMovement>> GetByItemAsync(int itemId)
+        {
+            var models = await _db.ItemMovements.Where(m => m.ItemId == itemId).ToListAsync();
+            return models.Select(m => m.ToDomain());
         }
     }
 }

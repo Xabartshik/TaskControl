@@ -396,14 +396,23 @@ namespace TaskControl.TaskModule.Application.Services
 
                 foreach (var line in assignment.Lines.Where(l => l.Status == OrderAssemblyLineStatus.Placed))
                 {
-                    // Фиксируем передвижение (если в БД поле DestinationPositionId осталось int, записываем 0 для экспресса)
-                    await _db.InsertAsync(new ItemMovementModel
+                    // Достаем исходный товар ДО того, как мы его удалим или обновим
+                    var originalItem = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+
+                    if (originalItem != null)
                     {
-                        SourceItemPositionId = line.ItemPositionId,
-                        DestinationPositionId = line.TargetPositionId ?? 0,
-                        Quantity = line.Quantity,
-                        CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
-                    });
+                        // Фиксируем передвижение в НОВОМ формате
+                        await _db.InsertAsync(new ItemMovementModel
+                        {
+                            ItemId = originalItem.ItemId,
+                            SourcePositionId = originalItem.PositionId,
+                            DestinationPositionId = line.TargetPositionId, // null для экспресса, ID для ячейки
+                            Quantity = line.Quantity,
+                            TaskId = assignment.TaskId, // У нас есть ID задачи!
+                            WorkerId = assignment.AssignedToUserId, // У нас есть ID сотрудника!
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
 
                     // Уменьшаем остаток на исходной полке
                     await itemPositions
@@ -411,26 +420,22 @@ namespace TaskControl.TaskModule.Application.Services
                         .Set(ip => ip.Quantity, ip => ip.Quantity - line.Quantity)
                         .UpdateAsync();
 
-                    if (line.TargetPositionId.HasValue)
+                    if (line.TargetPositionId.HasValue && originalItem != null)
                     {
                         // Стандартная выдача: перекладываем товар в целевую ячейку
-                        var originalItem = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
-                        if (originalItem != null)
+                        var newPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
                         {
-                            var newPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
-                            {
-                                ItemId = originalItem.ItemId,
-                                PositionId = line.TargetPositionId.Value, // ЯВНОЕ ПРИВЕДЕНИЕ
-                                Quantity = line.Quantity,
-                                CreatedAt = DateTime.Now
-                            });
+                            ItemId = originalItem.ItemId,
+                            PositionId = line.TargetPositionId.Value,
+                            Quantity = line.Quantity,
+                            CreatedAt = DateTime.UtcNow
+                        });
 
-                            // Перепривязываем резерв к новой ячейке
-                            await _db.GetTable<OrderReservationModel>()
-                                .Where(r => r.ItemPositionId == line.ItemPositionId)
-                                .Set(r => r.ItemPositionId, newPosId)
-                                .UpdateAsync();
-                        }
+                        // Перепривязываем резерв к новой ячейке
+                        await _db.GetTable<OrderReservationModel>()
+                            .Where(r => r.ItemPositionId == line.ItemPositionId)
+                            .Set(r => r.ItemPositionId, newPosId)
+                            .UpdateAsync();
                     }
                     else
                     {

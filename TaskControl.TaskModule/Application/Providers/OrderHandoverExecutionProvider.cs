@@ -1,4 +1,5 @@
-﻿using LinqToDB;
+﻿using Hangfire.Server;
+using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.Extensions.Logging;
 using System;
@@ -339,21 +340,23 @@ namespace TaskControl.TaskModule.Application.Providers
                 _logger.LogWarning("Нет отсканированных товаров для задачи {TaskId}. Списание не требуется.", taskId);
                 return;
             }
-
+            var workerId = mainAssignment.AssignedToUserId;
             // 3. Начинаем транзакцию, так как меняем баланс склада
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
             try
             {
                 if (handoverType == "ToCustomer")
                 {
-                    await ProcessHandoverToCustomerAsync(orderId, lines);
+                    // Передаем taskId и workerId
+                    await ProcessHandoverToCustomerAsync(orderId, lines, taskId, workerId);
                 }
                 else if (handoverType == "ToCourier")
                 {
                     if (mainAssignment.TargetCourierId == null)
-                        throw new InvalidOperationException("Не указан ID курьера для передачи!");
+                        throw new InvalidOperationException("Не указан ID курьера!");
 
-                    await ProcessHandoverToCourierAsync(orderId, mainAssignment.TargetCourierId.Value, lines);
+                    // Передаем taskId и workerId
+                    await ProcessHandoverToCourierAsync(orderId, mainAssignment.TargetCourierId.Value, lines, taskId, workerId);
                 }
 
                 await transaction.CommitAsync();
@@ -367,11 +370,11 @@ namespace TaskControl.TaskModule.Application.Providers
             }
         }
 
-        private async Task ProcessHandoverToCustomerAsync(int orderId, List<OrderHandoverLineModel> lines)
+        private async Task ProcessHandoverToCustomerAsync(int orderId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
         {
             var itemPositions = _db.GetTable<ItemPositionModel>();
-            var movements = _db.GetTable<ItemMovementModel>();
             var reservations = _db.GetTable<OrderReservationModel>();
+            var movements = _db.GetTable<ItemMovementModel>(); // Добавлено для логирования
 
             foreach (var line in lines)
             {
@@ -380,38 +383,61 @@ namespace TaskControl.TaskModule.Application.Providers
                 var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
                 if (sourceItemPos == null) continue;
 
-                // А. Списываем товар с полки выдачи
-                await itemPositions
-                    .Where(ip => ip.Id == sourceItemPos.Id)
-                    .Set(ip => ip.Quantity, ip => ip.Quantity - line.ScannedQuantity)
-                    .UpdateAsync();
-
-                // Б. Логируем перемещение. DestinationPositionId = null, так как товар покинул склад и ушел клиенту
-                await _db.InsertAsync(new ItemMovementModel
-                {
-                    SourceItemPositionId = sourceItemPos.Id,
-                    DestinationPositionId = null,
-                    Quantity = line.ScannedQuantity,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                // В. Отвязываем резерв (товар физически отдан, резерв на складе больше не нужен)
+                // А. СНАЧАЛА удаляем резерв конкретно нашего заказа
                 await reservations
                     .Where(r => r.OrderPositionId == line.OrderPositionId)
-                    .Set(r => r.ItemPositionId, (int?)null)
-                    .UpdateAsync();
+                    .DeleteAsync();
+
+                // Б. Считаем остаток
+                var remainingQty = sourceItemPos.Quantity - line.ScannedQuantity;
+
+                if (remainingQty <= 0)
+                {
+                    // WMS SELF-HEALING 1: Отвязываем чужие резервы
+                    await reservations
+                        .Where(r => r.ItemPositionId == sourceItemPos.Id)
+                        .Set(r => r.ItemPositionId, (int?)null)
+                        .UpdateAsync();
+
+                    // WMS SELF-HEALING 2: Отвязываем строки задания выдачи (чтобы не нарушать FK)
+                    await _db.GetTable<OrderHandoverLineModel>()
+                        .Where(l => l.ItemPositionId == sourceItemPos.Id)
+                        .Set(l => l.ItemPositionId, (int?)null)
+                        .UpdateAsync();
+
+                    // Теперь база разрешит удалить пустую ячейку
+                    await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                }
+                else
+                {
+                    await itemPositions
+                        .Where(ip => ip.Id == sourceItemPos.Id)
+                        .Set(ip => ip.Quantity, remainingQty)
+                        .UpdateAsync();
+                }
+
+                // В. Логируем перемещение
+                await _db.InsertAsync(new ItemMovementModel
+                {
+                    ItemId = sourceItemPos.ItemId,
+                    SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.Id,
+                    DestinationPositionId = null,
+                    Quantity = line.ScannedQuantity,
+                    TaskId = taskId,       // ИСПОЛЬЗУЕМ ЗДЕСЬ
+                    WorkerId = workerId,   // И ЗДЕСЬ
+                    CreatedAt = DateTime.UtcNow
+                });
             }
 
-            // Обновляем статус заказа на "Завершен"
             await _db.GetTable<OrderModel>()
                 .Where(o => o.OrderId == orderId)
                 .Set(o => o.Status, "Completed")
                 .UpdateAsync();
         }
 
-        private async Task ProcessHandoverToCourierAsync(int orderId, int courierId, List<OrderHandoverLineModel> lines)
+
+        private async Task ProcessHandoverToCourierAsync(int orderId, int courierId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
         {
-            // 1. Ищем машину курьера (виртуальную ячейку, которую мы создали через Event)
             var courierPosition = await _db.GetTable<PositionModel>()
                 .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
 
@@ -419,8 +445,8 @@ namespace TaskControl.TaskModule.Application.Providers
                 throw new InvalidOperationException($"Виртуальная ячейка для курьера ID {courierId} не найдена!");
 
             var itemPositions = _db.GetTable<ItemPositionModel>();
-            var movements = _db.GetTable<ItemMovementModel>();
             var reservations = _db.GetTable<OrderReservationModel>();
+            var movements = _db.GetTable<ItemMovementModel>();
 
             foreach (var line in lines)
             {
@@ -429,18 +455,11 @@ namespace TaskControl.TaskModule.Application.Providers
                 var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
                 if (sourceItemPos == null) continue;
 
-                // А. Списываем со старой ячейки
-                await itemPositions
-                    .Where(ip => ip.Id == sourceItemPos.Id)
-                    .Set(ip => ip.Quantity, ip => ip.Quantity - line.ScannedQuantity)
-                    .UpdateAsync();
-
-                // Б. Ищем, есть ли уже этот товар в багажнике курьера. Если есть - плюсуем, если нет - создаем
+                // А. Ищем или создаем товар в багажнике курьера
                 var courierItemPos = await itemPositions
                     .FirstOrDefaultAsync(ip => ip.PositionId == courierPosition.PositionId && ip.ItemId == sourceItemPos.ItemId);
 
                 int newCourierItemPosId;
-
                 if (courierItemPos != null)
                 {
                     await itemPositions
@@ -460,27 +479,59 @@ namespace TaskControl.TaskModule.Application.Providers
                     });
                 }
 
-                // В. Логируем перемещение: Полка склада -> Багажник курьера
-                await _db.InsertAsync(new ItemMovementModel
-                {
-                    SourceItemPositionId = sourceItemPos.Id,
-                    DestinationPositionId = courierPosition.PositionId,
-                    Quantity = line.ScannedQuantity,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                // Г. САМОЕ ГЛАВНОЕ: Перепривязываем резерв! Товар все еще зарезервирован под клиента, но едет в машине
+                // Б. Перепривязываем резерв нашего заказа в багажник
                 await reservations
                     .Where(r => r.OrderPositionId == line.OrderPositionId)
                     .Set(r => r.ItemPositionId, newCourierItemPosId)
                     .UpdateAsync();
+
+                // В. Считаем остаток на старой полке
+                var remainingSourceQty = sourceItemPos.Quantity - line.ScannedQuantity;
+
+                if (remainingSourceQty <= 0)
+                {
+                    // WMS SELF-HEALING 1: Очищаем старую пустую полку от резервов
+                    await reservations
+                        .Where(r => r.ItemPositionId == sourceItemPos.Id)
+                        .Set(r => r.ItemPositionId, (int?)null)
+                        .UpdateAsync();
+
+                    // WMS SELF-HEALING 2: Отвязываем строки задания выдачи
+                    await _db.GetTable<OrderHandoverLineModel>()
+                        .Where(l => l.ItemPositionId == sourceItemPos.Id)
+                        .Set(l => l.ItemPositionId, (int?)null)
+                        .UpdateAsync();
+
+                    // Удаляем пустую ячейку
+                    await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                }
+                else
+                {
+                    await itemPositions
+                        .Where(ip => ip.Id == sourceItemPos.Id)
+                        .Set(ip => ip.Quantity, remainingSourceQty)
+                        .UpdateAsync();
+                }
+
+                // Г. Логируем
+                // Г. Логируем перемещение
+                await _db.InsertAsync(new ItemMovementModel
+                {
+                    ItemId = sourceItemPos.ItemId, // <-- Пишем ID товара
+                    SourcePositionId = sourceItemPos.PositionId, // <-- Складская полка
+                    DestinationPositionId = courierPosition.PositionId, // <-- Полка багажника курьера
+                    Quantity = line.ScannedQuantity,
+                    TaskId = taskId,
+                    CreatedAt = DateTime.UtcNow
+                });
             }
 
-            // Обновляем статус заказа на "В пути"
             await _db.GetTable<OrderModel>()
                 .Where(o => o.OrderId == orderId)
                 .Set(o => o.Status, "InTransit")
                 .UpdateAsync();
         }
+
+
     }
 }

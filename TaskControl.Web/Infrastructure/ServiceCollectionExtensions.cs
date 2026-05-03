@@ -198,7 +198,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<WorkerTasksController>();
             services.AddScoped<IOrderCreatedEventHandler, OrderCreatedHandler>();
-
+            services.AddScoped<OrderHandoverExecutionProvider>();
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
             services.AddScoped<ITaskExecutionProvider, OrderHandoverExecutionProvider>();
             services.AddScoped<ITaskWorkloadProvider, OrderHandoverWorkloadProvider>();
