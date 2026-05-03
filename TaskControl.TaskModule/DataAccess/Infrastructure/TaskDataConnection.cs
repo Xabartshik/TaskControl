@@ -37,5 +37,9 @@ namespace TaskControl.TaskModule.DataAccess.Infrastructure
         
         public ITable<OrderAssemblyAssignmentModel> OrderAssemblyAssignments => this.GetTable<OrderAssemblyAssignmentModel>();
         public ITable<OrderAssemblyLineModel> OrderAssemblyLines => this.GetTable<OrderAssemblyLineModel>();
+
+        public ITable<OrderHandoverAssignmentModel> OrderHandoverAssignments => this.GetTable<OrderHandoverAssignmentModel>();
+        public ITable<OrderHandoverLineModel> OrderHandoverLines => this.GetTable<OrderHandoverLineModel>();
+
     }
 }

@@ -9,12 +9,14 @@ namespace TaskControl.InformationModule.DataAccess.Model
 
         [Column("vehicle_type_id")][NotNull] public int VehicleTypeId { get; set; }
 
-        [Column("max_weight_kg")][NotNull] public double MaxWeightKg { get; set; }
+        [Column("max_weight_grams")][NotNull] public double MaxWeightGrams { get; set; }
 
-        [Column("max_length_cm")][NotNull] public double MaxLengthCm { get; set; }
+        [Column("max_length_mm")][NotNull] public double MaxLengthMm { get; set; }
 
-        [Column("max_width_cm")][NotNull] public double MaxWidthCm { get; set; }
+        [Column("max_width_mm")][NotNull] public double MaxWidthMm { get; set; }
 
-        [Column("max_height_cm")][NotNull] public double MaxHeightCm { get; set; }
+        [Column("max_height_mm")][NotNull] public double MaxHeightMm { get; set; }
+
+        [Column("updated_at"), NotNull] public DateTime UpdatedAt { get; set; }
     }
 }

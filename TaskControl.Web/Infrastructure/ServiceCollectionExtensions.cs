@@ -87,6 +87,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<ICustomerService, CustomerService>();
 
             services.AddSingleton<IQRTokenService, QRTokenService>();
+            services.AddScoped<CourierCapabilityService>();
 
             return services;
         }
@@ -121,6 +122,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IPostamatRepository, PostamatRepository>();
             services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
             services.AddScoped<IBoxPackingService, BoxPackingService>();
+
+            services.AddScoped<ICourierCreatedEventHandler, CourierInventoryHandler>();
 
             return services;
         }
@@ -197,6 +200,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderCreatedEventHandler, OrderCreatedHandler>();
 
             services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
+            services.AddScoped<ITaskExecutionProvider, OrderHandoverExecutionProvider>();
+            services.AddScoped<ITaskWorkloadProvider, OrderHandoverWorkloadProvider>();
             //services.AddScoped<ITaskExecutionProvider, InventoryExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
 

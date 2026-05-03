@@ -14,10 +14,10 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             {
                 EmployeeId = entity.EmployeeId,
                 VehicleTypeId = (int)entity.Vehicle,
-                MaxWeightKg = entity.MaxWeight.Grams,
-                MaxLengthCm = entity.MaxLength.Millimeters,
-                MaxWidthCm = entity.MaxWidth.Millimeters,
-                MaxHeightCm = entity.MaxHeight.Millimeters
+                MaxWeightGrams = entity.MaxWeight.Grams,
+                MaxLengthMm = entity.MaxLength.Millimeters,
+                MaxWidthMm = entity.MaxWidth.Millimeters,
+                MaxHeightMm = entity.MaxHeight.Millimeters
             };
         }
 
@@ -29,10 +29,10 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             {
                 EmployeeId = model.EmployeeId,
                 Vehicle = (VehicleType)model.VehicleTypeId,
-                MaxWeight = Mass.FromGrams(model.MaxWeightKg),
-                MaxLength = Length.FromMillimeters(model.MaxLengthCm),
-                MaxWidth = Length.FromMillimeters(model.MaxWidthCm),
-                MaxHeight = Length.FromMillimeters(model.MaxHeightCm)
+                MaxWeight = Mass.FromGrams(model.MaxWeightGrams),
+                MaxLength = Length.FromMillimeters(model.MaxLengthMm),
+                MaxWidth = Length.FromMillimeters(model.MaxWidthMm),
+                MaxHeight = Length.FromMillimeters(model.MaxHeightMm)
             };
         }
     }
