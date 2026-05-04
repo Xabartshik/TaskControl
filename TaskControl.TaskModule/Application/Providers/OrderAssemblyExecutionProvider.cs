@@ -35,6 +35,42 @@ namespace TaskControl.TaskModule.Application.Providers
             _logger = logger;
         }
 
+        public async Task<bool> AssignTaskToWorkerAsync(int taskId, int workerId)
+        {
+            _logger.LogInformation("Попытка назначить ничейную задачу сборки {TaskId} работнику {WorkerId}", taskId, workerId);
+
+            // 1. Проверяем, существует ли такая задача и относится ли она к нашему типу
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null || baseTask.Type != this.TaskType)
+            {
+                return false;
+            }
+
+            // 2. Ищем ничейные назначения для этой задачи
+            var allAssignments = await _assemblyRepo.GetAllByTaskIdAsync(taskId);
+            var unassignedAssignments = allAssignments.Where(a => a.AssignedToUserId == null).ToList();
+
+            if (!unassignedAssignments.Any())
+            {
+                _logger.LogWarning("Для задачи {TaskId} нет ничейных назначений сборки.", taskId);
+                return false; // Кто-то уже забрал задачу
+            }
+
+            // 3. Массово присваиваем назначения нашему работнику
+            foreach (var assignment in unassignedAssignments)
+            {
+                assignment.AssignedToUserId = workerId;
+                await _assemblyRepo.UpdateAsync(assignment.ToDomain());
+                _logger.LogDebug("Назначение сборки {AssignmentId} привязано к работнику {WorkerId}", assignment.Id, workerId);
+            }
+
+            // 4. Опционально: можно обновить статус базовой задачи на "Assigned"
+            // (Зависит от того, как реализован Update в IBaseTaskService)
+
+            _logger.LogInformation("Задача сборки {TaskId} успешно назначена работнику {WorkerId}", taskId, workerId);
+            return true;
+        }
+
         public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId)
         {
             _logger.LogInformation("Попытка завершения назначения. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);

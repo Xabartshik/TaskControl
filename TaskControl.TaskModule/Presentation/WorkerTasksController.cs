@@ -27,6 +27,23 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             _baseTaskService = baseTaskService;
         }
 
+        // Получить все ничейные задачи для филиала
+        [HttpGet("{branchId}/pool")]
+        public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPoolTasks(int branchId)
+        {
+            var tasks = await _taskWorkloadAggregator.GetGlobalPoolTasksAsync(branchId);
+            return Ok(tasks);
+        }
+
+        // Забрать задачу из пула себе
+        [HttpPost("{taskId}/claim")]
+        public async Task<IActionResult> ClaimTask(int taskId, [FromQuery] int workerId)
+        {
+            bool success = await _taskExecutionAggregator.TryClaimTaskFromPoolAsync(taskId, workerId);
+            if (!success) return BadRequest(new { Message = "Не удалось взять задачу. Возможно, её уже забрали." });
+            return Ok();
+        }
+
         [HttpGet("{workerId}/pending")]
         public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPendingTasks(int workerId)
         {

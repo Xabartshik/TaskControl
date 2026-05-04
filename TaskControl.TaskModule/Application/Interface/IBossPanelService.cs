@@ -67,5 +67,7 @@ namespace TaskControl.TaskModule.Application.Interface
         /// Получить список всех заказов
         /// </summary>
         Task<IEnumerable<AvailableOrderDto>> GetAllOrdersAsync(int bossBranchId);
+        Task<IEnumerable<AvailableOrderDto>> GetReadyForDispatchOrdersAsync(int bossBranchId);
+        Task<IEnumerable<AvailableEmployeeDto>> GetAvailableCouriersAsync(int bossBranchId);
     }
 }

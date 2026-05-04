@@ -9,4 +9,5 @@ public interface ITaskExecutionAggregator
     Task<bool> IsTaskFullyCompletedAsync(int taskId, string type);
     Task<bool> StartOrResumeTaskAsync(int taskId, int workerId);
     Task ExecutePostCompletionLogicAsync(int taskId, string taskType);
+    Task<bool> TryClaimTaskFromPoolAsync(int taskId, int workerId);
 }

@@ -1,6 +1,8 @@
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
@@ -40,8 +42,10 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IItemRepository _itemRepository;
         private readonly IOrderPositionRepository _orderPositionRepository;
         private readonly IPostamatCellRepository _postamatCellRepository;
+        private readonly ITaskDataConnection _db;
 
         public BossPanelService(
+            ITaskDataConnection db,
             IInventoryProcessService inventoryProcessService,
             IInventoryReportService inventoryReportService,
             IDiscrepancyManagementService discrepancyManagementService,
@@ -59,6 +63,7 @@ namespace TaskControl.TaskModule.Application.Services
             IPostamatCellRepository postamatCellRepository,
             ILogger<BossPanelService> logger)
         {
+            _db = db ?? throw new ArgumentNullException(nameof(db)); 
             _inventoryProcessService = inventoryProcessService ?? throw new ArgumentNullException(nameof(inventoryProcessService));
             _inventoryReportService = inventoryReportService ?? throw new ArgumentNullException(nameof(inventoryReportService));
             _discrepancyManagementService = discrepancyManagementService ?? throw new ArgumentNullException(nameof(discrepancyManagementService));
@@ -77,6 +82,99 @@ namespace TaskControl.TaskModule.Application.Services
             _postamatCellRepository = postamatCellRepository ?? throw new ArgumentNullException(nameof(postamatCellRepository));
         }
 
+        public async Task<IEnumerable<AvailableEmployeeDto>> GetAvailableCouriersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение доступных курьеров для филиала {BossBranchId}", bossBranchId);
+
+            var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
+            var result = new List<AvailableEmployeeDto>();
+
+            // Получаем список тех, у кого есть параметры транспорта
+            var courierCapabilities = await _db.GetTable<CourierCapabilityModel>().ToListAsync();
+
+            foreach (var emp in employees)
+            {
+                var capability = courierCapabilities.FirstOrDefault(c => c.EmployeeId == emp.EmployeeId);
+
+                // Проверяем по строковому полю Role или наличию транспорта
+                if (capability != null || emp.Role == "Курьер" || emp.Role == "Courier")
+                {
+                    result.Add(new AvailableEmployeeDto
+                    {
+                        EmployeeId = emp.EmployeeId,
+                        FullName = $"{emp.Surname} {emp.Name}",
+                        IsAtWork = true,
+                        ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId),
+                        IsRecommended = false,
+
+                        // --- ДОБАВЛЕНО ДЛЯ ПРОВЕРКИ ВМЕСТИМОСТИ ---
+                        // Переводим граммы в килограммы (DB: max_weight_grams)
+                        MaxWeightKg = capability != null ? capability.MaxWeightGrams / 1000.0 : 0.0,
+                        // Если есть ID типа ТС — выводим, иначе заглушка
+                        VehicleName = capability != null
+                            ? (capability.VehicleTypeId switch
+                            {
+                                1 => "Пешком",
+                                2 => "Велосипед",
+                                3 => "Легковое авто",
+                                4 => "Фургон",
+                                5 => "Грузовик",
+                                _ => $"Неизвестно (ID: {capability.VehicleTypeId})"
+                            })
+                            : "Пеший / Не указан"
+                    });
+                }
+            }
+            return result;
+        }
+
+        public async Task<IEnumerable<AvailableOrderDto>> GetReadyForDispatchOrdersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение готовых заказов для курьеров филиала {BossBranchId}", bossBranchId);
+
+            var allOrders = await _orderRepository.GetByBranchAsync(bossBranchId);
+
+            // Выбираем только те, что собраны (Ready) и предназначены для доставки (Delivery)
+            var readyOrders = allOrders.Where(o =>
+                o.Status == OrderStatus.Ready &&
+                o.DeliveryType == DeliveryType.Delivery).ToList();
+
+            var result = new List<AvailableOrderDto>();
+
+            foreach (var o in readyOrders)
+            {
+                var dto = new AvailableOrderDto
+                {
+                    OrderId = o.OrderId,
+                    OrderNumber = $"ORD-{o.OrderId}",
+                    CreatedAt = o.CreatedAt,
+                    Status = o.Status.ToString(),
+                    DeliveryType = o.DeliveryType.ToString(),
+                    DestinationAddress = o.DestinationAddress
+                };
+
+                // Обогащаем составом (чтобы логист видел габариты/вес)
+                var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
+                foreach (var pos in positions)
+                {
+                    var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+                    dto.Items.Add(new OrderItemDetailDto
+                    {
+                        ItemId = pos.ItemId,
+                        Name = item?.Name ?? "Неизвестный товар",
+                        Quantity = pos.Quantity,
+
+                        // --- ДОБАВЛЕНО ДЛЯ ПРОВЕРКИ ВМЕСТИМОСТИ ---
+                        // Передаем вес товара из базы
+                        WeightKg = item?.Weight.Kilograms ?? 0.0
+                    });
+                }
+
+                result.Add(dto);
+            }
+
+            return result;
+        }
 
         public async Task<CompleteInventoryDto> CreateInventoryTaskAsync(CreateInventoryTaskDto dto, int bossBranchId)
         {

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.Services.BackgroundServices;
@@ -54,6 +55,45 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { Message = "Ошибка при создании задачи выдачи", Details = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// DTO для запроса пакетной выдачи курьеру
+        /// </summary>
+        public record InitCourierBatchRequest(List<int> OrderIds, int CourierId, int BranchId);
+
+        /// <summary>
+        /// Инициализация задачи передачи массива заказов курьеру
+        /// </summary>
+        [HttpPost("init-courier-batch")]
+        [Authorize(Roles = "Supervisor,Admin")]
+        public async Task<IActionResult> InitCourierBatchHandover([FromBody] InitCourierBatchRequest request)
+        {
+            if (request.OrderIds == null || !request.OrderIds.Any())
+                return BadRequest(new { Message = "Список заказов пуст." });
+
+            if (request.CourierId <= 0)
+                return BadRequest(new { Message = "Не выбран курьер." });
+
+            try
+            {
+                // Вызываем метод пакетной генерации, который мы создали ранее в HandoverTaskGeneratorService
+                int baseTaskId = await _generatorService.CreateBatchHandoverToCourierTaskAsync(
+                    request.OrderIds,
+                    request.CourierId,
+                    request.BranchId
+                );
+
+                return Ok(new
+                {
+                    Message = "Маршрутный лист сформирован! Задача отгрузки добавлена в очередь склада.",
+                    TaskId = baseTaskId
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = "Ошибка сервера при формировании маршрута.", Details = ex.Message });
             }
         }
     }

@@ -13,4 +13,5 @@ public interface ITaskExecutionProvider
     Task<object?> GetTaskDetailsAsync(int taskId, int workerId);
     Task<bool> IsTaskFullyCompletedAsync(int taskId);
     Task ExecutePostCompletionLogicAsync(int taskId);
+    Task<bool> AssignTaskToWorkerAsync(int taskId, int workerId);
 }

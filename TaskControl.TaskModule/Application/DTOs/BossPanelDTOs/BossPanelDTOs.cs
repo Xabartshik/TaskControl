@@ -47,6 +47,8 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public bool IsAtWork { get; set; }
         public int ActiveTasksCount { get; set; }
         public bool IsRecommended { get; set; }
+        public double MaxWeightKg { get; set; }
+        public string VehicleName { get; set; }
     }
     public class AvailableOrderDto
     {
@@ -76,5 +78,6 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public int ItemId { get; set; }
         public string Name { get; set; }
         public int Quantity { get; set; }
+        public double WeightKg { get; set; }
     }
 }

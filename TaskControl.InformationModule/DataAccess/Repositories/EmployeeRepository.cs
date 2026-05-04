@@ -78,7 +78,7 @@ namespace TaskControl.InformationModule.DAL.Repositories
                     throw new ArgumentNullException(nameof(entity));
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {

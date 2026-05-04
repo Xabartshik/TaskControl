@@ -12,6 +12,7 @@ using TaskControl.OrderModule.DataAccess.Model;       // Для OrderModel
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
@@ -43,12 +44,14 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             _logger.LogInformation("Получение деталей задачи выдачи TaskId: {TaskId} для WorkerId: {WorkerId}", taskId, workerId);
 
-            // 1. Находим все назначения для этой задачи
             var allAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
                                           .Where(a => a.TaskId == taskId)
                                           .ToListAsync();
 
-            var currentAssignment = allAssignments.FirstOrDefault(a => a.AssignedToUserId == workerId);
+            // БЕРЕМ ВСЕ НАЗНАЧЕНИЯ ТЕКУЩЕГО РАБОТНИКА (в маршруте их может быть 10 штук)
+            var workerAssignments = allAssignments.Where(a => a.AssignedToUserId == workerId).ToList();
+            var currentAssignment = workerAssignments.FirstOrDefault();
+
             if (currentAssignment == null)
             {
                 _logger.LogWarning("Назначение на выдачу не найдено для TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
@@ -56,10 +59,12 @@ namespace TaskControl.TaskModule.Application.Providers
             }
 
             var baseTask = await _baseTaskService.GetById(taskId);
-            var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == currentAssignment.OrderId);
 
-            // 2. Логика кооператива (есть ли напарник-грузчик)
-            var partnerAssignment = allAssignments.FirstOrDefault(a => a.Id != currentAssignment.Id);
+            // ИСПРАВЛЕНИЕ 1: Настоящий напарник - это человек с ДРУГИМ ID
+            var partnerAssignment = allAssignments.FirstOrDefault(a =>
+                a.AssignedToUserId != null &&
+                a.AssignedToUserId != workerId);
+
             bool isCooperative = partnerAssignment != null;
             string partnerName = null;
 
@@ -69,26 +74,23 @@ namespace TaskControl.TaskModule.Application.Providers
                 partnerName = partnerUser?.FullName ?? $"Сотрудник ID: {partnerAssignment.AssignedToUserId}";
             }
 
-            // 3. Собираем базовый DTO
             var dto = new HandoverTaskDetailsDto
             {
                 AssignmentId = currentAssignment.Id,
                 TaskId = currentAssignment.TaskId,
                 TaskNumber = baseTask?.Title ?? $"Выдача заказа #{currentAssignment.OrderId}",
                 OrderId = currentAssignment.OrderId,
-                HandoverType = currentAssignment.HandoverType, // "ToCustomer" или "ToCourier"
+                HandoverType = currentAssignment.HandoverType,
                 Status = currentAssignment.Status,
                 IsCooperative = isCooperative,
                 PartnerName = partnerName,
                 PartnerStatus = partnerAssignment?.Status
             };
 
-            // Добавляем инфу о курьере, если это передача курьеру
             if (currentAssignment.HandoverType == "ToCourier" && currentAssignment.TargetCourierId.HasValue)
             {
                 var courierInfo = await _db.GetTable<EmployeeModel>()
                     .FirstOrDefaultAsync(u => u.EmployeesId == currentAssignment.TargetCourierId.Value);
-                // Можно добавить поле TargetName в DTO, чтобы кассир/грузчик знал, кому отдает:
                 dto.TargetName = courierInfo?.FullName ?? $"Курьер ID: {currentAssignment.TargetCourierId.Value}";
             }
             else
@@ -96,9 +98,10 @@ namespace TaskControl.TaskModule.Application.Providers
                 dto.TargetName = "Покупатель (Самовывоз)";
             }
 
-            // 4. Собираем товары для выдачи
+            // ИСПРАВЛЕНИЕ 2: Собираем товары со ВСЕХ заказов в маршруте!
+            var workerAssignmentIds = workerAssignments.Select(a => a.Id).ToList();
             var lines = await _db.GetTable<OrderHandoverLineModel>()
-                                 .Where(l => l.OrderHandoverAssignmentId == currentAssignment.Id)
+                                 .Where(l => workerAssignmentIds.Contains(l.OrderHandoverAssignmentId))
                                  .ToListAsync();
 
             var positions = _db.GetTable<PositionModel>();
@@ -107,7 +110,6 @@ namespace TaskControl.TaskModule.Application.Providers
 
             foreach (var line in lines)
             {
-                // Ищем инфу о товаре и ячейке, где он сейчас лежит
                 var itemInfoQuery = from ip in itemPositions
                                     join i in items on ip.ItemId equals i.ItemId
                                     where ip.Id == line.ItemPositionId
@@ -115,7 +117,6 @@ namespace TaskControl.TaskModule.Application.Providers
 
                 var itemInfo = await itemInfoQuery.FirstOrDefaultAsync();
 
-                // Формируем строковый код ячейки (чтобы грузчик знал, откуда забрать)
                 string sourceCellCode = "Неизвестная ячейка";
                 if (itemInfo != null)
                 {
@@ -123,7 +124,6 @@ namespace TaskControl.TaskModule.Application.Providers
                     sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemInfo.PositionId.ToString();
                 }
 
-                // Достаем оригинальную строчку заказа, чтобы получить цену (опционально)
                 var orderPos = await _db.GetTable<OrderPositionModel>()
                     .FirstOrDefaultAsync(op => op.UniqueId == line.OrderPositionId);
 
@@ -132,7 +132,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     LineId = line.Id,
                     ItemId = itemInfo?.ItemId ?? 0,
                     ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                    Barcode = (itemInfo?.ItemId ?? 0).ToString(), // В реальной жизни здесь штрихкод товара
+                    Barcode = (itemInfo?.ItemId ?? 0).ToString(),
                     SourceCellCode = sourceCellCode,
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity,
@@ -142,6 +142,7 @@ namespace TaskControl.TaskModule.Application.Providers
 
             return dto;
         }
+
 
         // Вспомогательный метод для форматирования кода ячейки
         private string GetFullPositionCode(PositionModel pos)
@@ -164,20 +165,21 @@ namespace TaskControl.TaskModule.Application.Providers
             _logger.LogInformation("Сканирование при выдаче. TaskId: {TaskId}, Barcode: {Barcode}", taskId, barcode);
 
             // 1. Ищем активное назначение
-            var assignment = await _db.GetTable<OrderHandoverAssignmentModel>()
-                .FirstOrDefaultAsync(a => a.TaskId == taskId && a.AssignedToUserId == workerId && a.Status == 1);
+            var workerAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                            .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId && a.Status == 1)
+                            .ToListAsync();
 
-            if (assignment == null)
+            if (!workerAssignments.Any())
                 return (false, "Активная задача выдачи не найдена или не в статусе InProgress.");
 
-            // В реальной системе здесь будет поиск ItemId по таблице штрих-кодов.
-            // Пока используем допущение, что Barcode совпадает с ItemId (из GetTaskDetailsAsync)
             if (!int.TryParse(barcode, out int itemId))
                 return (false, "Неверный формат штрих-кода.");
 
-            // 2. Ищем строки задания
+            var assignmentIds = workerAssignments.Select(a => a.Id).ToList();
+
+            // 2. Ищем строки задания по ВСЕМ назначениям пакета
             var lines = await _db.GetTable<OrderHandoverLineModel>()
-                .Where(l => l.OrderHandoverAssignmentId == assignment.Id)
+                .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId))
                 .ToListAsync();
 
             var itemPositions = _db.GetTable<ItemPositionModel>();
@@ -316,51 +318,70 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task ExecutePostCompletionLogicAsync(int taskId)
         {
-            _logger.LogInformation("Запуск пост-обработки для задачи выдачи TaskId: {TaskId}", taskId);
+            _logger.LogInformation("Запуск оптимизированной пост-обработки для задачи пакетной выдачи TaskId: {TaskId}", taskId);
 
-            // 1. Получаем базовую информацию о выдаче
+            // 1. Пакетная загрузка всех назначений (заказов) в этой задаче
             var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
                 .Where(a => a.TaskId == taskId)
                 .ToListAsync();
 
-            var mainAssignment = assignments.FirstOrDefault();
-            if (mainAssignment == null) return;
+            if (!assignments.Any())
+            {
+                _logger.LogWarning("Назначения для задачи {TaskId} не найдены", taskId);
+                return;
+            }
 
-            var orderId = mainAssignment.OrderId;
-            var handoverType = mainAssignment.HandoverType;
-
-            // 2. Достаем все строки (товары), которые были физически отсканированы
+            // 2. Пакетная загрузка ВСЕХ строк для ВСЕХ заказов одним запросом (как в старом коде)
             var assignmentIds = assignments.Select(a => a.Id).ToList();
-            var lines = await _db.GetTable<OrderHandoverLineModel>()
+            var allLines = await _db.GetTable<OrderHandoverLineModel>()
                 .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId) && l.ScannedQuantity > 0)
                 .ToListAsync();
 
-            if (!lines.Any())
+            if (!allLines.Any())
             {
                 _logger.LogWarning("Нет отсканированных товаров для задачи {TaskId}. Списание не требуется.", taskId);
                 return;
             }
-            var workerId = mainAssignment.AssignedToUserId;
-            // 3. Начинаем транзакцию, так как меняем баланс склада
+
+            // Группируем строки по ID назначения в памяти, чтобы не делать запросы в цикле
+            var linesLookup = allLines.ToLookup(l => l.OrderHandoverAssignmentId);
+
+            // 3. Работа в транзакции для обеспечения целостности данных
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
             try
             {
-                if (handoverType == "ToCustomer")
+                foreach (var assignment in assignments)
                 {
-                    // Передаем taskId и workerId
-                    await ProcessHandoverToCustomerAsync(orderId, lines, taskId, workerId);
-                }
-                else if (handoverType == "ToCourier")
-                {
-                    if (mainAssignment.TargetCourierId == null)
-                        throw new InvalidOperationException("Не указан ID курьера!");
+                    // Извлекаем строки для конкретного заказа из нашего Lookup
+                    var currentOrderLines = linesLookup[assignment.Id].ToList();
 
-                    // Передаем taskId и workerId
-                    await ProcessHandoverToCourierAsync(orderId, mainAssignment.TargetCourierId.Value, lines, taskId, workerId);
+                    if (!currentOrderLines.Any())
+                        continue; // Пропускаем, если по этому заказу ничего не отсканировали
+
+                    // Проверка наличия исполнителя (безопасность из нового кода)
+                    if (!assignment.AssignedToUserId.HasValue)
+                    {
+                        throw new InvalidOperationException($"Ошибка целостности: у назначения {assignment.Id} нет исполнителя!");
+                    }
+
+                    var workerId = assignment.AssignedToUserId.Value;
+
+                    // Логика обработки в зависимости от типа выдачи
+                    if (assignment.HandoverType == "ToCustomer")
+                    {
+                        await ProcessHandoverToCustomerAsync(assignment.OrderId, currentOrderLines, taskId, workerId);
+                    }
+                    else if (assignment.HandoverType == "ToCourier")
+                    {
+                        if (assignment.TargetCourierId == null)
+                            throw new InvalidOperationException($"Не указан ID курьера для заказа {assignment.OrderId}!");
+
+                        await ProcessHandoverToCourierAsync(assignment.OrderId, assignment.TargetCourierId.Value, currentOrderLines, taskId, workerId);
+                    }
                 }
 
                 await transaction.CommitAsync();
-                _logger.LogInformation("Пост-обработка задачи выдачи {TaskId} успешно завершена", taskId);
+                _logger.LogInformation("Пост-обработка пакетной задачи {TaskId} успешно завершена", taskId);
             }
             catch (Exception ex)
             {
@@ -530,6 +551,46 @@ namespace TaskControl.TaskModule.Application.Providers
                 .Where(o => o.OrderId == orderId)
                 .Set(o => o.Status, "InTransit")
                 .UpdateAsync();
+        }
+
+        public async Task<bool> AssignTaskToWorkerAsync(int taskId, int workerId)
+        {
+            // Проверяем, наша ли это задача вообще (чтобы не трогать инвентаризацию и сборку)
+            var isOurTask = await _db.GetTable<BaseTaskModel>()
+                                     .AnyAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
+            if (!isOurTask) return false;
+
+            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
+            try
+            {
+                var assignmentsToUpdate = await _db.GetTable<OrderHandoverAssignmentModel>()
+                    .Where(a => a.TaskId == taskId && a.AssignedToUserId == null)
+                    .ToListAsync();
+
+                if (!assignmentsToUpdate.Any()) return false;
+
+                foreach (var assignment in assignmentsToUpdate)
+                {
+                    await _db.GetTable<OrderHandoverAssignmentModel>()
+                        .Where(a => a.Id == assignment.Id)
+                        .Set(a => a.AssignedToUserId, workerId)
+                        .UpdateAsync();
+                }
+
+                await _db.GetTable<BaseTaskModel>()
+                    .Where(t => t.TaskId == taskId)
+                    .Set(t => t.Status, "Assigned")
+                    .UpdateAsync();
+
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Ошибка присвоения задачи {TaskId} сотруднику {WorkerId}", taskId, workerId);
+                return false;
+            }
         }
 
 

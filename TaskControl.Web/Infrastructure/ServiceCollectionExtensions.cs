@@ -208,6 +208,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<INotificationService, NotificationService>();
 
             services.AddScoped<IWorkerBreakService, WorkerBreakService>();
+            services.AddScoped<HandoverTaskGeneratorService>();
 
             return services;
         }

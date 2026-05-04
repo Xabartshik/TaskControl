@@ -49,6 +49,73 @@ namespace TaskControl.TaskModule.Application.Services
 
             return null;
         }
+        /// <summary>
+        /// Автоматический подбор наименее загруженных сотрудников на филиале с возможностью фильтрации.
+        /// </summary>
+        public async Task<IEnumerable<int>> GetAutoSelectedEmployeesAsync(
+            int branchId,
+            int requiredCount,
+            IEnumerable<int> excludedEmployeeIds = null,
+            IEnumerable<int> excludedRoleIds = null)
+        {
+            // 1. Кто сейчас зачекинен на складе (последняя запись - IN)
+            var checkedInWorkers = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.BranchId == branchId)
+                .GroupBy(c => c.EmployeeId)
+                .Select(g => g.OrderByDescending(x => x.CheckTimeStamp).FirstOrDefault())
+                .Where(c => c != null && c.CheckType == "in")
+                .Select(c => c.EmployeeId)
+                .ToListAsync();
+
+            if (!checkedInWorkers.Any())
+                return new List<int>();
+
+            // 2. Формируем базовый запрос: берем тех, кто на смене и не на перерыве
+            var query = from u in _db.GetTable<MobileAppUserModel>()
+                        join e in _db.GetTable<EmployeeModel>() on u.EmployeeId equals e.EmployeesId
+                        where checkedInWorkers.Contains(e.EmployeesId)
+                              && u.IsOnBreak == false
+                        select new { e.EmployeesId, e.RoleId };
+
+            // 2.1 Применяем опциональный фильтр по ID сотрудника
+            if (excludedEmployeeIds != null && excludedEmployeeIds.Any())
+            {
+                var exclIds = excludedEmployeeIds.ToList();
+                query = query.Where(x => !exclIds.Contains(x.EmployeesId));
+            }
+
+            // 2.2 Применяем опциональный фильтр по ролям (например, отсекаем начальников и курьеров)
+            if (excludedRoleIds != null && excludedRoleIds.Any())
+            {
+                var exclRoles = excludedRoleIds.ToList();
+                query = query.Where(x => !exclRoles.Contains(x.RoleId));
+            }
+
+            // Выполняем запрос к БД
+            var candidateIds = await query.Select(x => x.EmployeesId).ToListAsync();
+
+            if (!candidateIds.Any())
+                return new List<int>();
+
+            // 3. Считаем реальную загрузку (сложность) каждого кандидата через всех провайдеров
+            var workLoads = new List<(int EmployeeId, double Complexity)>();
+
+            foreach (var empId in candidateIds)
+            {
+                // Используем метод агрегатора для получения общей сложности
+                double complexity = await GetTotalActiveComplexityAsync(empId);
+                workLoads.Add((empId, complexity));
+            }
+
+            // 4. Сортируем: от наименее загруженного к наиболее загруженному, и берем нужное количество
+            var selectedIds = workLoads
+                .OrderBy(w => w.Complexity)
+                .Take(requiredCount)
+                .Select(w => w.EmployeeId)
+                .ToList();
+
+            return selectedIds;
+        }
 
         /// <summary>
         /// Поиск наименее загруженного помощника на филиале
@@ -72,7 +139,7 @@ namespace TaskControl.TaskModule.Application.Services
                                           where checkedInWorkers.Contains(e.EmployeesId)
                                                 && u.IsOnBreak == false // Не на перерыве
                                                 && u.EmployeeId != excludeWorkerId // ИСКЛЮЧАЕМ ИНИЦИАТОРА ЗАДАЧИ
-                                                && (e.RoleId == 1 || e.RoleId == 3) // 1=Грузчик/Сборщик
+                                                && (e.RoleId == 1 || e.RoleId == 2) // 1=Грузчик/Сборщик
                                           select e.EmployeesId).ToListAsync();
 
             if (!availableHelpers.Any()) return null;
@@ -149,6 +216,23 @@ namespace TaskControl.TaskModule.Application.Services
                 allWorkerIds.AddRange(workerIds);
             }
             return allWorkerIds.Distinct();
+        }
+
+        /// <summary>
+        /// Получить все ничейные задачи (Общий пул склада)
+        /// </summary>
+        public async Task<IEnumerable<MobileBaseTaskDto>> GetGlobalPoolTasksAsync(int branchId)
+        {
+            var poolTasks = new List<MobileBaseTaskDto>();
+            foreach (var provider in _providers)
+            {
+                // Спрашиваем у каждого модуля: "Есть ли у тебя задачи без исполнителя для этого филиала?"
+                var tasks = await provider.GetUnassignedPoolTasksAsync(branchId);
+                poolTasks.AddRange(tasks);
+            }
+
+            // Сортируем: сначала самые важные, затем самые старые
+            return poolTasks.OrderByDescending(t => t.PriorityLevel).ThenBy(t => t.CreatedAt);
         }
 
     }

@@ -22,6 +22,24 @@ namespace TaskControl.TaskModule.Application.Services
             _logger = logger;
         }
 
+        public async Task<bool> TryClaimTaskFromPoolAsync(int taskId, int workerId)
+        {
+            _logger.LogInformation("Попытка агрегатора присвоить ничейную задачу {TaskId} работнику {WorkerId}", taskId, workerId);
+
+            foreach (var provider in _executionProviders)
+            {
+                // Если провайдер распознает задачу как свою и успешно ее назначает, прерываем цикл
+                if (await provider.AssignTaskToWorkerAsync(taskId, workerId))
+                {
+                    _logger.LogInformation("Задача {TaskId} успешно присвоена работнику {WorkerId} через провайдер {Provider}", taskId, workerId, provider.TaskType);
+                    return true;
+                }
+            }
+
+            _logger.LogWarning("Ни один провайдер не смог присвоить задачу {TaskId}. Возможно, она не существует, уже занята или тип задачи не поддерживается пулом.", taskId);
+            return false;
+        }
+
         public async Task ExecutePostCompletionLogicAsync(int taskId, string taskType)
         {
             var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);

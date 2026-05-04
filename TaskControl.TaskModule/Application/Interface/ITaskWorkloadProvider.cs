@@ -13,5 +13,7 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId);
         Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId);
         Task<MobileBaseTaskDto?> GetTaskDetailsAsync(int taskId, int workerId);
+        Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId);
+
     }
 }

@@ -56,7 +56,7 @@ namespace TaskControl.TaskModule.Application.Services
                 return DateTime.UtcNow;
 
             if (order.DeliveryType == DeliveryType.Pickup.ToString())
-                return (order.DeliveryDate ?? DateTime.UtcNow.AddHours(2)).AddHours(-2);
+                return (order.DeliveryDate ?? DateTime.UtcNow.AddHours(2)).AddMinutes(-30);
 
             if (order.DeliveryType == DeliveryType.Delivery.ToString() && order.DeliverySlotId.HasValue)
             {
@@ -64,7 +64,7 @@ namespace TaskControl.TaskModule.Application.Services
                 if (slot != null && order.DeliveryDate.HasValue)
                 {
                     var slotStart = order.DeliveryDate.Value.Date.Add(slot.StartTime);
-                    return slotStart.AddHours(-2);
+                    return slotStart.AddHours(-1);
                 }
             }
 
@@ -378,23 +378,32 @@ namespace TaskControl.TaskModule.Application.Services
 
             if (workersToAutoFind > 0)
             {
-                var autoWorkers = await _baseTaskService.GetAutoSelectedEmployeesAsync(branchId, workersToAutoFind);
+                // Исключаем ручного сотрудника из автоподбора (чтобы не дублировался)
+                var excludedIds = manualWorkerId.HasValue ? new[] { manualWorkerId.Value } : null;
+
+                // Передаем ID ролей, которые не должны назначаться (например, 3 = Начальник, 4 = Курьер)
+                var excludedRoles = new[] { 3, 4 };
+
+                // Вызываем новый метод из агрегатора
+                var autoWorkers = await _taskWorkloadAggregator.GetAutoSelectedEmployeesAsync(
+                    branchId,
+                    workersToAutoFind,
+                    excludedEmployeeIds: excludedIds,
+                    excludedRoleIds: excludedRoles
+                );
+
                 if (autoWorkers.Count() < workersToAutoFind)
                 {
-                    if (throwOnWorkerShortage) throw new InvalidOperationException("Невозможно взять заказ: требуется напарник, но нет свободных сотрудников.");
+                    if (throwOnWorkerShortage) throw new InvalidOperationException("Невозможно взять заказ: требуется напарник, но нет свободных сотрудников нужной роли.");
                     return null;
                 }
 
-                var workerScores = new Dictionary<int, double>();
-                foreach (var w in autoWorkers)
-                    workerScores[w] = await _taskWorkloadAggregator.GetTotalActiveComplexityAsync(w);
-
-                sortedWorkers.AddRange(autoWorkers.OrderBy(w => workerScores[w]));
+                // Сотрудники УЖЕ отсортированы по нагрузке внутри агрегатора, поэтому просто добавляем их
+                sortedWorkers.AddRange(autoWorkers);
             }
 
             return sortedWorkers;
         }
-
         private async Task<int> CreateTaskAndAssignmentsAsync(
             OrderModel order, DateTime deadline, TaskPriority priority, string taskTitle,
             double mainComplexity, double helperComplexity, bool needsHelper,

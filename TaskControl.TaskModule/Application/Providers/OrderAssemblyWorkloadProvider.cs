@@ -34,6 +34,49 @@ namespace TaskControl.TaskModule.Application.Providers
             _db = db;
         }
 
+        /// <summary>
+        /// Получить список неназначенных задач сборки для конкретного филиала
+        /// </summary>
+        public async Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId)
+        {
+            // 1. Ищем ID задач в таблице назначений сборки, где исполнитель не указан
+            var unassignedAssemblyTaskIds = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                .Where(a => a.AssignedToUserId == null && a.BranchId == branchId && a.Status == 0) // 0 = New
+                .Select(a => a.TaskId)
+                .Distinct()
+                .ToListAsync();
+
+            if (!unassignedAssemblyTaskIds.Any())
+                return new List<MobileBaseTaskDto>();
+
+            // 2. Получаем базовые данные задач из таблицы base_tasks
+            var availableTasks = await _db.GetTable<BaseTaskModel>()
+                .Where(t => unassignedAssemblyTaskIds.Contains(t.TaskId) && t.Status == "New")
+                .ToListAsync();
+
+            var dtos = new List<MobileBaseTaskDto>();
+            foreach (var task in availableTasks)
+            {
+                // Для сборки заказов информативно будет показать номер заказа в описании
+                var assignment = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                    .FirstOrDefaultAsync(a => a.TaskId == task.TaskId);
+
+                dtos.Add(new MobileBaseTaskDto
+                {
+                    TaskId = task.TaskId,
+                    Title = task.Title,
+                    TaskType = this.TaskType,
+                    Status = Enum.Parse<TaskStatus>(task.Status),
+                    PriorityLevel = task.PriorityLevel,
+                    CreatedAt = task.CreatedAt,
+                    Deadline = task.Deadline,
+                    Description = assignment != null ? $"Сборка заказа #{assignment.OrderId}" : "Cборка заказа"
+                });
+            }
+
+            return dtos;
+        }
+
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
             var tasks = await _assemblyRepo.GetByUserIdAsync(workerId);

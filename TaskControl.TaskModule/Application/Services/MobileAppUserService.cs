@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.InformationModule.Application.Services;
+using TaskControl.InformationModule.DataAccess.Interface; // Добавлено для ICheckIOEmployeeRepository
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
@@ -22,17 +23,46 @@ namespace TaskControl.TaskModule.Application.Services
     {
         private readonly IMobileAppUserRepository _repository;
         private readonly ICustomerService _customerService;
+        private readonly ICheckIOEmployeeRepository _checkIORepository; // Новая зависимость
         private readonly ILogger<MobileAppUserService> _logger;
 
         public MobileAppUserService(
             IMobileAppUserRepository repository,
             ILogger<MobileAppUserService> logger,
-            ICustomerService customerService)
+            ICustomerService customerService,
+            ICheckIOEmployeeRepository checkIORepository) // Добавлено в конструктор
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _customerService = customerService ?? throw new ArgumentNullException(nameof(customerService));
+            _checkIORepository = checkIORepository ?? throw new ArgumentNullException(nameof(checkIORepository));
         }
+
+        /// <summary>
+        /// Получает ID последнего филиала, в котором сотрудник отметился "in"
+        /// </summary>
+        private async Task<int?> GetLastBranchIdByMarkInAsync(int employeeId)
+        {
+            _logger.LogDebug("Поиск последнего филиала отметки 'in' для сотрудника: {EmployeeId}", employeeId);
+            try
+            {
+                // Получаем все отметки сотрудника
+                var checkIns = await _checkIORepository.GetAllAsync(); // Предполагается наличие метода GetAllAsync или GetByEmployeeIdAsync
+
+                var lastMarkIn = checkIns
+                    .Where(c => c.EmployeeId == employeeId && c.CheckType.Equals("in", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(c => c.CheckTimeStamp)
+                    .FirstOrDefault();
+
+                return lastMarkIn?.BranchId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении последнего филиала для сотрудника {EmployeeId}", employeeId);
+                return null;
+            }
+        }
+
         public async Task<MobileAppUserDto> RegisterCustomerAsync(RegisterCustomerRequestDto request)
         {
             _logger.LogInformation("Начало регистрации нового покупателя с логином: {Login}", request.Login);
@@ -59,13 +89,12 @@ namespace TaskControl.TaskModule.Application.Services
                 }
 
                 // 3. Создание профиля Customer через CustomerService
-                // CustomerService сам проверит уникальность Phone и Email
                 var customerDto = await _customerService.CreateCustomerAsync(new TaskControl.InformationModule.Application.DTOs.CustomerDto
                 {
                     FirstName = request.FirstName,
                     LastName = request.LastName,
-                    Phone = request.Phone, // Опционально, но желательно
-                    Email = request.Email  // Опционально
+                    Phone = request.Phone,
+                    Email = request.Email
                 });
 
                 if (customerDto == null || customerDto.CustomerId == 0)
@@ -81,8 +110,8 @@ namespace TaskControl.TaskModule.Application.Services
                     passwordHash: passwordHash,
                     role: MobileUserRole.Customer,
                     employeeId: null,
-                    customerId: customerDto.CustomerId, // Привязываем созданного клиента
-                    branchId: null // Покупатели пока не привязаны к конкретному филиалу жестко
+                    customerId: customerDto.CustomerId,
+                    branchId: null
                 );
 
                 var newUserId = await _repository.AddAsync(newUser);
@@ -95,7 +124,6 @@ namespace TaskControl.TaskModule.Application.Services
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
             {
-                // Пробрасываем бизнес-исключения как есть
                 throw;
             }
             catch (Exception ex)
@@ -139,21 +167,26 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("Регистрация пользователя с логином: {Login}", dto.Login);
 
-            // Проверка уникальности логина перед созданием
             var existing = await _repository.GetByLoginAsync(dto.Login);
             if (existing != null)
                 throw new InvalidOperationException($"Логин {dto.Login} уже занят");
 
             var passwordHash = HashPassword(dto.Password);
 
-            // Создание доменного объекта через обновленный конструктор
+            // Если это сотрудник, пытаемся найти его последний филиал по отметке "in"
+            int? effectiveBranchId = dto.BranchId;
+            if (dto.EmployeeId.HasValue && effectiveBranchId == null)
+            {
+                effectiveBranchId = await GetLastBranchIdByMarkInAsync(dto.EmployeeId.Value);
+            }
+
             var user = new MobileAppUser(
                 login: dto.Login,
                 passwordHash: passwordHash,
                 role: dto.Role,
                 employeeId: dto.EmployeeId,
                 customerId: dto.CustomerId,
-                branchId: dto.BranchId
+                branchId: effectiveBranchId
             );
 
             var userId = await _repository.AddAsync(user);
@@ -161,6 +194,7 @@ namespace TaskControl.TaskModule.Application.Services
 
             return MobileAppUserDto.ToDto(user);
         }
+
         public async Task<MobileAppUserDto> UpdateAsync(int id, UpdateMobileUserDto dto)
         {
             _logger.LogInformation("Обновление пользователя мобильного приложения ID: {id}", id);
@@ -264,7 +298,6 @@ namespace TaskControl.TaskModule.Application.Services
                 if (user == null)
                     throw new InvalidOperationException($"Пользователь с ID {id} не найден");
 
-                // Хеширование нового пароля
                 var newPasswordHash = HashPassword(dto.Password);
                 user.PasswordHash = newPasswordHash;
                 user.UpdatedAt = DateTime.UtcNow;
@@ -337,7 +370,7 @@ namespace TaskControl.TaskModule.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при обновлении активности для пользователя мобильного приложения ID: {id}", id);
+                _logger.LogError(ex, "Ошибка при получении данных для {id}", id);
                 throw;
             }
         }
@@ -370,28 +403,20 @@ namespace TaskControl.TaskModule.Application.Services
 
                 MobileAppUser? user = null;
 
-                // 1. Пытаемся определить тип идентификатора с помощью регулярных выражений
-
-                // Простая проверка на Email (наличие @ и точки)
                 bool isEmail = Regex.IsMatch(identifier, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-
-                // Проверка на телефон (начинается с +, допускает цифры, скобки, пробелы и тире. Минимум 10 цифр).
                 bool isPhone = Regex.IsMatch(identifier, @"^\+?[\d\s\-\(\)]{10,20}$");
 
-                // 2. Ищем пользователя в зависимости от типа
                 if (isEmail || isPhone)
                 {
                     _logger.LogDebug("Идентификатор '{Identifier}' распознан как {Type}",
                         identifier, isEmail ? "Email" : "Телефон");
 
-                    // Ищем клиента в InformationModule
                     var customer = isEmail
                         ? await _customerService.GetByEmailAsync(identifier)
-                        : await _customerService.GetByPhoneAsync(identifier.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "")); // Нормализация телефона
+                        : await _customerService.GetByPhoneAsync(identifier.Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", ""));
 
                     if (customer != null && customer.CustomerId > 0)
                     {
-                        // Если клиент найден, ищем его учетку MobileAppUser по CustomerId
                         var allUsers = await _repository.GetAllAsync();
                         user = allUsers.FirstOrDefault(u => u.CustomerId == customer.CustomerId);
                     }
@@ -399,11 +424,9 @@ namespace TaskControl.TaskModule.Application.Services
                 else
                 {
                     _logger.LogDebug("Идентификатор '{Identifier}' распознан как обычный Логин", identifier);
-                    // Ищем по прямому логину (для сотрудников это EmployeeID строкой, для клиентов - придуманный ник)
                     user = await _repository.GetByLoginAsync(identifier);
                 }
 
-                // 3. Проверка пароля и активности
                 if (user == null)
                 {
                     _logger.LogWarning("Пользователь с идентификатором {Identifier} не найден", identifier);
@@ -421,6 +444,19 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     _logger.LogWarning("Неверный пароль для пользователя: {Login}", user.Login);
                     return null;
+                }
+
+                // При успешной валидации сотрудника, обновляем его BranchId по последней отметке "in", если он не задан
+                if (user.EmployeeId.HasValue && user.BranchId == null)
+                {
+                    var lastBranchId = await GetLastBranchIdByMarkInAsync(user.EmployeeId.Value);
+                    if (lastBranchId.HasValue)
+                    {
+                        user.BranchId = lastBranchId;
+                        await _repository.UpdateAsync(user);
+                        _logger.LogInformation("Обновлен BranchId ({BranchId}) для пользователя {Login} на основе последней отметки 'in'",
+                            lastBranchId, user.Login);
+                    }
                 }
 
                 _logger.LogInformation("Успешная авторизация пользователя: {Login}", user.Login);
@@ -497,9 +533,6 @@ namespace TaskControl.TaskModule.Application.Services
         }
     }
 
-    /// <summary>
-    /// DTO для обновления пользователя
-    /// </summary>
     public record UpdateMobileUserDto
     {
         public string? Role { get; init; }

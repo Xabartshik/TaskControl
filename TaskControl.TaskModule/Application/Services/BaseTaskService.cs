@@ -190,7 +190,7 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("|   [Автоподбор] ищем {Count} сотрудников для филиала {BranchId}", requiredCount, branchId);
 
-            // 1. Получаем всех, кто "на смене" из InformationModule[cite: 2]
+            // 1. Получаем всех, кто "на смене" из InformationModule
             var allWorkingEmployees = await _employeeService.GetWorkingEmployeesByBranchAsync(branchId);
             if (!allWorkingEmployees.Any())
             {
@@ -198,11 +198,11 @@ namespace TaskControl.TaskModule.Application.Services
                 return new List<int>();
             }
 
-            // 2. Узнаем, кто из них сейчас на перерыве (запрос в рамках TaskModule)[cite: 2]
+            // 2. Узнаем, кто из них сейчас на перерыве (запрос в рамках TaskModule)
             var workingEmployeeIds = allWorkingEmployees.Select(e => e.EmployeeId).ToList();
             var employeesOnBreak = await _mobileAppUserRepository.GetEmployeesOnBreakAsync(workingEmployeeIds);
 
-            // 3. Фильтруем: оставляем только доступных[cite: 2]
+            // 3. Фильтруем: оставляем только доступных
             var availableEmployees = allWorkingEmployees
                 .Where(e => !employeesOnBreak.Contains(e.EmployeeId))
                 .ToList();
@@ -252,6 +252,9 @@ namespace TaskControl.TaskModule.Application.Services
 
             return selectedIds;
         }
+
+
+
         public async Task<bool> UpdateTaskStatusAsync(int taskId, TaskStatus newStatus)
         {
             // 1. Достаем задачу напрямую из базы данных (Модель базы данных, а не DTO)

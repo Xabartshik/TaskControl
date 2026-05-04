@@ -193,24 +193,31 @@ namespace TaskControl.TaskModule.Application.Services
 
             try
             {
-                // 1. Получаем все строки сборки напрямую через JOIN таблиц (обходим отсутствие свойства Lines)
-                var completedLinesQuery = from a in _db.GetTable<OrderAssemblyAssignmentModel>()
-                                          join l in _db.GetTable<OrderAssemblyLineModel>() on a.Id equals l.OrderAssemblyAssignmentId
-                                          where a.TaskId == taskId && l.Status == 2 // 2 = Placed
-                                          select l;
+                // 1. Получаем базовую задачу и назначения (нужно для логов и телеметрии)
+                var baseTask = await _db.GetTable<BaseTaskModel>().FirstOrDefaultAsync(t => t.TaskId == taskId);
 
-                var completedLines = await completedLinesQuery.ToListAsync();
+                var assignments = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                    .Where(a => a.TaskId == taskId).ToListAsync();
+
+                // Находим главного инициатора сборки (или первого попавшегося, если одиночная задача)
+                var mainAssignment = assignments.FirstOrDefault(a => a.Role == (int)AssignmentRole.Main) ?? assignments.FirstOrDefault();
+                if (mainAssignment == null) return;
+
+                // 2. Получаем все размещенные (Placed) строки
+                var assignmentIds = assignments.Select(a => a.Id).ToList();
+                var completedLines = await _db.GetTable<OrderAssemblyLineModel>()
+                    .Where(l => assignmentIds.Contains(l.OrderAssemblyAssignmentId) && l.Status == 2)
+                    .ToListAsync();
+
                 var orderIdsToUpdate = new HashSet<int>();
+                var targetCellIds = new HashSet<int>(); // Для освобождения ячеек PICKUP
 
                 foreach (var line in completedLines)
                 {
-                    // 2. Достаем исходную позицию
                     var sourceItemPos = await _db.GetTable<ItemPositionModel>()
                         .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
-
                     if (sourceItemPos == null) continue;
 
-                    // 3. Находим резерв и через него OrderId
                     var reservation = await _db.GetTable<OrderReservationModel>()
                         .FirstOrDefaultAsync(r => r.ItemPositionId == line.ItemPositionId);
 
@@ -218,22 +225,32 @@ namespace TaskControl.TaskModule.Application.Services
                     {
                         var orderPosition = await _db.GetTable<OrderPositionModel>()
                             .FirstOrDefaultAsync(op => op.UniqueId == reservation.OrderPositionId);
-
-                        if (orderPosition != null)
-                        {
-                            orderIdsToUpdate.Add(orderPosition.OrderId);
-                        }
+                        if (orderPosition != null) orderIdsToUpdate.Add(orderPosition.OrderId);
                     }
 
-                    // Вычитаем количество (списываем со склада)
+                    // --- МАГИЯ 1: Пишем правильный лог перемещения ---
+                    await _db.InsertAsync(new ItemMovementModel
+                    {
+                        ItemId = sourceItemPos.ItemId,
+                        SourcePositionId = sourceItemPos.PositionId,
+                        DestinationPositionId = line.TargetPositionId, // null для экспресса
+                        Quantity = line.Quantity,
+                        TaskId = taskId,
+                        WorkerId = mainAssignment.AssignedToUserId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    // Списываем количество со склада
                     sourceItemPos.Quantity -= line.Quantity;
                     await _db.UpdateAsync(sourceItemPos);
 
                     int? newTargetItemPosId = null;
 
-                    // 4. Если есть целевая ячейка (не экспресс-выдача)
+                    // Если есть целевая ячейка (не экспресс-выдача)
                     if (line.TargetPositionId.HasValue)
                     {
+                        targetCellIds.Add(line.TargetPositionId.Value);
+
                         var targetItemPos = await _db.GetTable<ItemPositionModel>()
                             .FirstOrDefaultAsync(ip => ip.PositionId == line.TargetPositionId.Value && ip.ItemId == sourceItemPos.ItemId);
 
@@ -245,18 +262,17 @@ namespace TaskControl.TaskModule.Application.Services
                         }
                         else
                         {
-                            var newItemPos = new ItemPositionModel
+                            newTargetItemPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
                             {
-                                PositionId = line.TargetPositionId.Value, // Явное извлечение значения (.Value)
+                                PositionId = line.TargetPositionId.Value,
                                 ItemId = sourceItemPos.ItemId,
                                 Quantity = line.Quantity,
                                 CreatedAt = DateTime.UtcNow
-                            };
-                            newTargetItemPosId = await _db.InsertWithInt32IdentityAsync(newItemPos);
+                            });
                         }
                     }
 
-                    // 5. Обновляем резерв: либо привязываем к новой ячейке (Pickup), либо отвязываем (NULL) для экспресса
+                    // Обновляем резерв
                     if (reservation != null)
                     {
                         reservation.ItemPositionId = newTargetItemPosId;
@@ -267,28 +283,73 @@ namespace TaskControl.TaskModule.Application.Services
                 // Удаляем пустые складские позиции
                 await _db.GetTable<ItemPositionModel>().Where(ip => ip.Quantity <= 0).DeleteAsync();
 
-                // 6. Обновляем статус найденных заказов
+                // --- МАГИЯ 2: Освобождаем ячейки PICKUP (снимаем блокировку) ---
+                if (targetCellIds.Any())
+                {
+                    await _db.GetTable<PositionModel>()
+                        .Where(p => targetCellIds.Contains(p.PositionId))
+                        .Set(p => p.Status, "Active")
+                        .UpdateAsync();
+                }
+
+                // --- МАГИЯ 3: Обновляем статусы заказов (с учетом Express) ---
                 foreach (var orderId in orderIdsToUpdate)
                 {
-                    var order = await _db.GetTable<OrderModel>()
-                        .FirstOrDefaultAsync(o => o.OrderId == orderId);
-
+                    var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == orderId);
                     if (order != null && order.Status != OrderStatus.Completed.ToString())
                     {
-                        order.Status = OrderStatus.Ready.ToString();
-                        await _db.UpdateAsync(order);
+                        if (order.DeliveryType != DeliveryType.Express.ToString())
+                        {
+                            order.Status = OrderStatus.Ready.ToString();
+                            await _db.UpdateAsync(order);
+                        }
+                        else
+                        {
+                            order.Status = OrderStatus.Completed.ToString();
+                            await _db.UpdateAsync(order);
+                        }
                     }
                 }
 
+                // --- МАГИЯ 4: Обновляем статус базовой задачи ---
+                if (baseTask != null)
+                {
+                    baseTask.Status = "Completed";
+                    baseTask.CompletedAt = DateTime.UtcNow;
+                    await _db.UpdateAsync(baseTask);
+                }
+
+                // --- МАГИЯ 5: Пишем телеметрию (аналитика работы) ---
+                int itemsProcessed = completedLines.Sum(l => l.Quantity);
+                DateTime startTime = mainAssignment.StartedAt ?? mainAssignment.AssignedAt;
+                int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+                int waitTimeSeconds = mainAssignment.StartedAt.HasValue
+                    ? (int)(mainAssignment.StartedAt.Value - mainAssignment.AssignedAt).TotalSeconds
+                    : 0;
+
+                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(mainAssignment.AssignedToUserId);
+
+                await _telemetryService.LogTaskEventAsync(
+                    workerId: mainAssignment.AssignedToUserId,
+                    branchId: baseTask?.BranchId ?? 0,
+                    taskCategory: "OrderAssembly",
+                    itemsProcessed: itemsProcessed,
+                    durationSeconds: durationSeconds,
+                    discrepanciesFound: 0,
+                    waitTimeSeconds: waitTimeSeconds,
+                    queueSize: globalQueueSize
+                );
+
                 await transaction.CommitAsync();
+                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА и пост-обработана ===", taskId);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! Ошибка при пост-обработке задачи сборки {TaskId}", taskId);
                 throw;
             }
         }
-
         public async Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode)
         {
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
