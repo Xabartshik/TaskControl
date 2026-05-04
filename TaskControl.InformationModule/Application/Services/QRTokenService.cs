@@ -15,6 +15,8 @@ namespace TaskControl.InformationModule.Application.Services
         // НОВЫЕ методы для выдачи заказов
         string GenerateOrderPickupToken(int customerId, int orderId);
         bool ValidateOrderPickupToken(string payload, out int customerId, out int orderId, out string errorMessage);
+        string GenerateCourierPickupToken(int courierId);
+        bool ValidateCourierPickupToken(string payload, out int courierId, out string errorMessage);
     }
 
     public class QRTokenService : IQRTokenService
@@ -71,6 +73,48 @@ namespace TaskControl.InformationModule.Application.Services
 
             errorMessage = "Ошибка чтения времени из QR-кода.";
             return false;
+        }
+
+        #endregion
+
+        #region Методы для передачи курьерам (Digital Handshake)
+
+        public string GenerateCourierPickupToken(int courierId)
+        {
+            // Код живет ровно 5 минут
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds();
+            var dataToSign = $"{courierId}|{expiresAt}";
+            var signature = GenerateSignature(dataToSign);
+
+            return $"{dataToSign}|{signature}";
+        }
+
+        public bool ValidateCourierPickupToken(string payload, out int courierId, out string errorMessage)
+        {
+            courierId = 0;
+            errorMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(payload)) { errorMessage = "Пустой QR-код."; return false; }
+
+            var parts = payload.Split('|');
+            if (parts.Length != 3) { errorMessage = "Неверный формат QR-кода курьера."; return false; }
+
+            var courierIdStr = parts[0];
+            var expiresAtStr = parts[1];
+            var signature = parts[2];
+
+            // 1. Проверяем подпись
+            var expectedSignature = GenerateSignature($"{courierIdStr}|{expiresAtStr}");
+            if (signature != expectedSignature) { errorMessage = "Подпись QR-кода недействительна."; return false; }
+
+            // 2. Проверяем срок действия (5 минут)
+            if (!long.TryParse(expiresAtStr, out long expiresAtUnix)) { errorMessage = "Ошибка чтения времени."; return false; }
+            if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiresAtUnix) { errorMessage = "QR-код просрочен. Попросите курьера обновить экран."; return false; }
+
+            // 3. Извлекаем ID курьера
+            if (!int.TryParse(courierIdStr, out courierId)) { errorMessage = "Ошибка чтения ID курьера."; return false; }
+
+            return true;
         }
 
         #endregion

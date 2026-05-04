@@ -1,3 +1,4 @@
+using Hangfire;
 using Hangfire.Server;
 using LinqToDB;
 using LinqToDB.Data;
@@ -90,6 +91,7 @@ namespace TaskControl.TaskModule.Application.Services
             return order.DeliveryDate ?? DateTime.UtcNow.AddHours(2);
         }
 
+        [DisableConcurrentExecution(timeoutInSeconds: 60)]
         public async Task ExecuteAsync()
         {
             if (_appSettings.EnableDetailedLogging)

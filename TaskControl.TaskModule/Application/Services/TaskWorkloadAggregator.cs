@@ -59,12 +59,14 @@ namespace TaskControl.TaskModule.Application.Services
             IEnumerable<int> excludedRoleIds = null)
         {
             // 1. Кто сейчас зачекинен на складе (последняя запись - IN)
-            var checkedInWorkers = await _db.GetTable<CheckIOEmployeeModel>()
-                .Where(c => c.BranchId == branchId)
-                .GroupBy(c => c.EmployeeId)
-                .Select(g => g.OrderByDescending(x => x.CheckTimeStamp).FirstOrDefault())
-                .Where(c => c != null && c.CheckType == "in")
-                .Select(c => c.EmployeeId)
+            // ИСПРАВЛЕНО: Транслируемый в SQL подзапрос для поиска последней отметки каждого сотрудника
+            var checkedInWorkers = await _db.GetTable<EmployeeModel>()
+                .Where(e => _db.GetTable<CheckIOEmployeeModel>()
+                    .Where(c => c.EmployeeId == e.EmployeesId && c.BranchId == branchId)
+                    .OrderByDescending(c => c.CheckTimeStamp)
+                    .Select(c => c.CheckType)
+                    .FirstOrDefault() == "in")
+                .Select(e => e.EmployeesId)
                 .ToListAsync();
 
             if (!checkedInWorkers.Any())
@@ -116,7 +118,6 @@ namespace TaskControl.TaskModule.Application.Services
 
             return selectedIds;
         }
-
         /// <summary>
         /// Поиск наименее загруженного помощника на филиале
         /// </summary>

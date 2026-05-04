@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Model; // Для EmployeeModel
 using TaskControl.InventoryModule.DataAccess.Model;   // Для PositionModel, ItemPositionModel, ItemModel
 using TaskControl.OrderModule.DataAccess.Model;       // Для OrderModel
@@ -26,20 +27,52 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public string TaskType => "OrderHandover"; // Определяет, какие задачи падают сюда
 
+        private readonly IQRTokenService _qrTokenService; 
+
         public OrderHandoverExecutionProvider(
             ITaskDataConnection db,
             IBaseTaskService baseTaskService,
-            ILogger<OrderHandoverExecutionProvider> logger)
+            ILogger<OrderHandoverExecutionProvider> logger,
+            IQRTokenService qrTokenService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _qrTokenService = qrTokenService ?? throw new ArgumentNullException(nameof(qrTokenService));
         }
 
         // ==========================================
         // 1. ИНФОРМАЦИЯ ДЛЯ МОБИЛЬНОГО ПРИЛОЖЕНИЯ
         // ==========================================
+        public async Task<(bool Success, string Message)> TryCompleteWithCourierQrAsync(int taskId, int workerId, string qrToken)
+        {
+            _logger.LogInformation("Попытка закрытия пакетной отгрузки {TaskId} по QR-коду", taskId);
 
+            // 1. Расшифровываем и проверяем QR-код
+            if (!_qrTokenService.ValidateCourierPickupToken(qrToken, out int courierIdFromQr, out string errorMessage))
+            {
+                return (false, errorMessage);
+            }
+
+            // 2. Достаем назначения, чтобы узнать, какому курьеру мы ДОЛЖНЫ были отдать груз
+            var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId)
+                .ToListAsync();
+
+            if (!assignments.Any()) return (false, "Назначения не найдены.");
+
+            var targetCourierId = assignments.FirstOrDefault()?.TargetCourierId;
+
+            // 3. Сверяем ID из маршрутного листа с ID из QR-кода
+            if (targetCourierId == null || targetCourierId != courierIdFromQr)
+            {
+                return (false, $"Отказано. QR-код принадлежит курьеру ID:{courierIdFromQr}, а маршрут назначен на курьера ID:{targetCourierId}");
+            }
+
+            // 4. Если всё совпало - завершаем задачу штатно
+            bool completed = await TryCompleteAssignmentAsync(taskId, workerId);
+            return (completed, completed ? "Отгрузка курьеру подтверждена!" : "Ошибка при закрытии задачи в БД.");
+        }
         public async Task<object?> GetTaskDetailsAsync(int taskId, int workerId)
         {
             _logger.LogInformation("Получение деталей задачи выдачи TaskId: {TaskId} для WorkerId: {WorkerId}", taskId, workerId);

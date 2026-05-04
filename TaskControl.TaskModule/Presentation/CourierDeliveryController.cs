@@ -109,5 +109,10 @@ namespace TaskControl.DeliveryModule.Presentation.Controllers
                 return StatusCode(500, "Ошибка при завершении доставки: " + ex.Message);
             }
         }
+
+
+
+
+
     }
 }

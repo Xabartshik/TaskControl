@@ -33,6 +33,32 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             return Ok(new { Message = message });
         }
 
+        /// <summary>
+        /// DTO для передачи QR-кода курьера
+        /// </summary>
+        public record CompleteCourierRequest(int WorkerId, string QrToken);
+
+        /// <summary>
+        /// Подтверждение отгрузки курьеру через сканирование его QR-кода
+        /// </summary>
+        [HttpPost("{taskId}/complete-courier")]
+        public async Task<IActionResult> CompleteCourierHandover(int taskId, [FromBody] CompleteCourierRequest request)
+        {
+            // Вызываем логику проверки и завершения в провайдере
+            var (success, message) = await _provider.TryCompleteWithCourierQrAsync(
+                taskId,
+                request.WorkerId,
+                request.QrToken
+            );
+
+            if (!success)
+            {
+                return BadRequest(new { Error = message });
+            }
+
+            return Ok(new { Message = message });
+        }
+
         public record InitHandoverRequest(string QrToken, int WorkerId, int BranchId);
 
         [HttpPost("init-customer")]
