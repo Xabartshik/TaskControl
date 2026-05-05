@@ -300,7 +300,7 @@ namespace TaskControl.TaskModule.Application.Services
 
         private (bool NeedsHelper, double MainComplexity, double HelperComplexity) CalculateWorkloadComplexity(List<RawItemToPack> orderItems)
         {
-            var heavyItems = orderItems.Where(x => x.Weight >= _appSettings.MaxWeightPerWorker).ToList();
+            var heavyItems = orderItems.Where(x => x.Weight/1000 >= _appSettings.MaxWeightPerWorker).ToList();
             bool needsHelper = heavyItems.Any();
 
             double mainWeight = orderItems.Where(x => x.Weight < _appSettings.MaxWeightPerWorker).Sum(x => x.Weight * x.Quantity)
