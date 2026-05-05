@@ -63,7 +63,7 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 if (order.DeliveryDate.HasValue)
                 {
-                    return order.DeliveryDate.Value.AddHours(-(_appSettings.DeliveryWindowLimitHours));
+                    return order.DeliveryDate.Value.AddHours(-1);
                 }
             }
 
