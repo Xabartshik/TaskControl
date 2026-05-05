@@ -61,11 +61,9 @@ namespace TaskControl.TaskModule.Application.Services
 
             if (order.DeliveryType == DeliveryType.Delivery.ToString() && order.DeliverySlotId.HasValue)
             {
-                var slot = DeliverySchedule.Slots.FirstOrDefault(s => s.Id == order.DeliverySlotId.Value);
-                if (slot != null && order.DeliveryDate.HasValue)
+                if (order.DeliveryDate.HasValue)
                 {
-                    var slotStart = order.DeliveryDate.Value.Date.Add(slot.StartTime);
-                    return slotStart.AddHours(-1);
+                    return order.DeliveryDate.Value.AddHours(-(_appSettings.DeliveryWindowLimitHours));
                 }
             }
 
