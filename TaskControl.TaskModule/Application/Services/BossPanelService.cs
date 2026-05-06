@@ -150,6 +150,7 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = o.CreatedAt,
                     Status = o.Status.ToString(),
                     DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
                     DestinationAddress = o.DestinationAddress
                 };
 
@@ -605,6 +606,7 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = o.CreatedAt,
                     Status = o.Status.ToString(),
                     DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
                     PaymentType = o.PaymentType.ToString(),
                     DestinationAddress = o.DestinationAddress
                 };
@@ -672,6 +674,7 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = o.CreatedAt,
                     Status = o.Status.ToString(),
                     DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
                     PaymentType = o.PaymentType.ToString(),
                     DestinationAddress = o.DestinationAddress
                 };

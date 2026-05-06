@@ -9,7 +9,7 @@ public interface ITaskExecutionProvider
     Task<bool> TryActivateTaskAsync(int taskId, int workerId);
     Task<bool> TryPauseTaskAsync(int taskId, int workerId);
     Task<bool> TryCancelTaskAsync(int taskId, int workerId);
-    Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId);
+    Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null);
     Task<object?> GetTaskDetailsAsync(int taskId, int workerId);
     Task<bool> IsTaskFullyCompletedAsync(int taskId);
     Task ExecutePostCompletionLogicAsync(int taskId);

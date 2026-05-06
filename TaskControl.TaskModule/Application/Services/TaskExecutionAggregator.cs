@@ -93,7 +93,8 @@ namespace TaskControl.TaskModule.Application.Services
         //    return await provider.TryStartTaskAsync(taskId, workerId);
         //}
 
-        public async Task<bool> CompleteAssignmentAsync(int taskId, string taskType, int workerId)
+        // ДОБАВЛЕН ПАРАМЕТР cancelledLines
+        public async Task<bool> CompleteAssignmentAsync(int taskId, string taskType, int workerId, Dictionary<int, int>? cancelledLines = null)
         {
             var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
             if (provider == null)
@@ -101,8 +102,7 @@ namespace TaskControl.TaskModule.Application.Services
                 _logger.LogWarning("Не найден execution-провайдер для типа задачи {TaskType}", taskType);
                 return false;
             }
-
-            return await provider.TryCompleteAssignmentAsync(taskId, workerId);
+            return await provider.TryCompleteAssignmentAsync(taskId, workerId, cancelledLines);
         }
 
         public async Task<bool> PauseTaskAsync(int taskId, string taskType, int workerId)

@@ -57,6 +57,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public DateTime CreatedAt { get; set; }
         public string Status { get; set; }
         public string DeliveryType { get; set; }
+        public DateTime? DeliveryDate { get; set; }
         public string PaymentType { get; set; }
 
         // Логистика: Адрес клиента (для Delivery) или Постамата

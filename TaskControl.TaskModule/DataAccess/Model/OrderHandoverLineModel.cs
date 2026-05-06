@@ -11,5 +11,6 @@ namespace TaskControl.TaskModule.DataAccess.Models
         [Column("item_position_id")] public int? ItemPositionId { get; set; }
         [Column("quantity"), NotNull] public int Quantity { get; set; }
         [Column("scanned_quantity"), NotNull] public int ScannedQuantity { get; set; }
+        [Column("cancelled_quantity"), NotNull] public int CancelledQuantity { get; set; }
     }
 }

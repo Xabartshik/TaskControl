@@ -40,6 +40,267 @@ namespace TaskControl.TaskModule.Application.Providers
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _qrTokenService = qrTokenService ?? throw new ArgumentNullException(nameof(qrTokenService));
         }
+        // 1. СОХРАНЯЕМ ОТМЕНЫ В БД
+        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
+        {
+            _logger.LogInformation("Сотрудник {WorkerId} завершил свою часть выдачи {TaskId}", taskId, workerId);
+
+            var allAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId)
+                .ToListAsync();
+
+            var workerAssignments = allAssignments.Where(a => a.AssignedToUserId == workerId).ToList();
+            if (!workerAssignments.Any()) return false;
+
+            var completionTime = DateTime.UtcNow;
+
+            // --- НОВОЕ: ЗАПИСЫВАЕМ ОТМЕНЫ В ИСТОРИЮ ---
+            if (cancelledLines != null && cancelledLines.Any())
+            {
+                foreach (var kvp in cancelledLines)
+                {
+                    await _db.GetTable<OrderHandoverLineModel>()
+                        .Where(l => l.Id == kvp.Key)
+                        .Set(l => l.CancelledQuantity, kvp.Value)
+                        .UpdateAsync();
+                }
+            }
+            // ------------------------------------------
+
+            await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId)
+                .Set(a => a.Status, 2)
+                .Set(a => a.CompletedAt, completionTime)
+                .UpdateAsync();
+
+            if (workerAssignments.Any(a => a.Role == "Main"))
+            {
+                var helperAssignments = allAssignments.Where(a => a.Role == "Helper" && a.Status != 2).ToList();
+                if (helperAssignments.Any())
+                {
+                    await _db.GetTable<OrderHandoverAssignmentModel>()
+                        .Where(a => a.TaskId == taskId && a.Role == "Helper")
+                        .Set(a => a.Status, 2)
+                        .Set(a => a.CompletedAt, completionTime)
+                        .UpdateAsync();
+                }
+            }
+
+            return true;
+        }
+
+        // 2. БЕРЕМ В ОБРАБОТКУ И ВЫДАННЫЕ, И ОТМЕНЕННЫЕ СТРОКИ
+        public async Task ExecutePostCompletionLogicAsync(int taskId)
+        {
+            _logger.LogInformation("Запуск пост-обработки для задачи выдачи TaskId: {TaskId}", taskId);
+
+            var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId).ToListAsync();
+
+            if (!assignments.Any()) return;
+
+            var assignmentIds = assignments.Select(a => a.Id).ToList();
+
+            // Грузим строки, где есть ИЛИ сканы (выдано), ИЛИ отмены (клиент отказался)
+            var allLines = await _db.GetTable<OrderHandoverLineModel>()
+                .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId) && (l.ScannedQuantity > 0 || l.CancelledQuantity > 0))
+                .ToListAsync();
+
+            if (!allLines.Any()) return;
+
+            var linesLookup = allLines.ToLookup(l => l.OrderHandoverAssignmentId);
+
+            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
+            try
+            {
+                foreach (var assignment in assignments)
+                {
+                    var currentOrderLines = linesLookup[assignment.Id].ToList();
+                    if (!currentOrderLines.Any()) continue;
+
+                    // ВОЗВРАЩЕНО: Проверка целостности исполнителя
+                    if (!assignment.AssignedToUserId.HasValue)
+                    {
+                        throw new InvalidOperationException($"Ошибка целостности: у назначения {assignment.Id} нет исполнителя!");
+                    }
+
+                    var workerId = assignment.AssignedToUserId.Value;
+
+                    if (assignment.HandoverType == "ToCustomer")
+                    {
+                        await ProcessHandoverToCustomerAsync(assignment.OrderId, currentOrderLines, taskId, workerId);
+                    }
+                    else if (assignment.HandoverType == "ToCourier")
+                    {
+                        // ВОЗВРАЩЕНО: Проверка ID курьера
+                        if (assignment.TargetCourierId == null)
+                        {
+                            throw new InvalidOperationException($"Не указан ID курьера для заказа {assignment.OrderId}!");
+                        }
+                        await ProcessHandoverToCourierAsync(assignment.OrderId, assignment.TargetCourierId.Value, currentOrderLines, taskId, workerId);
+                    }
+                }
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Ошибка при пост-обработке задачи {TaskId}", taskId);
+                throw;
+            }
+        }
+
+        // 3. ВЫДАЧА КЛИЕНТУ: УМНОЕ СПИСАНИЕ
+        private async Task ProcessHandoverToCustomerAsync(int orderId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
+        {
+            var itemPositions = _db.GetTable<ItemPositionModel>();
+            var reservations = _db.GetTable<OrderReservationModel>();
+
+            foreach (var line in lines)
+            {
+                if (line.ItemPositionId == null) continue;
+
+                var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
+                if (sourceItemPos == null) continue;
+
+                // Снимаем резерв конкретно нашего заказа (в любом случае)
+                await reservations.Where(r => r.OrderPositionId == line.OrderPositionId).DeleteAsync();
+
+                // Если товар был реально выдан (отсканирован):
+                if (line.ScannedQuantity > 0)
+                {
+                    var remainingQty = sourceItemPos.Quantity - line.ScannedQuantity;
+
+                    if (remainingQty <= 0)
+                    {
+                        // ВОЗВРАЩЕНО (Self-Healing): Отвязываем чужие резервы и другие строки задач от пустой ячейки
+                        await reservations
+                            .Where(r => r.ItemPositionId == sourceItemPos.Id)
+                            .Set(r => r.ItemPositionId, (int?)null)
+                            .UpdateAsync();
+
+                        await _db.GetTable<OrderHandoverLineModel>()
+                            .Where(l => l.ItemPositionId == sourceItemPos.Id)
+                            .Set(l => l.ItemPositionId, (int?)null)
+                            .UpdateAsync();
+
+                        // Теперь безопасно удаляем ячейку
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                    }
+                    else
+                    {
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).Set(ip => ip.Quantity, remainingQty).UpdateAsync();
+                    }
+
+                    // Логируем движение (выход со склада в никуда/клиенту)
+                    await _db.InsertAsync(new ItemMovementModel
+                    {
+                        ItemId = sourceItemPos.ItemId,
+                        SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.PositionId,
+                        DestinationPositionId = null,
+                        Quantity = line.ScannedQuantity,
+                        TaskId = taskId,
+                        WorkerId = workerId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                // Если была только отмена (line.CancelledQuantity > 0), товар просто остается в sourceItemPos без резерва.
+            }
+
+            // Учет отмен при определении итогового статуса заказа
+            bool hasScans = lines.Any(l => l.ScannedQuantity > 0);
+            bool hasCancellations = lines.Any(l => l.CancelledQuantity > 0);
+
+            string newStatus = "Completed";
+            if (hasCancellations && hasScans) newStatus = "PartiallyCompleted";
+            else if (hasCancellations && !hasScans) newStatus = "Canceled";
+
+            await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, newStatus).UpdateAsync();
+        }
+
+
+
+        // 4. ВЫДАЧА КУРЬЕРУ (Аналогично)
+        private async Task ProcessHandoverToCourierAsync(int orderId, int courierId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
+        {
+            // ВОЗВРАЩЕНО: Проверка наличия виртуальной ячейки курьера
+            var courierPosition = await _db.GetTable<PositionModel>()
+                .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
+
+            if (courierPosition == null)
+                throw new InvalidOperationException($"Виртуальная ячейка для курьера ID {courierId} не найдена!");
+
+            var itemPositions = _db.GetTable<ItemPositionModel>();
+            var reservations = _db.GetTable<OrderReservationModel>();
+
+            foreach (var line in lines)
+            {
+                if (line.ItemPositionId == null) continue;
+
+                var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
+                if (sourceItemPos == null) continue;
+
+                // Передаем курьеру ТОЛЬКО отсканированное
+                if (line.ScannedQuantity > 0)
+                {
+                    var courierItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.PositionId == courierPosition.PositionId && ip.ItemId == sourceItemPos.ItemId);
+                    int newCourierItemPosId;
+
+                    if (courierItemPos != null)
+                    {
+                        await itemPositions.Where(ip => ip.Id == courierItemPos.Id).Set(ip => ip.Quantity, ip => ip.Quantity + line.ScannedQuantity).UpdateAsync();
+                        newCourierItemPosId = courierItemPos.Id;
+                    }
+                    else
+                    {
+                        newCourierItemPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
+                        {
+                            ItemId = sourceItemPos.ItemId,
+                            PositionId = courierPosition.PositionId,
+                            Quantity = line.ScannedQuantity,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    // Перепривязываем резерв на "багажник" курьера
+                    await reservations.Where(r => r.OrderPositionId == line.OrderPositionId).Set(r => r.ItemPositionId, newCourierItemPosId).UpdateAsync();
+
+                    var remainingSourceQty = sourceItemPos.Quantity - line.ScannedQuantity;
+                    if (remainingSourceQty <= 0)
+                    {
+                        // ВОЗВРАЩЕНО (Self-Healing): Очистка пустой складской полки
+                        await reservations.Where(r => r.ItemPositionId == sourceItemPos.Id).Set(r => r.ItemPositionId, (int?)null).UpdateAsync();
+                        await _db.GetTable<OrderHandoverLineModel>().Where(l => l.ItemPositionId == sourceItemPos.Id).Set(l => l.ItemPositionId, (int?)null).UpdateAsync();
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                    }
+                    else
+                    {
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).Set(ip => ip.Quantity, remainingSourceQty).UpdateAsync();
+                    }
+
+                    await _db.InsertAsync(new ItemMovementModel
+                    {
+                        ItemId = sourceItemPos.ItemId,
+                        SourcePositionId = sourceItemPos.PositionId,
+                        DestinationPositionId = courierPosition.PositionId,
+                        Quantity = line.ScannedQuantity,
+                        TaskId = taskId,
+                        WorkerId = workerId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                else if (line.CancelledQuantity > 0)
+                {
+                    // Товар отменили. Снимаем резерв заказа со складской полки.
+                    await reservations.Where(r => r.OrderPositionId == line.OrderPositionId).DeleteAsync();
+                }
+            }
+
+            bool hasScans = lines.Any(l => l.ScannedQuantity > 0);
+            string newStatus = hasScans ? "InTransit" : "Canceled";
+
+            await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, newStatus).UpdateAsync();
+        }
 
         // ==========================================
         // 1. ИНФОРМАЦИЯ ДЛЯ МОБИЛЬНОГО ПРИЛОЖЕНИЯ
@@ -412,242 +673,242 @@ namespace TaskControl.TaskModule.Application.Providers
         // 3. БИЗНЕС-ЛОГИКА И ПОСТ-ОБРАБОТКА (ЭТАП 3)
         // ==========================================
 
-        public async Task ExecutePostCompletionLogicAsync(int taskId)
-        {
-            _logger.LogInformation("Запуск оптимизированной пост-обработки для задачи пакетной выдачи TaskId: {TaskId}", taskId);
+        //public async Task ExecutePostCompletionLogicAsync(int taskId)
+        //{
+        //    _logger.LogInformation("Запуск оптимизированной пост-обработки для задачи пакетной выдачи TaskId: {TaskId}", taskId);
 
-            // 1. Пакетная загрузка всех назначений (заказов) в этой задаче
-            var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.TaskId == taskId)
-                .ToListAsync();
+        //    // 1. Пакетная загрузка всех назначений (заказов) в этой задаче
+        //    var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+        //        .Where(a => a.TaskId == taskId)
+        //        .ToListAsync();
 
-            if (!assignments.Any())
-            {
-                _logger.LogWarning("Назначения для задачи {TaskId} не найдены", taskId);
-                return;
-            }
+        //    if (!assignments.Any())
+        //    {
+        //        _logger.LogWarning("Назначения для задачи {TaskId} не найдены", taskId);
+        //        return;
+        //    }
 
-            // 2. Пакетная загрузка ВСЕХ строк для ВСЕХ заказов одним запросом (как в старом коде)
-            var assignmentIds = assignments.Select(a => a.Id).ToList();
-            var allLines = await _db.GetTable<OrderHandoverLineModel>()
-                .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId) && l.ScannedQuantity > 0)
-                .ToListAsync();
+        //    // 2. Пакетная загрузка ВСЕХ строк для ВСЕХ заказов одним запросом (как в старом коде)
+        //    var assignmentIds = assignments.Select(a => a.Id).ToList();
+        //    var allLines = await _db.GetTable<OrderHandoverLineModel>()
+        //        .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId) && l.ScannedQuantity > 0)
+        //        .ToListAsync();
 
-            if (!allLines.Any())
-            {
-                _logger.LogWarning("Нет отсканированных товаров для задачи {TaskId}. Списание не требуется.", taskId);
-                return;
-            }
+        //    if (!allLines.Any())
+        //    {
+        //        _logger.LogWarning("Нет отсканированных товаров для задачи {TaskId}. Списание не требуется.", taskId);
+        //        return;
+        //    }
 
-            // Группируем строки по ID назначения в памяти, чтобы не делать запросы в цикле
-            var linesLookup = allLines.ToLookup(l => l.OrderHandoverAssignmentId);
+        //    // Группируем строки по ID назначения в памяти, чтобы не делать запросы в цикле
+        //    var linesLookup = allLines.ToLookup(l => l.OrderHandoverAssignmentId);
 
-            // 3. Работа в транзакции для обеспечения целостности данных
-            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
-            try
-            {
-                foreach (var assignment in assignments)
-                {
-                    // Извлекаем строки для конкретного заказа из нашего Lookup
-                    var currentOrderLines = linesLookup[assignment.Id].ToList();
+        //    // 3. Работа в транзакции для обеспечения целостности данных
+        //    using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
+        //    try
+        //    {
+        //        foreach (var assignment in assignments)
+        //        {
+        //            // Извлекаем строки для конкретного заказа из нашего Lookup
+        //            var currentOrderLines = linesLookup[assignment.Id].ToList();
 
-                    if (!currentOrderLines.Any())
-                        continue; // Пропускаем, если по этому заказу ничего не отсканировали
+        //            if (!currentOrderLines.Any())
+        //                continue; // Пропускаем, если по этому заказу ничего не отсканировали
 
-                    // Проверка наличия исполнителя (безопасность из нового кода)
-                    if (!assignment.AssignedToUserId.HasValue)
-                    {
-                        throw new InvalidOperationException($"Ошибка целостности: у назначения {assignment.Id} нет исполнителя!");
-                    }
+        //            // Проверка наличия исполнителя (безопасность из нового кода)
+        //            if (!assignment.AssignedToUserId.HasValue)
+        //            {
+        //                throw new InvalidOperationException($"Ошибка целостности: у назначения {assignment.Id} нет исполнителя!");
+        //            }
 
-                    var workerId = assignment.AssignedToUserId.Value;
+        //            var workerId = assignment.AssignedToUserId.Value;
 
-                    // Логика обработки в зависимости от типа выдачи
-                    if (assignment.HandoverType == "ToCustomer")
-                    {
-                        await ProcessHandoverToCustomerAsync(assignment.OrderId, currentOrderLines, taskId, workerId);
-                    }
-                    else if (assignment.HandoverType == "ToCourier")
-                    {
-                        if (assignment.TargetCourierId == null)
-                            throw new InvalidOperationException($"Не указан ID курьера для заказа {assignment.OrderId}!");
+        //            // Логика обработки в зависимости от типа выдачи
+        //            if (assignment.HandoverType == "ToCustomer")
+        //            {
+        //                await ProcessHandoverToCustomerAsync(assignment.OrderId, currentOrderLines, taskId, workerId);
+        //            }
+        //            else if (assignment.HandoverType == "ToCourier")
+        //            {
+        //                if (assignment.TargetCourierId == null)
+        //                    throw new InvalidOperationException($"Не указан ID курьера для заказа {assignment.OrderId}!");
 
-                        await ProcessHandoverToCourierAsync(assignment.OrderId, assignment.TargetCourierId.Value, currentOrderLines, taskId, workerId);
-                    }
-                }
+        //                await ProcessHandoverToCourierAsync(assignment.OrderId, assignment.TargetCourierId.Value, currentOrderLines, taskId, workerId);
+        //            }
+        //        }
 
-                await transaction.CommitAsync();
-                _logger.LogInformation("Пост-обработка пакетной задачи {TaskId} успешно завершена", taskId);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Ошибка транзакции при пост-обработке задачи выдачи {TaskId}", taskId);
-                throw;
-            }
-        }
+        //        await transaction.CommitAsync();
+        //        _logger.LogInformation("Пост-обработка пакетной задачи {TaskId} успешно завершена", taskId);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        await transaction.RollbackAsync();
+        //        _logger.LogError(ex, "Ошибка транзакции при пост-обработке задачи выдачи {TaskId}", taskId);
+        //        throw;
+        //    }
+        //}
 
-        private async Task ProcessHandoverToCustomerAsync(int orderId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
-        {
-            var itemPositions = _db.GetTable<ItemPositionModel>();
-            var reservations = _db.GetTable<OrderReservationModel>();
-            var movements = _db.GetTable<ItemMovementModel>(); // Добавлено для логирования
+        //private async Task ProcessHandoverToCustomerAsync(int orderId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
+        //{
+        //    var itemPositions = _db.GetTable<ItemPositionModel>();
+        //    var reservations = _db.GetTable<OrderReservationModel>();
+        //    var movements = _db.GetTable<ItemMovementModel>(); // Добавлено для логирования
 
-            foreach (var line in lines)
-            {
-                if (line.ItemPositionId == null) continue;
+        //    foreach (var line in lines)
+        //    {
+        //        if (line.ItemPositionId == null) continue;
 
-                var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
-                if (sourceItemPos == null) continue;
+        //        var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
+        //        if (sourceItemPos == null) continue;
 
-                // А. СНАЧАЛА удаляем резерв конкретно нашего заказа
-                await reservations
-                    .Where(r => r.OrderPositionId == line.OrderPositionId)
-                    .DeleteAsync();
+        //        // А. СНАЧАЛА удаляем резерв конкретно нашего заказа
+        //        await reservations
+        //            .Where(r => r.OrderPositionId == line.OrderPositionId)
+        //            .DeleteAsync();
 
-                // Б. Считаем остаток
-                var remainingQty = sourceItemPos.Quantity - line.ScannedQuantity;
+        //        // Б. Считаем остаток
+        //        var remainingQty = sourceItemPos.Quantity - line.ScannedQuantity;
 
-                if (remainingQty <= 0)
-                {
-                    // WMS SELF-HEALING 1: Отвязываем чужие резервы
-                    await reservations
-                        .Where(r => r.ItemPositionId == sourceItemPos.Id)
-                        .Set(r => r.ItemPositionId, (int?)null)
-                        .UpdateAsync();
+        //        if (remainingQty <= 0)
+        //        {
+        //            // WMS SELF-HEALING 1: Отвязываем чужие резервы
+        //            await reservations
+        //                .Where(r => r.ItemPositionId == sourceItemPos.Id)
+        //                .Set(r => r.ItemPositionId, (int?)null)
+        //                .UpdateAsync();
 
-                    // WMS SELF-HEALING 2: Отвязываем строки задания выдачи (чтобы не нарушать FK)
-                    await _db.GetTable<OrderHandoverLineModel>()
-                        .Where(l => l.ItemPositionId == sourceItemPos.Id)
-                        .Set(l => l.ItemPositionId, (int?)null)
-                        .UpdateAsync();
+        //            // WMS SELF-HEALING 2: Отвязываем строки задания выдачи (чтобы не нарушать FK)
+        //            await _db.GetTable<OrderHandoverLineModel>()
+        //                .Where(l => l.ItemPositionId == sourceItemPos.Id)
+        //                .Set(l => l.ItemPositionId, (int?)null)
+        //                .UpdateAsync();
 
-                    // Теперь база разрешит удалить пустую ячейку
-                    await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
-                }
-                else
-                {
-                    await itemPositions
-                        .Where(ip => ip.Id == sourceItemPos.Id)
-                        .Set(ip => ip.Quantity, remainingQty)
-                        .UpdateAsync();
-                }
+        //            // Теперь база разрешит удалить пустую ячейку
+        //            await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+        //        }
+        //        else
+        //        {
+        //            await itemPositions
+        //                .Where(ip => ip.Id == sourceItemPos.Id)
+        //                .Set(ip => ip.Quantity, remainingQty)
+        //                .UpdateAsync();
+        //        }
 
-                // В. Логируем перемещение
-                await _db.InsertAsync(new ItemMovementModel
-                {
-                    ItemId = sourceItemPos.ItemId,
-                    SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.PositionId,
-                    DestinationPositionId = null,
-                    Quantity = line.ScannedQuantity,
-                    TaskId = taskId,       // ИСПОЛЬЗУЕМ ЗДЕСЬ
-                    WorkerId = workerId,   // И ЗДЕСЬ
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
+        //        // В. Логируем перемещение
+        //        await _db.InsertAsync(new ItemMovementModel
+        //        {
+        //            ItemId = sourceItemPos.ItemId,
+        //            SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.PositionId,
+        //            DestinationPositionId = null,
+        //            Quantity = line.ScannedQuantity,
+        //            TaskId = taskId,       // ИСПОЛЬЗУЕМ ЗДЕСЬ
+        //            WorkerId = workerId,   // И ЗДЕСЬ
+        //            CreatedAt = DateTime.UtcNow
+        //        });
+        //    }
 
-            await _db.GetTable<OrderModel>()
-                .Where(o => o.OrderId == orderId)
-                .Set(o => o.Status, "Completed")
-                .UpdateAsync();
-        }
+        //    await _db.GetTable<OrderModel>()
+        //        .Where(o => o.OrderId == orderId)
+        //        .Set(o => o.Status, "Completed")
+        //        .UpdateAsync();
+        //}
 
 
-        private async Task ProcessHandoverToCourierAsync(int orderId, int courierId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
-        {
-            var courierPosition = await _db.GetTable<PositionModel>()
-                .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
+        //private async Task ProcessHandoverToCourierAsync(int orderId, int courierId, List<OrderHandoverLineModel> lines, int taskId, int workerId)
+        //{
+        //    var courierPosition = await _db.GetTable<PositionModel>()
+        //        .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
 
-            if (courierPosition == null)
-                throw new InvalidOperationException($"Виртуальная ячейка для курьера ID {courierId} не найдена!");
+        //    if (courierPosition == null)
+        //        throw new InvalidOperationException($"Виртуальная ячейка для курьера ID {courierId} не найдена!");
 
-            var itemPositions = _db.GetTable<ItemPositionModel>();
-            var reservations = _db.GetTable<OrderReservationModel>();
-            var movements = _db.GetTable<ItemMovementModel>();
+        //    var itemPositions = _db.GetTable<ItemPositionModel>();
+        //    var reservations = _db.GetTable<OrderReservationModel>();
+        //    var movements = _db.GetTable<ItemMovementModel>();
 
-            foreach (var line in lines)
-            {
-                if (line.ItemPositionId == null) continue;
+        //    foreach (var line in lines)
+        //    {
+        //        if (line.ItemPositionId == null) continue;
 
-                var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
-                if (sourceItemPos == null) continue;
+        //        var sourceItemPos = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId.Value);
+        //        if (sourceItemPos == null) continue;
 
-                // А. Ищем или создаем товар в багажнике курьера
-                var courierItemPos = await itemPositions
-                    .FirstOrDefaultAsync(ip => ip.PositionId == courierPosition.PositionId && ip.ItemId == sourceItemPos.ItemId);
+        //        // А. Ищем или создаем товар в багажнике курьера
+        //        var courierItemPos = await itemPositions
+        //            .FirstOrDefaultAsync(ip => ip.PositionId == courierPosition.PositionId && ip.ItemId == sourceItemPos.ItemId);
 
-                int newCourierItemPosId;
-                if (courierItemPos != null)
-                {
-                    await itemPositions
-                        .Where(ip => ip.Id == courierItemPos.Id)
-                        .Set(ip => ip.Quantity, ip => ip.Quantity + line.ScannedQuantity)
-                        .UpdateAsync();
-                    newCourierItemPosId = courierItemPos.Id;
-                }
-                else
-                {
-                    newCourierItemPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
-                    {
-                        ItemId = sourceItemPos.ItemId,
-                        PositionId = courierPosition.PositionId,
-                        Quantity = line.ScannedQuantity,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
+        //        int newCourierItemPosId;
+        //        if (courierItemPos != null)
+        //        {
+        //            await itemPositions
+        //                .Where(ip => ip.Id == courierItemPos.Id)
+        //                .Set(ip => ip.Quantity, ip => ip.Quantity + line.ScannedQuantity)
+        //                .UpdateAsync();
+        //            newCourierItemPosId = courierItemPos.Id;
+        //        }
+        //        else
+        //        {
+        //            newCourierItemPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
+        //            {
+        //                ItemId = sourceItemPos.ItemId,
+        //                PositionId = courierPosition.PositionId,
+        //                Quantity = line.ScannedQuantity,
+        //                CreatedAt = DateTime.UtcNow
+        //            });
+        //        }
 
-                // Б. Перепривязываем резерв нашего заказа в багажник
-                await reservations
-                    .Where(r => r.OrderPositionId == line.OrderPositionId)
-                    .Set(r => r.ItemPositionId, newCourierItemPosId)
-                    .UpdateAsync();
+        //        // Б. Перепривязываем резерв нашего заказа в багажник
+        //        await reservations
+        //            .Where(r => r.OrderPositionId == line.OrderPositionId)
+        //            .Set(r => r.ItemPositionId, newCourierItemPosId)
+        //            .UpdateAsync();
 
-                // В. Считаем остаток на старой полке
-                var remainingSourceQty = sourceItemPos.Quantity - line.ScannedQuantity;
+        //        // В. Считаем остаток на старой полке
+        //        var remainingSourceQty = sourceItemPos.Quantity - line.ScannedQuantity;
 
-                if (remainingSourceQty <= 0)
-                {
-                    // WMS SELF-HEALING 1: Очищаем старую пустую полку от резервов
-                    await reservations
-                        .Where(r => r.ItemPositionId == sourceItemPos.Id)
-                        .Set(r => r.ItemPositionId, (int?)null)
-                        .UpdateAsync();
+        //        if (remainingSourceQty <= 0)
+        //        {
+        //            // WMS SELF-HEALING 1: Очищаем старую пустую полку от резервов
+        //            await reservations
+        //                .Where(r => r.ItemPositionId == sourceItemPos.Id)
+        //                .Set(r => r.ItemPositionId, (int?)null)
+        //                .UpdateAsync();
 
-                    // WMS SELF-HEALING 2: Отвязываем строки задания выдачи
-                    await _db.GetTable<OrderHandoverLineModel>()
-                        .Where(l => l.ItemPositionId == sourceItemPos.Id)
-                        .Set(l => l.ItemPositionId, (int?)null)
-                        .UpdateAsync();
+        //            // WMS SELF-HEALING 2: Отвязываем строки задания выдачи
+        //            await _db.GetTable<OrderHandoverLineModel>()
+        //                .Where(l => l.ItemPositionId == sourceItemPos.Id)
+        //                .Set(l => l.ItemPositionId, (int?)null)
+        //                .UpdateAsync();
 
-                    // Удаляем пустую ячейку
-                    await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
-                }
-                else
-                {
-                    await itemPositions
-                        .Where(ip => ip.Id == sourceItemPos.Id)
-                        .Set(ip => ip.Quantity, remainingSourceQty)
-                        .UpdateAsync();
-                }
+        //            // Удаляем пустую ячейку
+        //            await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+        //        }
+        //        else
+        //        {
+        //            await itemPositions
+        //                .Where(ip => ip.Id == sourceItemPos.Id)
+        //                .Set(ip => ip.Quantity, remainingSourceQty)
+        //                .UpdateAsync();
+        //        }
 
-                // Г. Логируем
-                // Г. Логируем перемещение
-                await _db.InsertAsync(new ItemMovementModel
-                {
-                    ItemId = sourceItemPos.ItemId, // <-- Пишем ID товара
-                    SourcePositionId = sourceItemPos.PositionId, // <-- Складская полка
-                    DestinationPositionId = courierPosition.PositionId, // <-- Полка багажника курьера
-                    Quantity = line.ScannedQuantity,
-                    TaskId = taskId,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
+        //        // Г. Логируем
+        //        // Г. Логируем перемещение
+        //        await _db.InsertAsync(new ItemMovementModel
+        //        {
+        //            ItemId = sourceItemPos.ItemId, // <-- Пишем ID товара
+        //            SourcePositionId = sourceItemPos.PositionId, // <-- Складская полка
+        //            DestinationPositionId = courierPosition.PositionId, // <-- Полка багажника курьера
+        //            Quantity = line.ScannedQuantity,
+        //            TaskId = taskId,
+        //            CreatedAt = DateTime.UtcNow
+        //        });
+        //    }
 
-            await _db.GetTable<OrderModel>()
-                .Where(o => o.OrderId == orderId)
-                .Set(o => o.Status, "InTransit")
-                .UpdateAsync();
-        }
+        //    await _db.GetTable<OrderModel>()
+        //        .Where(o => o.OrderId == orderId)
+        //        .Set(o => o.Status, "InTransit")
+        //        .UpdateAsync();
+        //}
 
         public async Task<bool> AssignTaskToWorkerAsync(int taskId, int workerId)
         {

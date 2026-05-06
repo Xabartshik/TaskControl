@@ -38,6 +38,7 @@ using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Handlers;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Observers;
 using TaskControl.TaskModule.Application.Providers;
 using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DAL.Repositories;
@@ -209,6 +210,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IWorkerBreakService, WorkerBreakService>();
             services.AddScoped<HandoverTaskGeneratorService>();
+            services.AddScoped<IEmployeeCheckInObserver, ReturnTaskGeneratorObserver>();
 
             return services;
         }

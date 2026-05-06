@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging; // <-- Не забудь
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.InformationModule.Application.Services;
@@ -14,45 +17,42 @@ namespace TaskControl.InformationModule.Presentation
     {
         private readonly IQRTokenService _qrTokenService;
         private readonly IService<CheckIOEmployeeDto> _checkIoService;
-        private readonly ILogger<QrCheckInController> _logger; // <-- ДОБАВЛЕНО
+        private readonly ILogger<QrCheckInController> _logger;
+
+        // Инжектим коллекцию всех модулей, которые хотят реагировать на чекины
+        private readonly IEnumerable<IEmployeeCheckInObserver> _checkInObservers;
 
         public QrCheckInController(
             IQRTokenService qrTokenService,
             IService<CheckIOEmployeeDto> checkIoService,
-            ILogger<QrCheckInController> logger) // <-- ДОБАВЛЕНО
+            ILogger<QrCheckInController> logger,
+            IEnumerable<IEmployeeCheckInObserver> checkInObservers)
         {
             _qrTokenService = qrTokenService;
             _checkIoService = checkIoService;
             _logger = logger;
+            _checkInObservers = checkInObservers;
         }
 
         public class ScanQrRequestDto
         {
             public string Payload { get; set; } = string.Empty;
             public int BranchId { get; set; }
-            public string CheckType { get; set; } = "in";
+            public string CheckType { get; set; } = "in"; // "in", "out", "dock"
         }
 
         [HttpPost("scan")]
-        [Authorize(Roles = "Worker,Supervisor,Admin,Courier")] // <-- Проверь, чтобы тут был Courier!
+        [Authorize(Roles = "Worker,Supervisor,Admin,Courier")]
         public async Task<IActionResult> ScanQr([FromBody] ScanQrRequestDto request)
         {
-            _logger.LogInformation("Попытка отметки на проходной. Payload: {Payload}", request.Payload);
+            _logger.LogInformation("Попытка отметки. Тип: {CheckType}, Payload: {Payload}", request.CheckType, request.Payload);
 
-            // 1. Валидация подписи и времени
             if (!_qrTokenService.ValidateTokenPayload(request.Payload, out string error))
-            {
-                _logger.LogWarning("Отказ в отметке: {Error}", error);
                 return BadRequest(new { Message = error });
-            }
 
             var employeeIdClaim = User.Claims.FirstOrDefault(c => c.Type == "EmployeeId" || c.Type == "id")?.Value;
-
             if (string.IsNullOrWhiteSpace(employeeIdClaim) || !int.TryParse(employeeIdClaim, out int employeeId))
-            {
-                _logger.LogWarning("Отказ в отметке: Не найден EmployeeId в токене авторизации");
-                return Unauthorized(new { Message = "Не удалось определить ID сотрудника из токена авторизации." });
-            }
+                return Unauthorized(new { Message = "Не удалось определить ID сотрудника из токена." });
 
             var checkDto = new CheckIOEmployeeDto
             {
@@ -64,8 +64,24 @@ namespace TaskControl.InformationModule.Presentation
 
             await _checkIoService.Add(checkDto);
 
-            _logger.LogInformation("Успешная отметка {Type} для сотрудника {Id}", request.CheckType, employeeId);
-            return Ok(new { Message = $"Отметка успешно сохранена!" });
+            // =========================================================
+            // Рассылаем событие всем заинтересованным модулям
+            // InformationModule понятия не имеет, кто они и что они делают!
+            // =========================================================
+            foreach (var observer in _checkInObservers)
+            {
+                try
+                {
+                    await observer.OnEmployeeCheckedAsync(employeeId, request.BranchId, request.CheckType);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ошибка при выполнении слушателя чекинов: {ObserverType}", observer.GetType().Name);
+                    // Мы логируем, но не прерываем цикл, чтобы отметка всё равно прошла успешно
+                }
+            }
+
+            return Ok(new { Message = $"Отметка '{request.CheckType}' успешно сохранена!" });
         }
     }
 }

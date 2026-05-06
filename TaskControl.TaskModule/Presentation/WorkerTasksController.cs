@@ -114,13 +114,21 @@ namespace TaskControl.TaskModule.Presentation.Controllers
             return Ok();
         }
 
+        // DTO для приема данных об отмене
+        public class CompleteTaskRequest
+        {
+            public Dictionary<int, int>? CancelledLines { get; set; }
+        }
+
         [HttpPost("{taskId}/complete")]
-        public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId)
+        // ДОБАВЛЕНО: [FromBody] CompleteTaskRequest? request = null
+        public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId, [FromBody] CompleteTaskRequest? request = null)
         {
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
-            bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId);
+            // ПРОКИДЫВАЕМ request?.CancelledLines В АГРЕГАТОР
+            bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId, request?.CancelledLines);
             if (!success) return BadRequest(new { Message = $"Не удалось завершить назначение для задачи {taskId} и работника {workerId}." });
 
             bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
@@ -134,11 +142,11 @@ namespace TaskControl.TaskModule.Presentation.Controllers
                 };
                 await _baseTaskService.Update(updatedTask);
 
-                // Делегируем выполнение пост-логики конкретному Execution-провайдеру
                 await _taskExecutionAggregator.ExecutePostCompletionLogicAsync(taskId, baseTask.Type);
             }
 
             return Ok(new { IsFullyCompleted = isFullyCompleted });
         }
+
     }
 }

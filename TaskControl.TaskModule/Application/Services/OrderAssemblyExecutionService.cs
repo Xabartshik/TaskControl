@@ -465,7 +465,7 @@ namespace TaskControl.TaskModule.Application.Services
                 {
                     // Находим и гасим все назначения Помощников в этой задаче
                     var updatedHelpers = await _db.GetTable<OrderAssemblyAssignmentModel>()
-                        .Where(a => a.TaskId == assignment.TaskId && a.Role == (int)AssignmentRole.Helper && a.Status != 2) // 2 = Completed
+                        .Where(a => a.TaskId == assignment.TaskId && a.Role == (int)AssignmentRole.Helper && a.Status != 3) // 3 = Completed
                         .Set(a => a.Status, 2)
                         .Set(a => a.CompletedAt, DateTime.UtcNow)
                         .UpdateAsync();

@@ -27,6 +27,10 @@ namespace TaskControl.OrderModule.Domain
         InTransit,
         [Description("Завершен")]
         Completed,
+        [Description("Частично выдан")]
+        PartiallyCompleted,
+        [Description("Отказ при получении")]
+        Rejected,
         [Description("Отменен")]
         Canceled
     }

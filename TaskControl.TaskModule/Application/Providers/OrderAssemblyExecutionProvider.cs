@@ -71,7 +71,7 @@ namespace TaskControl.TaskModule.Application.Providers
             return true;
         }
 
-        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId)
+        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
         {
             _logger.LogInformation("Попытка завершения назначения. TaskId: {TaskId}, WorkerId: {WorkerId}", taskId, workerId);
 
