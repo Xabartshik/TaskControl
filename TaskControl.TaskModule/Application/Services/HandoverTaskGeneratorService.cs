@@ -50,7 +50,6 @@ namespace TaskControl.TaskModule.Application.Services
 
         private async Task<int> GenerateTaskCoreAsync(int orderId, string handoverType, int branchId, int? specificWorkerId, int? targetCourierId)
         {
-            // Проверка на существующую задачу...
             var existingAssignment = await _db.GetTable<OrderHandoverAssignmentModel>()
                 .FirstOrDefaultAsync(a => a.OrderId == orderId && (a.Status == 0 || a.Status == 1));
 
@@ -60,8 +59,21 @@ namespace TaskControl.TaskModule.Application.Services
             try
             {
                 // 1. Проверяем вес заказа
-                double totalWeight = await CalculateOrderWeightAsync(orderId);
+                double totalWeight = await CalculateOrderWeightAsync(orderId) / 1000;
                 bool needsHelper = totalWeight >= 50.0;
+                double weightCoef = 0.05;
+                double mainComplexity = 1.0 + (totalWeight * weightCoef);
+                double helperComplexity = needsHelper ? (0.5 + ((totalWeight / 2) * weightCoef)) : 0;
+                // Блокировка помощника для курьеров (если заказ выдает курьер клиенту)
+                if (needsHelper && specificWorkerId.HasValue && handoverType == "ToCustomer")
+                {
+                    var worker = await _db.GetTable<EmployeeModel>().FirstOrDefaultAsync(e => e.EmployeesId == specificWorkerId.Value);
+                    if (worker != null && worker.RoleId == 4) // 5 = Courier
+                    {
+                        needsHelper = false;
+                        _logger.LogInformation("Выдачу клиенту инициировал Курьер {WorkerId}. Назначение помощника отменено.", specificWorkerId);
+                    }
+                }
 
                 // 2. Создаем BaseTask
                 var baseTaskId = await _db.InsertWithInt32IdentityAsync(new BaseTaskModel
@@ -74,22 +86,21 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = DateTime.UtcNow
                 });
 
-                // 3. Создаем основное назначение и копируем товары
-                var mainAssignmentId = await CreateAssignmentAsync(baseTaskId, orderId, handoverType, specificWorkerId, targetCourierId, "Main");
+                // 3. Создаем основное назначение и копируем товары ТОЛЬКО ДЛЯ НЕГО
+                var mainAssignmentId = await CreateAssignmentAsync(baseTaskId, orderId, handoverType, specificWorkerId, targetCourierId, "Main", mainComplexity);
                 await CopyOrderLinesToHandoverAsync(orderId, mainAssignmentId);
 
-                // 4. Логика помощника ЧЕРЕЗ АГРЕГАТОР
+                // 4. Логика помощника
                 if (needsHelper)
                 {
                     _logger.LogInformation("Заказ {OrderId} тяжелый ({Weight} кг). Запрос помощника через агрегатор.", orderId, totalWeight);
 
-                    // ВЫЗЫВАЕМ АГРЕГАТОР ЗДЕСЬ
                     int? helperId = await _aggregator.FindAvailableHelperAsync(branchId, specificWorkerId);
 
                     if (helperId.HasValue)
                     {
-                        var helperAssignmentId = await CreateAssignmentAsync(baseTaskId, orderId, handoverType, helperId, targetCourierId, "Helper");
-                        await CopyOrderLinesToHandoverAsync(orderId, helperAssignmentId);
+                        // Создаем назначение для помощника, но НЕ КОПИРУЕМ ЕМУ СТРОКИ ТОВАРОВ
+                        await CreateAssignmentAsync(baseTaskId, orderId, handoverType, helperId, targetCourierId, "Helper", helperComplexity);
                         _logger.LogInformation("Помощник {HelperId} назначен на задачу {TaskId}", helperId, baseTaskId);
                     }
                     else
@@ -109,8 +120,83 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
+        public async Task<int> CreateBatchHandoverToCourierTaskAsync(List<int> orderIds, int courierId, int branchId)
+        {
+            var conn = (DataConnection)_db;
+            using var transaction = await conn.BeginTransactionAsync();
 
-        private async Task<int> CreateAssignmentAsync(int taskId, int orderId, string type, int? workerId, int? courierId, string role)
+            try
+            {
+                // 1. Считаем ОБЩИЙ вес всех заказов в маршрутном листе
+                double totalWeight = await CalculateBatchWeightAsync(orderIds) / 1000;
+                bool needsHelper = totalWeight >= 50.0;
+                // --- РАСЧЕТ СЛОЖНОСТИ ПАКЕТА ---
+                double weightCoef = 0.05;
+                // Базовая сложность пакета = количество заказов + влияние веса
+                double mainBatchComplexity = orderIds.Count + (totalWeight * weightCoef);
+                double helperBatchComplexity = needsHelper ? (orderIds.Count * 0.5 + ((totalWeight / 2) * weightCoef)) : 0;
+
+                // Делим сложность ПАКЕТА на количество ЗАКАЗОВ, так как назначения создаются поштучно
+                double mainComplexityPerOrder = mainBatchComplexity / orderIds.Count;
+                double helperComplexityPerOrder = needsHelper ? (helperBatchComplexity / orderIds.Count) : 0;
+
+                var baseTask = new BaseTaskModel
+                {
+                    BranchId = branchId,
+                    Type = "OrderHandover",
+                    Title = $"Отгрузка курьеру #{courierId} ({orderIds.Count} заказов)",
+                    Status = "New",
+                    PriorityLevel = needsHelper ? 2 : 1,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                int taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
+
+                // 2. Ищем помощника
+                int? helperId = null;
+                if (needsHelper)
+                {
+                    helperId = await _aggregator.FindAvailableHelperAsync(branchId, null);
+                    if (helperId.HasValue)
+                    {
+                        _logger.LogInformation("Для пакетной отгрузки курьеру (вес {Weight} кг) назначен помощник {HelperId}", totalWeight, helperId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Свободных помощников на филиале {BranchId} нет.", branchId);
+                    }
+                }
+
+                // 3. Создаем назначения для заказов
+                foreach (var orderId in orderIds)
+                {
+                    // Главное назначение (Передаем mainComplexityPerOrder)
+                    int mainAssignmentId = await CreateAssignmentAsync(
+                        taskId, orderId, "ToCourier", null, courierId, "Main", mainComplexityPerOrder);
+
+                    await GenerateHandoverLinesAsync(mainAssignmentId, orderId);
+
+                    // Назначение помощника (Передаем helperComplexityPerOrder)
+                    if (helperId.HasValue)
+                    {
+                        await CreateAssignmentAsync(
+                            taskId, orderId, "ToCourier", helperId, courierId, "Helper", helperComplexityPerOrder);
+                    }
+                }
+
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Успешно создана пакетная отгрузка TaskId={TaskId} на {Count} заказов", taskId, orderIds.Count);
+                return taskId;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Ошибка при генерации пакетной отгрузки для курьера {CourierId}", courierId);
+                throw;
+            }
+        }
+        private async Task<int> CreateAssignmentAsync(int taskId, int orderId, string type, int? workerId, int? courierId, string role, double complexity)
         {
             return await _db.InsertWithInt32IdentityAsync(new OrderHandoverAssignmentModel
             {
@@ -121,6 +207,7 @@ namespace TaskControl.TaskModule.Application.Services
                 TargetCourierId = courierId,
                 Status = workerId.HasValue ? 0 : 0, // 0 = Assigned
                 Role = role,
+                Complexity = complexity,
                 AssignedAt = DateTime.UtcNow
             });
         }
@@ -155,62 +242,6 @@ namespace TaskControl.TaskModule.Application.Services
                         select op.Quantity * i.Weight;
             return (await query.ToListAsync()).Sum();
         }
-
-        /// <summary>
-        /// Сценарий 3: Пакетная отгрузка курьеру (Маршрутный лист)
-        /// </summary>
-        public async Task<int> CreateBatchHandoverToCourierTaskAsync(List<int> orderIds, int courierId, int branchId)
-        {
-            var conn = (DataConnection)_db;
-            using var transaction = await conn.BeginTransactionAsync();
-
-            try
-            {
-                // 1. Создаем ОДНУ общую базовую задачу (маршрутный лист)
-                var baseTask = new BaseTaskModel
-                {
-                    BranchId = branchId,
-                    Type = "OrderHandover",
-                    Title = $"Отгрузка курьеру #{courierId} ({orderIds.Count} заказов)",
-                    Status = "New",
-                    PriorityLevel = 1,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                int taskId = await _db.InsertWithInt32IdentityAsync(baseTask);
-
-                // 2. В цикле создаем назначения для КАЖДОГО заказа из списка
-                foreach (var orderId in orderIds)
-                {
-                    // Передаем реальный orderId, а не 0!
-                    int assignmentId = await CreateAssignmentAsync(
-                        taskId: taskId,
-                        orderId: orderId,
-                        type: "ToCourier",
-                        workerId: null,     // null, чтобы задача упала в общий котел склада (любой кладовщик может взять)
-                        courierId: courierId,
-                        role: "Main"
-                    );
-
-                    // 3. Генерируем строки (товары) для этого конкретного заказа
-                    // Предполагается, что у тебя уже есть метод генерации строк, 
-                    // который ты используешь для одиночной выдачи:
-                    await GenerateHandoverLinesAsync(assignmentId, orderId);
-                }
-
-                await transaction.CommitAsync();
-
-                _logger.LogInformation("Успешно создана пакетная отгрузка TaskId={TaskId} на {Count} заказов", taskId, orderIds.Count);
-                return taskId;
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Ошибка при генерации пакетной отгрузки для курьера {CourierId}", courierId);
-                throw;
-            }
-        }
-
 
         private async Task GenerateHandoverLinesAsync(int assignmentId, int orderId)
         {

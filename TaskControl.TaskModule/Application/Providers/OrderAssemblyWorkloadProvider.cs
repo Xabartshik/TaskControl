@@ -85,9 +85,25 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
         {
+            // 1. Находим время последней отметки "in" (не ранее чем 14 часов назад)
+            var shiftStart = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.EmployeeId == workerId &&
+                            c.CheckType == "in" &&
+                            c.CheckTimeStamp >= DateTime.UtcNow.AddHours(-14))
+                .OrderByDescending(c => c.CheckTimeStamp)
+                .Select(c => (DateTime?)c.CheckTimeStamp)
+                .FirstOrDefaultAsync(); 
+
+            // Если сотрудник не зачекинен, нагрузка за смену считается нулевой
+            if (shiftStart == null) return 0;
+
+            // 2. Получаем все задачи сотрудника из репозитория
             var tasks = await _assemblyRepo.GetByUserIdAsync(workerId);
+
+            // 3. Фильтруем и суммируем:
+            // Берем всё, кроме отмененных (4), что было назначено в текущую смену
             return tasks
-                .Where(t => (int)t.Status == 0 || (int)t.Status == 1)
+                .Where(t => (int)t.Status != 4 && t.AssignedAt >= shiftStart)
                 .Sum(t => t.Complexity);
         }
 

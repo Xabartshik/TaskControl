@@ -60,7 +60,7 @@ namespace TaskControl.TaskModule.Application.Services
                 return (order.DeliveryDate ?? DateTime.UtcNow.AddHours(2)).AddMinutes(-30);
 
             if (order.DeliveryType == DeliveryType.Delivery.ToString() && order.DeliverySlotId.HasValue)
-            {
+            {   
                 if (order.DeliveryDate.HasValue)
                 {
                     return order.DeliveryDate.Value.AddHours(-1);
@@ -103,7 +103,7 @@ namespace TaskControl.TaskModule.Application.Services
                 var searchLimit = DateTime.UtcNow.AddDays(2);
 
                 var allCreatedOrders = await _db.GetTable<OrderModel>()
-                    .Where(o => o.Status == "Created")
+                    .Where(o => o.Status == "Created" && o.DeliveryType != "Express")
                     .ToListAsync();
 
                 var targetOrders = allCreatedOrders

@@ -228,7 +228,7 @@ namespace TaskControl.TaskModule.Application.Services
                         if (orderPosition != null) orderIdsToUpdate.Add(orderPosition.OrderId);
                     }
 
-                    // --- МАГИЯ 1: Пишем правильный лог перемещения ---
+                    // --- МАГИЯ 1: Пишем лог перемещения ---
                     await _db.InsertAsync(new ItemMovementModel
                     {
                         ItemId = sourceItemPos.ItemId,
@@ -240,13 +240,9 @@ namespace TaskControl.TaskModule.Application.Services
                         CreatedAt = DateTime.UtcNow
                     });
 
-                    // Списываем количество со склада
-                    sourceItemPos.Quantity -= line.Quantity;
-                    await _db.UpdateAsync(sourceItemPos);
-
                     int? newTargetItemPosId = null;
 
-                    // Если есть целевая ячейка (не экспресс-выдача)
+                    // 1. Ищем или создаем ЦЕЛЕВУЮ ячейку (если не экспресс)
                     if (line.TargetPositionId.HasValue)
                     {
                         targetCellIds.Add(line.TargetPositionId.Value);
@@ -272,16 +268,24 @@ namespace TaskControl.TaskModule.Application.Services
                         }
                     }
 
-                    // Обновляем резерв
+                    // 2. ПЕРЕПРИВЯЗЫВАЕМ РЕЗЕРВ 
+                    // (Резерв можно переносить, он "путешествует" вместе с физическим товаром)
                     if (reservation != null)
                     {
                         reservation.ItemPositionId = newTargetItemPosId;
                         await _db.UpdateAsync(reservation);
                     }
+
+                    // 3. ИСПРАВЛЕНИЕ: ТОЛЬКО СПИСЫВАЕМ ОСТАТОК (БЕЗ УДАЛЕНИЯ!)
+                    // Ячейка должна остаться в БД (даже с Quantity = 0), 
+                    // так как на нее ссылается историческая таблица OrderAssemblyLineModel
+                    sourceItemPos.Quantity -= line.Quantity;
+                    await _db.UpdateAsync(sourceItemPos);
                 }
 
-                // Удаляем пустые складские позиции
-                await _db.GetTable<ItemPositionModel>().Where(ip => ip.Quantity <= 0).DeleteAsync();
+                // ВАЖНО: Ниже цикла ВЫРЕЗАНА строка: 
+                // await _db.GetTable<ItemPositionModel>().Where(ip => ip.Quantity <= 0).DeleteAsync();
+                // Глобальное удаление пустых ячеек здесь делать нельзя из-за исторических Foreign Key!
 
                 // --- МАГИЯ 2: Освобождаем ячейки PICKUP (снимаем блокировку) ---
                 if (targetCellIds.Any())
@@ -350,6 +354,9 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
+
+
+
         public async Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode)
         {
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
@@ -509,7 +516,7 @@ namespace TaskControl.TaskModule.Application.Services
                 }
 
                 // Удаляем обнуленные позиции со склада
-                await itemPositions.Where(ip => ip.Quantity <= 0).DeleteAsync();
+                //await itemPositions.Where(ip => ip.Quantity <= 0).DeleteAsync();
 
                 // 5. Внедрение отчетов
                 int itemsProcessed = assignment.Lines.Sum(line => line.Quantity);
@@ -546,6 +553,7 @@ namespace TaskControl.TaskModule.Application.Services
                 throw;
             }
         }
+
         public async Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId)
         {
             // 1. Получаем список назначений из репозитория (уже в памяти)

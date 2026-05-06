@@ -5,7 +5,8 @@ public enum MobileUserRole
     Worker = 1,
     Supervisor = 2,
     Admin = 3,
-    Customer = 4
+    Customer = 4,
+    Courier = 5
 }
 
 /// <summary>

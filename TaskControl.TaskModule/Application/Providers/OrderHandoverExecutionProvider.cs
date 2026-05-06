@@ -256,31 +256,85 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             _logger.LogInformation("Попытка активации задачи выдачи {TaskId} сотрудником {WorkerId}", taskId, workerId);
 
-            // 1. Ставим на паузу все другие активные задачи этого сотрудника
             await PauseActiveTasksAsync(workerId, taskId);
 
-            // 2. Переводим текущее назначение в InProgress (1)
-            var updated = await _db.GetTable<OrderHandoverAssignmentModel>()
+            var allAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId)
+                .ToListAsync();
+
+            // Ищем ВСЕ назначения этого работника в рамках данной задачи (их может быть много при пакетной отгрузке)
+            var workerAssignments = allAssignments.Where(a => a.AssignedToUserId == workerId).ToList();
+            if (!workerAssignments.Any())
+            {
+                _logger.LogWarning("Не удалось найти назначение для задачи {TaskId} у пользователя {WorkerId}", taskId, workerId);
+                return false;
+            }
+
+            // 1. Отмечаем ВСЕ назначения текущего сотрудника как InProgress
+            await _db.GetTable<OrderHandoverAssignmentModel>()
                 .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId)
                 .Set(a => a.Status, 1) // 1 = InProgress
                 .Set(a => a.StartedAt, DateTime.UtcNow)
                 .UpdateAsync();
 
-            if (updated > 0)
+            // 2. Ищем напарника (все назначения чужих пользователей)
+            var partnerAssignments = allAssignments.Where(a => a.AssignedToUserId != workerId && a.AssignedToUserId != null).ToList();
+
+            // Если напарников нет, ИЛИ ВСЕ их назначения уже в работе (Status 1 или 2)
+            bool partnerReady = !partnerAssignments.Any() || partnerAssignments.All(a => a.Status == 1 || a.Status == 2);
+
+            if (partnerReady)
             {
-                // Опционально: 
-                /*
                 await _db.GetTable<BaseTaskModel>()
                     .Where(t => t.TaskId == taskId && t.Status != "InProgress")
                     .Set(t => t.Status, "InProgress")
                     .UpdateAsync();
-                */
-                return true;
             }
 
-            return false;
+            // ВАЖНО: Всегда возвращаем true! Мы успешно записали свой статус в БД.
+            // Мобилка получит 200 OK, скачает новые статусы и сама отрисует экран ожидания напарника.
+            return true;
         }
 
+        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId)
+        {
+            _logger.LogInformation("Сотрудник {WorkerId} завершил свою часть выдачи {TaskId}", taskId, workerId);
+
+            var allAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId)
+                .ToListAsync();
+
+            var workerAssignments = allAssignments.Where(a => a.AssignedToUserId == workerId).ToList();
+            if (!workerAssignments.Any()) return false;
+
+            var completionTime = DateTime.UtcNow;
+
+            // 1. Завершаем работу текущего сотрудника (сразу по всем заказам в маршруте)
+            await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId)
+                .Set(a => a.Status, 2) // 2 = Completed
+                .Set(a => a.CompletedAt, completionTime)
+                .UpdateAsync();
+
+            // 2. АВТО-ЗАКРЫТИЕ: Если кнопку нажал Главный, гасим Помощника
+            if (workerAssignments.Any(a => a.Role == "Main"))
+            {
+                var helperAssignments = allAssignments.Where(a => a.Role == "Helper" && a.Status != 2).ToList();
+                if (helperAssignments.Any())
+                {
+                    // Гасим сразу все строки помощника
+                    await _db.GetTable<OrderHandoverAssignmentModel>()
+                        .Where(a => a.TaskId == taskId && a.Role == "Helper")
+                        .Set(a => a.Status, 2)
+                        .Set(a => a.CompletedAt, completionTime)
+                        .UpdateAsync();
+
+                    _logger.LogInformation("Назначения помощника для пакетной задачи {TaskId} автоматически закрыты", taskId);
+                }
+            }
+
+            return true;
+        }
         public async Task<bool> TryPauseTaskAsync(int taskId, int workerId)
         {
             _logger.LogInformation("Постановка на паузу задачи выдачи {TaskId} сотрудником {WorkerId}", taskId, workerId);
@@ -304,20 +358,6 @@ namespace TaskControl.TaskModule.Application.Providers
 
             return updated > 0;
         }
-
-        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId)
-        {
-            _logger.LogInformation("Сотрудник {WorkerId} завершил свою часть выдачи {TaskId}", taskId, workerId);
-
-            var updated = await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.TaskId == taskId && a.AssignedToUserId == workerId)
-                .Set(a => a.Status, 2) // 2 = Completed
-                .Set(a => a.CompletedAt, DateTime.UtcNow)
-                .UpdateAsync();
-
-            return updated > 0;
-        }
-
         public async Task<bool> IsTaskFullyCompletedAsync(int taskId)
         {
             // Проверяем статус всех назначений в рамках одной выдачи
@@ -474,7 +514,7 @@ namespace TaskControl.TaskModule.Application.Providers
                 await _db.InsertAsync(new ItemMovementModel
                 {
                     ItemId = sourceItemPos.ItemId,
-                    SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.Id,
+                    SourcePositionId = remainingQty <= 0 ? (int?)null : sourceItemPos.PositionId,
                     DestinationPositionId = null,
                     Quantity = line.ScannedQuantity,
                     TaskId = taskId,       // ИСПОЛЬЗУЕМ ЗДЕСЬ

@@ -121,15 +121,25 @@ namespace TaskControl.TaskModule.Application.Services
         /// <summary>
         /// Поиск наименее загруженного помощника на филиале
         /// </summary>
+        /// <summary>
+        /// Поиск наименее загруженного помощника на филиале
+        /// </summary>
         public async Task<int?> FindAvailableHelperAsync(int branchId, int? excludeWorkerId)
         {
             // 1. Кто сейчас зачекинен на складе (последняя запись - IN)
             var checkedInWorkers = await _db.GetTable<CheckIOEmployeeModel>()
                 .Where(c => c.BranchId == branchId)
                 .GroupBy(c => c.EmployeeId)
-                .Select(g => g.OrderByDescending(x => x.CheckTimeStamp).FirstOrDefault())
-                .Where(c => c != null && c.CheckType == "in")
-                .Select(c => c.EmployeeId)
+                .Select(g => new
+                {
+                    EmployeeId = g.Key,
+                    // ВАЖНО: Сначала Select(CheckType), только потом FirstOrDefault()
+                    LastCheckType = g.OrderByDescending(x => x.CheckTimeStamp)
+                                   .Select(x => x.CheckType)
+                                   .FirstOrDefault()
+                })
+                .Where(x => x.LastCheckType == "in")
+                .Select(x => x.EmployeeId)
                 .ToListAsync();
 
             if (!checkedInWorkers.Any()) return null;

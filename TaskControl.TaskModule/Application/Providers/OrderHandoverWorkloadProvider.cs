@@ -81,9 +81,26 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
         {
-            // Для выдачи пока можно считать 1 задача = 1 сложность
-            var count = await GetActiveWorkloadCountAsync(workerId);
-            return count * 1.0;
+            // 1. Находим время начала текущей смены (последний "in" за последние 14 часов)
+            var shiftStart = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.EmployeeId == workerId &&
+                            c.CheckType == "in" &&
+                            c.CheckTimeStamp >= DateTime.UtcNow.AddHours(-14))
+                .OrderByDescending(c => c.CheckTimeStamp)
+                .Select(c => (DateTime?)c.CheckTimeStamp)
+                .FirstOrDefaultAsync();
+
+            // Если отметки о входе нет, считаем, что сотрудник не на смене и нагрузка 0
+            if (shiftStart == null) return 0;
+
+            // 2. Высчитываем суммарную сложность всех задач по выдаче (Handover)
+            // Считаем все задачи, назначенные ПОСЛЕ начала смены, кроме отмененных (4)
+            // Включаем завершенные (2), чтобы видеть общую выработку и усталость за день
+            return await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.AssignedToUserId == workerId &&
+                            a.Status != 4 &&
+                            a.AssignedAt >= shiftStart)
+                .SumAsync(a => a.Complexity);
         }
 
         public async Task<bool> HasNewAssignmentsAsync(int workerId)
