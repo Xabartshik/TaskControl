@@ -459,6 +459,24 @@ namespace TaskControl.TaskModule.Application.Services
                     .Set(t => t.CompletedAt, DateTime.UtcNow)
                     .UpdateAsync();
 
+                // --- НОВЫЙ БЛОК: АВТО-ЗАКРЫТИЕ ПОМОЩНИКА ---
+                // Проверяем, если задачу завершает Главный сборщик
+                if (assignment.Role == (int)AssignmentRole.Main)
+                {
+                    // Находим и гасим все назначения Помощников в этой задаче
+                    var updatedHelpers = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                        .Where(a => a.TaskId == assignment.TaskId && a.Role == (int)AssignmentRole.Helper && a.Status != 2) // 2 = Completed
+                        .Set(a => a.Status, 2)
+                        .Set(a => a.CompletedAt, DateTime.UtcNow)
+                        .UpdateAsync();
+
+                    if (updatedHelpers > 0)
+                    {
+                        _logger.LogInformation("Назначение помощника для задачи сборки {TaskId} автоматически закрыто", assignment.TaskId);
+                    }
+                }
+                // --------------------------------------------
+
                 // 4. Перемещение товаров
                 var itemPositions = _db.GetTable<ItemPositionModel>();
 

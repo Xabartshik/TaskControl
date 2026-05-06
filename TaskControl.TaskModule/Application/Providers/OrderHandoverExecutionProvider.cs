@@ -71,8 +71,31 @@ namespace TaskControl.TaskModule.Application.Providers
 
             // 4. Если всё совпало - завершаем задачу штатно
             bool completed = await TryCompleteAssignmentAsync(taskId, workerId);
+
+            // --- ИСПРАВЛЕНИЕ: ВРУЧНУЮ ЗАПУСКАЕМ ПОСТ-ОБРАБОТКУ ---
+            if (completed)
+            {
+                // Проверяем, закрылись ли все части задачи (Главный + Помощник)
+                bool isFullyCompleted = await IsTaskFullyCompletedAsync(taskId);
+
+                if (isFullyCompleted)
+                {
+                    // Обновляем базовую задачу, как это делает стандартный контроллер
+                    await _db.GetTable<BaseTaskModel>()
+                        .Where(t => t.TaskId == taskId)
+                        .Set(t => t.Status, "Completed")
+                        .Set(t => t.CompletedAt, DateTime.UtcNow)
+                        .UpdateAsync();
+
+                    // Запускаем магию: списываем склад, переводим заказы в InTransit!
+                    await ExecutePostCompletionLogicAsync(taskId);
+                }
+            }
+            // -----------------------------------------------------
+
             return (completed, completed ? "Отгрузка курьеру подтверждена!" : "Ошибка при закрытии задачи в БД.");
         }
+
         public async Task<object?> GetTaskDetailsAsync(int taskId, int workerId)
         {
             _logger.LogInformation("Получение деталей задачи выдачи TaskId: {TaskId} для WorkerId: {WorkerId}", taskId, workerId);
