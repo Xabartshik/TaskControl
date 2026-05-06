@@ -2,6 +2,7 @@
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -23,10 +24,12 @@ namespace TaskControl.Web.Controllers
     public class DebugController : ControllerBase
     {
         private readonly ITaskDataConnection _db;
+        private readonly ILogger<DebugController> _logger;
 
-        public DebugController(ITaskDataConnection db)
+        public DebugController(ITaskDataConnection db, ILogger<DebugController> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         /// <summary>
@@ -36,6 +39,7 @@ namespace TaskControl.Web.Controllers
         [HttpPost("orders/{orderId}/skip-assembly")]
         public async Task<IActionResult> SkipAssembly(int orderId)
         {
+            _logger.LogInformation("|   [DEBUG] Запущен чит-код SkipAssembly для заказа #{OrderId}", orderId);
             var db = (DataConnection)_db;
             using var transaction = await db.BeginTransactionAsync();
             try
@@ -45,7 +49,11 @@ namespace TaskControl.Web.Controllers
                     .Set(o => o.Status, "Ready")
                     .UpdateAsync();
 
-                if (updated == 0) return NotFound($"Заказ {orderId} не найден.");
+                if (updated == 0)
+                {
+                    _logger.LogWarning("|   [DEBUG] Заказ #{OrderId} не найден", orderId);
+                    return NotFound($"Заказ {orderId} не найден.");
+                }
 
                 // Убиваем зависшие задачи сборки
                 var assemblyAssignments = await db.GetTable<OrderAssemblyAssignmentModel>()
@@ -66,11 +74,13 @@ namespace TaskControl.Web.Controllers
                 }
 
                 await transaction.CommitAsync();
+                _logger.LogInformation("|   [DEBUG] Магия сработала: Заказ #{OrderId} переведен в Ready", orderId);
                 return Ok(new { Message = $"[Магия] Заказ #{orderId} собран по воздуху и готов к выдаче (Ready)." });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в SkipAssembly");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -82,6 +92,7 @@ namespace TaskControl.Web.Controllers
         [HttpPost("orders/{orderId}/give-to-courier/{courierId}")]
         public async Task<IActionResult> SkipHandoverToCourier(int orderId, int courierId)
         {
+            _logger.LogInformation("|   [DEBUG] Запущен чит-код SkipHandoverToCourier для заказа #{OrderId} на курьера #{CourierId}", orderId, courierId);
             var db = (DataConnection)_db;
             using var transaction = await db.BeginTransactionAsync();
             try
@@ -89,7 +100,11 @@ namespace TaskControl.Web.Controllers
                 var courierPosition = await db.GetTable<PositionModel>()
                     .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
 
-                if (courierPosition == null) return BadRequest($"Виртуальная ячейка курьера {courierId} не найдена.");
+                if (courierPosition == null)
+                {
+                    _logger.LogWarning("|   [DEBUG] Виртуальная ячейка курьера #{CourierId} не найдена", courierId);
+                    return BadRequest($"Виртуальная ячейка курьера {courierId} не найдена.");
+                }
 
                 // Меняем статус
                 await db.GetTable<OrderModel>()
@@ -174,11 +189,13 @@ namespace TaskControl.Web.Controllers
                 }
 
                 await transaction.CommitAsync();
+                _logger.LogInformation("|   [DEBUG] Заказ #{OrderId} телепортирован курьеру #{CourierId}", orderId, courierId);
                 return Ok(new { Message = $"[Магия] Заказ #{orderId} телепортирован в багажник курьеру #{courierId} (InTransit)." });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в SkipHandoverToCourier");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -190,6 +207,7 @@ namespace TaskControl.Web.Controllers
         [HttpPost("tasks/clear-stuck")]
         public async Task<IActionResult> ClearStuckTasks()
         {
+            _logger.LogInformation("|   [DEBUG] Запущена мягкая очистка застрявших задач (ClearStuckTasks)");
             var db = (DataConnection)_db;
             using var transaction = await db.BeginTransactionAsync();
             try
@@ -208,22 +226,66 @@ namespace TaskControl.Web.Controllers
                     .UpdateAsync();
 
                 await transaction.CommitAsync();
+                _logger.LogInformation("|   [DEBUG] Очищено задач: {CancelledCount}. Сборки сброшены", cancelledCount);
                 return Ok(new { Message = $"[Магия] Очищено зависших базовых задач: {cancelledCount}. База сброшена." });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в ClearStuckTasks");
                 return StatusCode(500, ex.Message);
             }
         }
 
         /// <summary>
-        /// ЧИТ-КОД 4: Генератор профильных тестовых заказов.
+        /// ЧИТ-КОД 4: ГЛОБАЛЬНАЯ ОЧИСТКА БАЗЫ (Полный сброс)
+        /// Аналог TRUNCATE ... RESTART IDENTITY CASCADE.
+        /// Удаляет заказы, задачи, инвентаризацию и сбрасывает ID.
+        /// </summary>
+        [HttpPost("system/nuclear-reset")]
+        public async Task<IActionResult> NuclearReset()
+        {
+            _logger.LogCritical("|   [DEBUG] ИНИЦИИРОВАН ЯДЕРНЫЙ СБРОС БАЗЫ ДАННЫХ (NuclearReset)!");
+            var db = (DataConnection)_db;
+            var sql = @"
+                TRUNCATE TABLE 
+                    inventory_discrepancies, 
+                    inventory_statistics, 
+                    inventory_assignment_lines, 
+                    inventory_assignments, 
+                    active_assigned_tasks, 
+                    base_tasks, 
+                    orders 
+                RESTART IDENTITY CASCADE;";
+
+            using var transaction = await db.BeginTransactionAsync();
+            try
+            {
+                await db.ExecuteAsync(sql);
+                await transaction.CommitAsync();
+                _logger.LogWarning("|   [DEBUG] NUCLEAR RESET: Таблицы успешно очищены, каскадное удаление завершено, счетчики ID сброшены.");
+
+                return Ok(new
+                {
+                    Message = "[Магия] База данных полностью очищена. Все ID сброшены. Каскадное удаление завершено."
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка при выполнении NuclearReset");
+                return StatusCode(500, $"Ошибка при очистке: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ЧИТ-КОД 5: Генератор профильных тестовых заказов.
         /// {type} может быть: "light" (обычный), "heavy" (с напарником), "express" (срочный)
         /// </summary>
         [HttpPost("orders/generate-test/{type}")]
         public async Task<IActionResult> GenerateTestOrder(string type, [FromQuery] int customerId = 1, [FromQuery] int branchId = 1)
         {
+            _logger.LogInformation("|   [DEBUG] Генерация тестового заказа типа {Type} для клиента {CustomerId} на филиале {BranchId}", type, customerId, branchId);
             var db = (DataConnection)_db;
             using var transaction = await db.BeginTransactionAsync();
             try
@@ -247,15 +309,11 @@ namespace TaskControl.Web.Controllers
                 int newOrderId = await db.InsertWithInt32IdentityAsync(order);
 
                 // 2. Подбираем подходящий товар из БД
-                // ВАЖНО: Если у тебя в ItemModel поле веса называется иначе (Weight, WeightKg, WeightGrams), 
-                // просто подставь его в сортировку OrderByDescending.
                 ItemModel? item = null;
 
                 if (type == "heavy")
                 {
-                    // Ищем самый тяжелый товар на складе (чтобы пробить лимит в 50кг для напарника)
-                    // Предполагается, что в ItemModel есть поле Weight. 
-                    // Если нет, просто закомментируй OrderByDescending и используй FirstAsync()
+                    // Ищем самый тяжелый товар на складе
                     item = await db.GetTable<ItemModel>()
                         // .OrderByDescending(i => i.Weight) 
                         .FirstOrDefaultAsync();
@@ -266,13 +324,15 @@ namespace TaskControl.Web.Controllers
                     item = await db.GetTable<ItemModel>().FirstOrDefaultAsync();
                 }
 
-                if (item == null) return BadRequest("В базе данных нет ни одного товара (ItemModel) для создания заказа.");
+                if (item == null)
+                {
+                    _logger.LogWarning("|   [DEBUG] Ошибка генерации: в БД нет товаров (ItemModel)");
+                    return BadRequest("В базе данных нет ни одного товара (ItemModel) для создания заказа.");
+                }
 
-                // 3. Создаем позицию в заказе
                 // 3. Создаем позицию в заказе
                 int quantity = type == "heavy" ? 5 : 1;
 
-                // Позволяем БД самой сгенерировать int UniqueId
                 int uniqueId = await db.InsertWithInt32IdentityAsync(new OrderPositionModel
                 {
                     OrderId = newOrderId,
@@ -298,7 +358,7 @@ namespace TaskControl.Web.Controllers
                 // 6. Резервируем этот товар под наш заказ
                 await db.InsertAsync(new OrderReservationModel
                 {
-                    OrderPositionId = uniqueId, // Теперь передается правильный сгенерированный int!
+                    OrderPositionId = uniqueId,
                     ItemPositionId = stockId,
                     Quantity = quantity,
                     CreatedAt = DateTime.UtcNow
@@ -313,16 +373,16 @@ namespace TaskControl.Web.Controllers
                     _ => $"[Магия] Обычный заказ #{newOrderId} сгенерирован."
                 };
 
+                _logger.LogInformation("|   [DEBUG] {Message}", msg);
                 return Ok(new { OrderId = newOrderId, Message = msg });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в генераторе тестовых заказов");
                 return StatusCode(500, $"Ошибка генератора: {ex.Message}");
             }
         }
     }
-
-
 }
 #endif

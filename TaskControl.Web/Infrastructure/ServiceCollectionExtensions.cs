@@ -211,6 +211,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IWorkerBreakService, WorkerBreakService>();
             services.AddScoped<HandoverTaskGeneratorService>();
             services.AddScoped<IEmployeeCheckInObserver, ReturnTaskGeneratorObserver>();
+            services.AddScoped<ITaskExecutionProvider, ReturnExecutionProvider>();
 
             return services;
         }
