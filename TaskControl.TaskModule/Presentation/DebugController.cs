@@ -2,6 +2,7 @@
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
@@ -33,8 +34,67 @@ namespace TaskControl.Web.Controllers
         }
 
         /// <summary>
+        /// ЧИТ-КОД 6: Массовый чекин.
+        /// Всем сотрудникам в базе ставится отметка "in" (вход) на указанный филиал.
+        /// Время отметки: текущее UTC минус 30 минут.
+        /// </summary>
+        [HttpPost("employees/force-checkin-all")]
+        public async Task<IActionResult> ForceCheckInAllEmployees([FromQuery] int branchId = 1)
+        {
+            _logger.LogWarning("|   [DEBUG] Запущен массовый чекин всех сотрудников на филиал {BranchId}", branchId);
+            var db = (DataConnection)_db;
+
+            // Вычисляем время: текущее минус 30 минут
+            var checkTime = DateTime.UtcNow.AddMinutes(-30);
+
+            using var transaction = await db.BeginTransactionAsync();
+            try
+            {
+                // 1. Получаем ID всех существующих сотрудников
+                var employeeIds = await db.GetTable<EmployeeModel>()
+                    .Select(e => e.EmployeesId)
+                    .ToListAsync();
+
+                if (!employeeIds.Any())
+                {
+                    _logger.LogWarning("|   [DEBUG] Сотрудники не найдены в таблице employees");
+                    return BadRequest("В базе данных нет сотрудников для выполнения чекина.");
+                }
+
+                // 2. Создаем отметки "in" для каждого сотрудника
+                foreach (var empId in employeeIds)
+                {
+                    await db.InsertAsync(new CheckIOEmployeeModel
+                    {
+                        EmployeeId = empId,
+                        BranchId = branchId,
+                        CheckType = "in",
+                        CheckTimeStamp = checkTime
+                    });
+                }
+
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("|   [DEBUG] Массовый чекин завершен. Зачекинено: {Count} чел. Время: {Time}",
+                    employeeIds.Count, checkTime);
+
+                return Ok(new
+                {
+                    Message = $"[Магия] {employeeIds.Count} сотрудников успешно отмечены как 'в офисе'.",
+                    Timestamp = checkTime
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка при выполнении ForceCheckInAllEmployees");
+                return StatusCode(500, $"Ошибка при массовом чекине: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// ЧИТ-КОД 1: Пропускает сборку. Переводит заказ в статус Ready.
-        /// Идеально для тестирования экрана Логиста и Выдачи.
+        /// ИСПРАВЛЕНО: Теперь принудительно генерирует задачу на выдачу со строками позиций для тестирования в мобилке.
         /// </summary>
         [HttpPost("orders/{orderId}/skip-assembly")]
         public async Task<IActionResult> SkipAssembly(int orderId)
@@ -44,18 +104,20 @@ namespace TaskControl.Web.Controllers
             using var transaction = await db.BeginTransactionAsync();
             try
             {
-                var updated = await db.GetTable<OrderModel>()
-                    .Where(o => o.OrderId == orderId)
-                    .Set(o => o.Status, "Ready")
-                    .UpdateAsync();
-
-                if (updated == 0)
+                var order = await db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == orderId);
+                if (order == null)
                 {
                     _logger.LogWarning("|   [DEBUG] Заказ #{OrderId} не найден", orderId);
                     return NotFound($"Заказ {orderId} не найден.");
                 }
 
-                // Убиваем зависшие задачи сборки
+                // 1. Меняем статус заказа на Ready
+                await db.GetTable<OrderModel>()
+                    .Where(o => o.OrderId == orderId)
+                    .Set(o => o.Status, "Ready")
+                    .UpdateAsync();
+
+                // 2. Убиваем зависшие задачи сборки
                 var assemblyAssignments = await db.GetTable<OrderAssemblyAssignmentModel>()
                     .Where(a => a.OrderId == orderId)
                     .ToListAsync();
@@ -73,9 +135,58 @@ namespace TaskControl.Web.Controllers
                         .UpdateAsync();
                 }
 
+                // 3. ГЕНЕРАЦИЯ ЗАДАЧИ НА ВЫДАЧУ (Для мобильного приложения)
+                bool hasHandover = await db.GetTable<OrderHandoverAssignmentModel>().AnyAsync(a => a.OrderId == orderId);
+
+                if (!hasHandover)
+                {
+                    // А) Создаем базовую задачу в пуле
+                    int taskId = await db.InsertWithInt32IdentityAsync(new BaseTaskModel
+                    {
+                        Title = $"Выдача заказа #{orderId}",
+                        Type = "OrderHandover",
+                        BranchId = order.BranchId,
+                        PriorityLevel = 1,
+                        Status = "New", // Задача доступна для взятия в работу
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    // Б) Создаем назначение для сотрудника (пока без привязки к конкретному WorkerId)
+                    int assignmentId = await db.InsertWithInt32IdentityAsync(new OrderHandoverAssignmentModel
+                    {
+                        TaskId = taskId,
+                        OrderId = orderId,
+                        HandoverType = (order.DeliveryType == "Express" || order.DeliveryType == "Delivery") ? "ToCourier" : "ToCustomer",
+                        Status = 0, // 0 = New/Unassigned
+                        Role = "Main",
+                        Complexity = 1,
+                        AssignedAt = DateTime.UtcNow
+                    });
+
+                    // В) Важно: Создаем строки выдачи (Lines), иначе в режиме отмены будет пусто
+                    var orderPositions = await db.GetTable<OrderPositionModel>().Where(op => op.OrderId == orderId).ToListAsync();
+
+                    foreach (var pos in orderPositions)
+                    {
+                        var reservation = await db.GetTable<OrderReservationModel>().FirstOrDefaultAsync(r => r.OrderPositionId == pos.UniqueId);
+
+                        await db.InsertAsync(new OrderHandoverLineModel
+                        {
+                            OrderHandoverAssignmentId = assignmentId,
+                            OrderPositionId = pos.UniqueId,
+                            ItemPositionId = reservation?.ItemPositionId,
+                            Quantity = pos.Quantity,
+                            ScannedQuantity = 0,
+                            CancelledQuantity = 0
+                        });
+                    }
+
+                    _logger.LogInformation("|   [DEBUG] Сгенерирована задача выдачи TaskId: {TaskId} для заказа #{OrderId}", taskId, orderId);
+                }
+
                 await transaction.CommitAsync();
-                _logger.LogInformation("|   [DEBUG] Магия сработала: Заказ #{OrderId} переведен в Ready", orderId);
-                return Ok(new { Message = $"[Магия] Заказ #{orderId} собран по воздуху и готов к выдаче (Ready)." });
+                _logger.LogInformation("|   [DEBUG] Магия сработала: Заказ #{OrderId} переведен в Ready и готов к выдаче", orderId);
+                return Ok(new { Message = $"[Магия] Заказ #{orderId} собран по воздуху, сгенерирована задача на выдачу для мобилки." });
             }
             catch (Exception ex)
             {
@@ -84,6 +195,7 @@ namespace TaskControl.Web.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+
 
         /// <summary>
         /// ЧИТ-КОД 2: Пропускает выдачу (кладовщика). Передает заказ сразу Курьеру.
@@ -281,16 +393,20 @@ namespace TaskControl.Web.Controllers
         /// <summary>
         /// ЧИТ-КОД 5: Генератор профильных тестовых заказов.
         /// {type} может быть: "light" (обычный), "heavy" (с напарником), "express" (срочный)
+        /// Добавлена возможность явно указать deliveryType (например, "Pickup" для самовывоза).
         /// </summary>
         [HttpPost("orders/generate-test/{type}")]
-        public async Task<IActionResult> GenerateTestOrder(string type, [FromQuery] int customerId = 1, [FromQuery] int branchId = 1)
+        public async Task<IActionResult> GenerateTestOrder(string type, [FromQuery] int customerId = 1, [FromQuery] int branchId = 1, [FromQuery] string? deliveryType = null)
         {
-            _logger.LogInformation("|   [DEBUG] Генерация тестового заказа типа {Type} для клиента {CustomerId} на филиале {BranchId}", type, customerId, branchId);
+            _logger.LogInformation("|   [DEBUG] Генерация тестового заказа типа {Type} для клиента {CustomerId} на филиале {BranchId}. Доставка: {DeliveryType}", type, customerId, branchId, deliveryType ?? "По умолчанию");
             var db = (DataConnection)_db;
             using var transaction = await db.BeginTransactionAsync();
             try
             {
                 type = type.ToLower();
+
+                // ДОБАВЛЕНО: Определяем тип доставки. Если передан явно — используем его, иначе дефолтная логика.
+                string finalDeliveryType = deliveryType ?? (type == "express" ? "Express" : "Delivery");
 
                 // 1. Создаем болванку заказа
                 var order = new OrderModel
@@ -298,7 +414,7 @@ namespace TaskControl.Web.Controllers
                     CustomerId = customerId,
                     BranchId = branchId,
                     Status = "Created", // Создаем как "Новый", чтобы он прошел через распределитель склада
-                    DeliveryType = type == "express" ? "Express" : "Delivery",
+                    DeliveryType = finalDeliveryType, // ИСПОЛЬЗУЕМ НОВЫЙ ТИП ДОСТАВКИ
                     PaymentType = "Prepaid",
                     DestinationAddress = $"ул. Тестовая, д. {new Random().Next(1, 100)}",
                     TotalPrice = type == "heavy" ? 55000 : 1200,
@@ -315,12 +431,19 @@ namespace TaskControl.Web.Controllers
                 {
                     // Ищем самый тяжелый товар на складе
                     item = await db.GetTable<ItemModel>()
-                        // .OrderByDescending(i => i.Weight) 
+                        .OrderByDescending(i => i.Weight)
+                        .FirstOrDefaultAsync();
+                }
+                else if (type == "light")
+                {
+                    // Ищем самый легкий товар
+                    item = await db.GetTable<ItemModel>()
+                        .OrderBy(i => i.Weight)
                         .FirstOrDefaultAsync();
                 }
                 else
                 {
-                    // Для light и express берем первый попавшийся обычный товар
+                    // Для express берем первый попавшийся обычный товар
                     item = await db.GetTable<ItemModel>().FirstOrDefaultAsync();
                 }
 
@@ -374,7 +497,16 @@ namespace TaskControl.Web.Controllers
                 };
 
                 _logger.LogInformation("|   [DEBUG] {Message}", msg);
-                return Ok(new { OrderId = newOrderId, Message = msg });
+
+                return Ok(new
+                {
+                    OrderId = newOrderId,
+                    ItemName = item.Name,
+                    Weight = item.Weight,
+                    Quantity = quantity,
+                    DeliveryType = finalDeliveryType, // Выводим тип доставки для наглядности в Swagger
+                    Message = msg
+                });
             }
             catch (Exception ex)
             {
@@ -382,6 +514,41 @@ namespace TaskControl.Web.Controllers
                 _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в генераторе тестовых заказов");
                 return StatusCode(500, $"Ошибка генератора: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// ЧИТ-КОД 4: Принудительный чекин курьера (Dock).
+        /// Запускает генерацию задач ReturnToStock для всех "отказников" в машине курьера.
+        /// </summary>
+        [HttpPost("courier/{courierId}/force-dock")]
+        public async Task<IActionResult> ForceCourierDock(int courierId, [FromQuery] int branchId)
+        {
+            // Находим всех слушателей чекина (как это делает QrCheckInController)
+            var observers = HttpContext.RequestServices.GetServices<TaskControl.Core.Shared.SharedInterfaces.IEmployeeCheckInObserver>();
+
+            foreach (var observer in observers)
+            {
+                await observer.OnEmployeeCheckedAsync(courierId, branchId, "dock");
+            }
+
+            return Ok(new { Message = $"Событие 'Прибытие' для курьера {courierId} отправлено. Задачи возврата должны быть созданы." });
+        }
+
+        /// <summary>
+        /// ДИАГНОСТИКА: Проверка состояния ячейки и её содержимого.
+        /// </summary>
+        [HttpGet("cell/{positionId}/inspect")]
+        public async Task<IActionResult> InspectCell(int positionId)
+        {
+            var pos = await _db.GetTable<PositionModel>().FirstOrDefaultAsync(p => p.PositionId == positionId);
+            var items = await _db.GetTable<ItemPositionModel>().Where(ip => ip.PositionId == positionId).ToListAsync();
+
+            return Ok(new
+            {
+                CellStatus = pos?.Status,
+                CellCode = pos?.FLSNumber,
+                ItemsInCell = items.Select(i => new { i.ItemId, i.Quantity })
+            });
         }
     }
 }

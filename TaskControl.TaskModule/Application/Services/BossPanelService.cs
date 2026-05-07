@@ -92,6 +92,14 @@ namespace TaskControl.TaskModule.Application.Services
             // Получаем список тех, у кого есть параметры транспорта
             var courierCapabilities = await _db.GetTable<CourierCapabilityModel>().ToListAsync();
 
+            // --- ДОБАВЛЕНО: Достаем последние отметки (CheckIO) для этих сотрудников ---
+            var employeeIds = employees.Select(e => e.EmployeeId).ToList();
+            var today = DateTime.UtcNow.Date; // Оптимизация: смотрим только сегодняшние отметки
+            var recentChecks = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => employeeIds.Contains(c.EmployeeId) && c.CheckTimeStamp >= today)
+                .ToListAsync();
+            // -------------------------------------------------------------------------
+
             foreach (var emp in employees)
             {
                 var capability = courierCapabilities.FirstOrDefault(c => c.EmployeeId == emp.EmployeeId);
@@ -99,6 +107,21 @@ namespace TaskControl.TaskModule.Application.Services
                 // Проверяем по строковому полю Role или наличию транспорта
                 if (capability != null || emp.Role == "Курьер" || emp.Role == "Courier")
                 {
+                    // --- ДОБАВЛЕНА ЛОГИКА DISPATCH ---
+                    // Ищем самую последнюю отметку курьера
+                    var latestCheck = recentChecks
+                        .Where(c => c.EmployeeId == emp.EmployeeId)
+                        .OrderByDescending(c => c.CheckTimeStamp)
+                        .FirstOrDefault();
+
+                    // Если курьер "уехал" (dispatch) - он физически не на базе.
+                    // Прячем его с экрана логиста, чтобы ему не назначили новые заказы.
+                    if (latestCheck != null && latestCheck.CheckType == "dispatch")
+                    {
+                        continue;
+                    }
+                    // ---------------------------------
+
                     result.Add(new AvailableEmployeeDto
                     {
                         EmployeeId = emp.EmployeeId,
@@ -107,7 +130,6 @@ namespace TaskControl.TaskModule.Application.Services
                         ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId),
                         IsRecommended = false,
 
-                        // --- ДОБАВЛЕНО ДЛЯ ПРОВЕРКИ ВМЕСТИМОСТИ ---
                         // Переводим граммы в килограммы (DB: max_weight_grams)
                         MaxWeightKg = capability != null ? capability.MaxWeightGrams / 1000.0 : 0.0,
                         // Если есть ID типа ТС — выводим, иначе заглушка
@@ -127,7 +149,6 @@ namespace TaskControl.TaskModule.Application.Services
             }
             return result;
         }
-
         public async Task<IEnumerable<AvailableOrderDto>> GetReadyForDispatchOrdersAsync(int bossBranchId)
         {
             _logger.LogInformation("Получение готовых заказов для курьеров филиала {BossBranchId}", bossBranchId);

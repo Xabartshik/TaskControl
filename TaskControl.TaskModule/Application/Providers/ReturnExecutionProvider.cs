@@ -120,20 +120,139 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
         {
-            var assignment = await _db.GetTable<ReturnAssignmentModel>()
-                .FirstOrDefaultAsync(a => a.TaskId == taskId && a.AssignedToUserId == workerId);
+            // 1. Стандартная проверка принадлежности задачи
+            var isOurTask = await _db.GetTable<BaseTaskModel>()
+                                     .AnyAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
+            if (!isOurTask) return false;
 
-            if (assignment == null) return false;
+            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
+            try
+            {
+                // 2. Получаем все назначения (Main + Helper)
+                var allAssignments = await _db.GetTable<ReturnAssignmentModel>()
+                    .Where(a => a.TaskId == taskId)
+                    .ToListAsync();
 
-            await _db.GetTable<ReturnAssignmentModel>()
-                .Where(a => a.Id == assignment.Id)
-                .Set(a => a.Status, 2) // Completed
-                .Set(a => a.CompletedAt, DateTime.UtcNow)
-                .UpdateAsync();
+                var assignment = allAssignments.FirstOrDefault(a => a.AssignedToUserId == workerId);
+                if (assignment == null) return false;
 
-            return true;
+                // 3. Получаем линии возврата для текущего назначения
+                var returnLines = await _db.GetTable<ReturnLineModel>()
+                    .Where(l => l.ReturnAssignmentId == assignment.Id)
+                    .ToListAsync();
+
+                var potentialEmptyPositionIds = new HashSet<int>();
+
+                // 4. Логика физического перемещения инвентаря
+                foreach (var line in returnLines)
+                {
+                    int qtyToMove = line.ScannedQuantity > 0 ? line.ScannedQuantity : line.Quantity;
+                    if (qtyToMove <= 0) continue;
+
+                    var sourceItemPos = await _db.GetTable<ItemPositionModel>()
+                        .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+
+                    if (sourceItemPos == null) continue;
+                    potentialEmptyPositionIds.Add(sourceItemPos.PositionId);
+
+                    int targetPosId = line.TargetPositionId ?? 0;
+                    if (targetPosId == 0)
+                    {
+                        _logger.LogWarning("Для товара {ItemId} в задаче {TaskId} не указана целевая полка", sourceItemPos.ItemId, taskId);
+                        continue;
+                    }
+
+                    await _db.InsertAsync(new ItemMovementModel
+                    {
+                        ItemId = sourceItemPos.ItemId,
+                        SourcePositionId = sourceItemPos.PositionId,
+                        DestinationPositionId = targetPosId,
+                        Quantity = qtyToMove,
+                        WorkerId = workerId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    await _db.GetTable<ItemPositionModel>()
+                        .Where(ip => ip.Id == sourceItemPos.Id)
+                        .Set(ip => ip.Quantity, ip => ip.Quantity - qtyToMove)
+                        .UpdateAsync();
+
+                    var targetItemPos = await _db.GetTable<ItemPositionModel>()
+                        .FirstOrDefaultAsync(ip => ip.PositionId == targetPosId && ip.ItemId == sourceItemPos.ItemId);
+
+                    if (targetItemPos != null)
+                    {
+                        await _db.GetTable<ItemPositionModel>()
+                            .Where(ip => ip.Id == targetItemPos.Id)
+                            .Set(ip => ip.Quantity, ip => ip.Quantity + qtyToMove)
+                            .UpdateAsync();
+                    }
+                    else
+                    {
+                        await _db.InsertAsync(new ItemPositionModel
+                        {
+                            PositionId = targetPosId,
+                            ItemId = sourceItemPos.ItemId,
+                            Quantity = qtyToMove,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                // 5. Блок разблокировки освободившихся ячеек зоны выдачи
+                foreach (var posId in potentialEmptyPositionIds)
+                {
+                    bool hasItems = await _db.GetTable<ItemPositionModel>()
+                        .AnyAsync(ip => ip.PositionId == posId && ip.Quantity > 0);
+
+                    if (!hasItems)
+                    {
+                        await _db.GetTable<PositionModel>()
+                            .Where(p => p.PositionId == posId)
+                            .Set(p => p.Status, "Active")
+                            .UpdateAsync();
+
+                        _logger.LogInformation("Ячейка {PositionId} разблокирована после возврата", posId);
+                    }
+                }
+
+                var completionTime = DateTime.UtcNow;
+
+                // 6. Финализируем само назначение
+                await _db.GetTable<ReturnAssignmentModel>()
+                    .Where(a => a.Id == assignment.Id)
+                    .Set(a => a.Status, 2) // Completed
+                    .Set(a => a.CompletedAt, completionTime)
+                    .UpdateAsync();
+
+                // 7. Автоматическое закрытие помощника (Поддержка кооперативных задач)
+                if (assignment.Role == "Main")
+                {
+                    var helperAssignments = allAssignments.Where(a => a.Role == "Helper" && a.Status != 2).ToList();
+                    if (helperAssignments.Any())
+                    {
+                        foreach (var helper in helperAssignments)
+                        {
+                            await _db.GetTable<ReturnAssignmentModel>()
+                                .Where(a => a.Id == helper.Id)
+                                .Set(a => a.Status, 2)
+                                .Set(a => a.CompletedAt, completionTime)
+                                .UpdateAsync();
+                        }
+                        _logger.LogInformation("Назначения помощника для задачи {TaskId} автоматически закрыты", taskId);
+                    }
+                }
+
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Ошибка при завершении возврата для задачи {TaskId}", taskId);
+                return false;
+            }
         }
-
         public async Task ExecutePostCompletionLogicAsync(int taskId)
         {
             _logger.LogInformation("Пост-обработка возврата TaskId: {TaskId}", taskId);
@@ -213,6 +332,8 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId)
             => await TryCompleteAssignmentAsync(taskId, workerId, null);
+
+
 
         public async Task<bool> TryPauseTaskAsync(int taskId, int workerId)
         {

@@ -83,5 +83,49 @@ namespace TaskControl.InformationModule.Presentation
 
             return Ok(new { Message = $"Отметка '{request.CheckType}' успешно сохранена!" });
         }
+
+        // Модель запроса без QR-кода
+        public class UpdateStatusRequestDto
+        {
+            public int BranchId { get; set; }
+            public string CheckType { get; set; } = "dispatch"; // "dispatch" или "dock"
+        }
+
+        /// <summary>
+        /// Эндпоинт для кнопок в мобильном приложении (без сканирования физического QR)
+        /// </summary>
+        [HttpPost("status")]
+        [Authorize(Roles = "Courier")] // Только для курьеров
+        public async Task<IActionResult> UpdateMobileStatus([FromBody] UpdateStatusRequestDto request)
+        {
+            var employeeIdClaim = User.Claims.FirstOrDefault(c => c.Type == "EmployeeId" || c.Type == "id")?.Value;
+            if (string.IsNullOrWhiteSpace(employeeIdClaim) || !int.TryParse(employeeIdClaim, out int employeeId))
+                return Unauthorized(new { Message = "Не удалось определить ID сотрудника из токена." });
+
+            var checkDto = new CheckIOEmployeeDto
+            {
+                EmployeeId = employeeId,
+                BranchId = request.BranchId,
+                CheckType = request.CheckType,
+                CheckTimeStamp = DateTime.UtcNow
+            };
+
+            // Сохраняем отметку
+            await _checkIoService.Add(checkDto);
+
+            // Если курьер нажал "Вернулся на базу" - рассылаем событие, чтобы сгенерировать возвраты (ReturnToStock)
+            if (request.CheckType == "dock")
+            {
+                foreach (var observer in _checkInObservers)
+                {
+                    try { await observer.OnEmployeeCheckedAsync(employeeId, request.BranchId, request.CheckType); }
+                    catch (Exception ex) { _logger.LogError(ex, "Ошибка слушателя чекинов"); }
+                }
+            }
+
+            return Ok(new { Message = $"Статус транспорта '{request.CheckType}' успешно обновлен!" });
+        }
     }
+
+
 }

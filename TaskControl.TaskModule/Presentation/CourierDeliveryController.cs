@@ -24,6 +24,104 @@ namespace TaskControl.DeliveryModule.Presentation.Controllers
             _qrTokenService = qrTokenService;
         }
 
+        // Модель для частичной доставки
+        public record PartialDeliveryRequest(string QrToken, int CourierId, Dictionary<int, int> RejectedQuantities);
+
+        /// <summary>
+        /// Частичный выкуп заказа курьером.
+        /// </summary>
+        [HttpPost("partial-complete")]
+        public async Task<IActionResult> PartialCompleteDelivery([FromBody] PartialDeliveryRequest request)
+        {
+            // 1. Валидация QR клиента
+            if (!_qrTokenService.ValidateOrderPickupToken(request.QrToken, out int customerId, out int orderId, out string error))
+                return BadRequest($"Ошибка QR: {error}");
+
+            using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
+            try
+            {
+                // Находим виртуальную ячейку курьера
+                var courierPosition = await _db.GetTable<PositionModel>()
+                    .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == request.CourierId.ToString());
+
+                if (courierPosition == null)
+                    return BadRequest("Виртуальная ячейка курьера не найдена.");
+
+                var orderPositions = await _db.GetTable<OrderPositionModel>()
+                    .Where(p => p.OrderId == orderId)
+                    .ToListAsync();
+
+                decimal newTotalPrice = 0;
+
+                foreach (var op in orderPositions)
+                {
+                    // Получаем количество отмен (ключ - UniqueId позиции)
+                    int rejectedQty = request.RejectedQuantities?.GetValueOrDefault(op.UniqueId) ?? 0;
+                    int acceptedQty = op.Quantity - rejectedQty;
+
+                    newTotalPrice += acceptedQty * op.Price;
+
+                    // Обновляем количество в позиции заказа (может стать 0)
+                    await _db.GetTable<OrderPositionModel>()
+                        .Where(p => p.UniqueId == op.UniqueId)
+                        .Set(p => p.Quantity, acceptedQty)
+                        .UpdateAsync();
+
+                    // Работа с физическими остатками и резервами
+                    var reservation = await _db.GetTable<OrderReservationModel>()
+                        .FirstOrDefaultAsync(r => r.OrderPositionId == op.UniqueId);
+
+                    if (reservation != null && reservation.ItemPositionId.HasValue)
+                    {
+                        if (acceptedQty > 0)
+                        {
+                            // А. Пишем историю: из машины -> клиенту (DestinationPositionId = null)
+                            await _db.InsertAsync(new ItemMovementModel
+                            {
+                                ItemId = op.ItemId,
+                                SourcePositionId = courierPosition.PositionId,
+                                DestinationPositionId = null,
+                                Quantity = acceptedQty,
+                                WorkerId = request.CourierId,
+                                CreatedAt = DateTime.UtcNow
+                            });
+
+                            // Б. Уменьшаем физическое количество в "багажнике" курьера
+                            await _db.GetTable<ItemPositionModel>()
+                                .Where(ip => ip.Id == reservation.ItemPositionId.Value)
+                                .Set(ip => ip.Quantity, ip => ip.Quantity - acceptedQty)
+                                .UpdateAsync();
+                        }
+
+                        // ВАЖНО: Удаляем резерв. 
+                        // Оставшиеся (отмененные) товары теперь лежат в ячейке курьера без привязки к заказу.
+                        // Именно их потом найдет CourierReturnService при чекине "dock".
+                        await _db.GetTable<OrderReservationModel>()
+                            .Where(r => r.Id == reservation.Id)
+                            .DeleteAsync();
+                    }
+                }
+
+                // 4. Закрываем заказ с правильным статусом
+                string finalStatus = newTotalPrice > 0 ? "Completed" : "Cancelled";
+
+                await _db.GetTable<OrderModel>()
+                    .Where(o => o.OrderId == orderId)
+                    .Set(o => o.TotalPrice, newTotalPrice)
+                    .Set(o => o.Status, finalStatus)
+                    .UpdateAsync();
+
+                await transaction.CommitAsync();
+
+                return Ok(new { Message = $"Заказ #{orderId} успешно обработан. Статус: {finalStatus}, Сумма: {newTotalPrice}" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, "Ошибка при завершении доставки: " + ex.Message);
+            }
+        }
+
         public record CompleteDeliveryRequest(string QrToken, int CourierId);
 
         [HttpPost("complete")]
