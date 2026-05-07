@@ -32,7 +32,7 @@ namespace TaskControl.OrderModule.Domain
         [Description("Отказ при получении")]
         Rejected,
         [Description("Отменен")]
-        Canceled
+        Cancelled
     }
 
     public enum DeliveryType

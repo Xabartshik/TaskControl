@@ -334,7 +334,7 @@ namespace TaskControl.TaskModule.Application.Providers
 
             string newStatus = "Completed";
             if (hasCancellations && hasScans) newStatus = "PartiallyCompleted";
-            else if (hasCancellations && !hasScans) newStatus = "Canceled";
+            else if (hasCancellations && !hasScans) newStatus = "Cancelled";
 
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, newStatus).UpdateAsync();
         }
@@ -418,7 +418,7 @@ namespace TaskControl.TaskModule.Application.Providers
             }
 
             bool hasScans = lines.Any(l => l.ScannedQuantity > 0);
-            string newStatus = hasScans ? "InTransit" : "Canceled";
+            string newStatus = hasScans ? "InTransit" : "Cancelled";
 
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, newStatus).UpdateAsync();
         }

@@ -58,7 +58,7 @@ namespace TaskControl.OrderModule.DAL.Repositories
             {
                 // Превращаем статусы в строки один раз, чтобы не делать этого в цикле БД
                 var completedStatus = OrderStatus.Completed.ToString();
-                var canceledStatus = OrderStatus.Canceled.ToString();
+                var canceledStatus = OrderStatus.Cancelled.ToString();
 
                 var ordersModel = await _db.Orders
                     .Where(o => o.Status != completedStatus && o.Status != canceledStatus)
