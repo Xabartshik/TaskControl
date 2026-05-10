@@ -17,8 +17,8 @@ namespace TaskControl.TaskModule.DataAccess.Models
         [Column("order_id"), NotNull]
         public int OrderId { get; set; }
 
-        [Column("assigned_to_user_id"), NotNull]
-        public int AssignedToUserId { get; set; }
+        [Column("assigned_to_user_id")]
+        public int? AssignedToUserId { get; set; }
 
         [Column("branch_id"), NotNull]
         public int BranchId { get; set; }

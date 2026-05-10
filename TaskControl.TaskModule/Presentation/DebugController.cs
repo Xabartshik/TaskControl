@@ -100,6 +100,122 @@ namespace TaskControl.Web.Controllers
         }
 
         /// <summary>
+        /// ЧИТ-КОД 9: Мгновенная генерация задачи сборки заказа (OrderAssembly).
+        /// Создает заказ, резервирует товар на полке в зоне STORAGE и выкидывает задачу в Общий пул.
+        /// </summary>
+        [HttpPost("tasks/generate-assembly")]
+        public async Task<IActionResult> GenerateAssemblyTask([FromQuery] int branchId = 1)
+        {
+            _logger.LogInformation("|   [DEBUG] Генерация тестовой задачи сборки для филиала {BranchId}", branchId);
+            var db = (DataConnection)_db;
+            using var transaction = await db.BeginTransactionAsync();
+            try
+            {
+                // 1. Берем любой товар из базы
+                var item = await db.GetTable<ItemModel>().FirstOrDefaultAsync();
+                if (item == null) return BadRequest("Товары не найдены в БД.");
+
+                // 2. Ищем полку для хранения (зона STORAGE)
+                var storagePos = await db.GetTable<PositionModel>().FirstOrDefaultAsync(p => p.ZoneCode == "A" && p.BranchId == branchId)
+                                 ?? await db.GetTable<PositionModel>().FirstAsync();
+
+                // 3. Кладем товар на эту полку (создаем физический остаток)
+                int itemPosId = await db.InsertWithInt32IdentityAsync(new ItemPositionModel
+                {
+                    ItemId = item.ItemId,
+                    PositionId = storagePos.PositionId,
+                    Quantity = 5, // Кладем с запасом
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // 4. Создаем тестовый заказ
+                int orderId = await db.InsertWithInt32IdentityAsync(new OrderModel
+                {
+                    CustomerId = 1,
+                    BranchId = branchId,
+                    Status = "Created",
+                    DeliveryType = "Pickup",
+                    PaymentType = "Prepaid",
+                    DestinationAddress = "Тестовый адрес сборки",
+                    CreatedAt = DateTime.UtcNow,
+                    DeliveryDate = DateTime.UtcNow,
+                    TotalPrice = 1500
+                });
+
+                // 5. Создаем позицию заказа
+                int orderPosId = await db.InsertWithInt32IdentityAsync(new OrderPositionModel
+                {
+                    OrderId = orderId,
+                    ItemId = item.ItemId,
+                    Quantity = 2,
+                    Price = 1500
+                });
+
+                // 6. Создаем резерв (связываем заказ с физической полкой)
+                await db.InsertAsync(new OrderReservationModel
+                {
+                    OrderPositionId = orderPosId,
+                    ItemPositionId = itemPosId,
+                    Quantity = 2,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // 7. Создаем Базовую Задачу в системе
+                int taskId = await db.InsertWithInt32IdentityAsync(new BaseTaskModel
+                {
+                    Title = $"Сборка заказа #{orderId}",
+                    Type = "OrderAssembly",
+                    Status = "New",
+                    PriorityLevel = 1,
+                    BranchId = branchId,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // 8. Создаем назначение (AssignedToUserId = 0, чтобы задача попала в Общий пул)
+                int assignmentId = await db.InsertWithInt32IdentityAsync(new OrderAssemblyAssignmentModel
+                {
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    AssignedToUserId = null,
+                    BranchId = branchId,
+                    Status = 0, // New
+                    Complexity = 3.0,
+                    Role = 1, // Основной сборщик
+                    AssignedAt = DateTime.UtcNow
+                });
+
+                // 9. Создаем строку сборки (откуда брать и сколько)
+                await db.InsertAsync(new OrderAssemblyLineModel
+                {
+                    OrderAssemblyAssignmentId = assignmentId,
+                    ItemPositionId = itemPosId,
+                    SourcePositionId = storagePos.PositionId,
+                    TargetPositionId = null, // Целевую ячейку сотрудник отсканирует сам
+                    Quantity = 2,
+                    PickedQuantity = 0,
+                    Status = 0 // Pending
+                });
+
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    Message = "Задача сборки успешно создана. Ищите её в 'Общем пуле' приложения.",
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    ItemName = item.Name,
+                    CellCode = storagePos.FLSNumber // Подсказка, на какую полку идти
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в GenerateAssemblyTask");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        /// <summary>
         /// ЧИТ-КОД 1: Пропускает сборку. Переводит заказ в статус Ready.
         /// ИСПРАВЛЕНО: Теперь принудительно генерирует задачу на выдачу со строками позиций для тестирования в мобилке.
         /// </summary>

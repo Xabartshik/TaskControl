@@ -334,10 +334,12 @@ namespace TaskControl.TaskModule.Application.Services
                     ? (int)(mainAssignment.StartedAt.Value - mainAssignment.AssignedAt).TotalSeconds
                     : 0;
 
-                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(mainAssignment.AssignedToUserId);
+                int workerId = mainAssignment.AssignedToUserId ?? 0;
+
+                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(workerId);
 
                 await _telemetryService.LogTaskEventAsync(
-                    workerId: mainAssignment.AssignedToUserId,
+                    workerId: workerId,
                     branchId: baseTask?.BranchId ?? 0,
                     taskCategory: "OrderAssembly",
                     itemsProcessed: itemsProcessed,
@@ -599,10 +601,11 @@ namespace TaskControl.TaskModule.Application.Services
                     ? (int)(assignment.StartedAt.Value - assignment.AssignedAt).TotalSeconds
                     : 0;
 
-                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(assignment.AssignedToUserId);
+                int workerId = assignment.AssignedToUserId ?? 0;
+                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(workerId);
 
                 await _telemetryService.LogTaskEventAsync(
-                    workerId: assignment.AssignedToUserId,
+                    workerId: workerId,
                     branchId: assignment.BranchId,
                     taskCategory: "OrderAssembly",
                     itemsProcessed: itemsProcessed,

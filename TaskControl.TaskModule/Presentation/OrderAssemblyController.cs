@@ -1,10 +1,15 @@
+using LinqToDB;
+using LinqToDB.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
+using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Models;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -123,11 +128,67 @@ namespace TaskControl.TaskModule.Presentation
             return Ok();
         }
 
-        [HttpPost("scan-pick")]
-        public async Task<IActionResult> ScanAndPick([FromBody] ScanPickRequest req)
+        public class ScanPickRequest { public int LineId { get; set; } public string Barcode { get; set; } }
+        public class ScanAssemblyPlaceRequest { public int LineId { get; set; } public string CellCode { get; set; } }
+
+        // 1. Сборка товара (Pick)
+        [HttpPost("assignment/{assignmentId}/scan-pick")]
+        public async Task<IActionResult> ScanAndPick(int assignmentId, [FromBody] ScanPickRequest req)
         {
+            // Здесь мы оставляем старую логику сервиса, так как она работает с товарами
             await _executionService.ScanAndPickItem(req.LineId, req.Barcode);
-            return Ok();
+            return Ok(new { Message = "Товар успешно собран." });
+        }
+
+        [HttpPost("assignment/{assignmentId}/scan-place")]
+        public async Task<IActionResult> ScanAndPlace(int assignmentId, [FromBody] ScanAssemblyPlaceRequest req, [FromServices] ITaskDataConnection db)
+        {
+            using var transaction = await ((DataConnection)db).BeginTransactionAsync();
+            try
+            {
+                var assignment = await db.GetTable<OrderAssemblyAssignmentModel>().FirstOrDefaultAsync(a => a.Id == assignmentId);
+                if (assignment == null) return NotFound("Назначение не найдено.");
+
+                // Ищем ячейку по текстовому коду ТОЛЬКО внутри текущего филиала
+                var branchPositions = await db.GetTable<PositionModel>().Where(p => p.BranchId == assignment.BranchId).ToListAsync();
+                var matchedPos = branchPositions.FirstOrDefault(p => GetFullPositionCode(p) == req.CellCode.Trim());
+
+                if (matchedPos == null) return BadRequest($"Ячейка '{req.CellCode}' не найдена на этом складе.");
+
+                var line = await db.GetTable<OrderAssemblyLineModel>()
+                    .FirstOrDefaultAsync(l => l.Id == req.LineId && l.OrderAssemblyAssignmentId == assignmentId);
+
+                if (line == null) return NotFound("Строка сборки не найдена.");
+
+                // Обновляем линию: прописываем найденный ID ячейки и ставим статус 2 (Placed)
+                await db.GetTable<OrderAssemblyLineModel>()
+                    .Where(l => l.Id == req.LineId)
+                    .Set(l => l.TargetPositionId, matchedPos.PositionId)
+                    .Set(l => l.Status, 2)
+                    .UpdateAsync();
+
+                await transaction.CommitAsync();
+                return Ok(new { Message = $"Товар привязан к ячейке {req.CellCode}." });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Ошибка при сканировании ячейки для сборки.");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        // Вспомогательный метод для сборки строки ячейки из БД
+        private string GetFullPositionCode(PositionModel pos)
+        {
+            if (pos == null) return null;
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(pos.ZoneCode)) parts.Add(pos.ZoneCode);
+            if (!string.IsNullOrEmpty(pos.FirstLevelStorageType)) parts.Add(pos.FirstLevelStorageType);
+            if (!string.IsNullOrEmpty(pos.FLSNumber)) parts.Add(pos.FLSNumber);
+            if (!string.IsNullOrEmpty(pos.SecondLevelStorage)) parts.Add(pos.SecondLevelStorage);
+            if (!string.IsNullOrEmpty(pos.ThirdLevelStorage)) parts.Add(pos.ThirdLevelStorage);
+            return string.Join("-", parts);
         }
 
         [HttpPost("scan-place-bulk")]

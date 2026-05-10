@@ -189,9 +189,12 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId)
         {
             var assignments = await _assemblyRepo.GetByTaskIdAsync(taskId);
+
             return assignments
                 .Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled)
                 .Select(a => a.AssignedToUserId)
+                .Where(id => id.HasValue) // 1. Убираем null значения
+                .Select(id => id.Value)    // 2. Преобразуем int? в int
                 .Distinct()
                 .ToList();
         }

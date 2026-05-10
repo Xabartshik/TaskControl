@@ -27,7 +27,7 @@ namespace TaskControl.TaskModule.Domain
             int id,
             int taskId,
             int orderId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
             double complexity,
             AssignmentRole assignedToRole,
@@ -51,7 +51,7 @@ namespace TaskControl.TaskModule.Domain
         public OrderAssemblyAssignment(
             int taskId,
             int orderId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
             double complexity,
             AssignmentRole role,

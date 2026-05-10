@@ -34,7 +34,7 @@ public static class InventoryAssignmentMapper
         {
             Id = domain.Id,
             TaskId = domain.TaskId,
-            AssignedToUserId = domain.AssignedToUserId,
+            AssignedToUserId = domain.AssignedToUserId ?? 0,
             BranchId = domain.BranchId,
             Status = (int)domain.Status,
             AssignedAt = domain.AssignedAt,

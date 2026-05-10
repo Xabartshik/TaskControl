@@ -69,40 +69,48 @@ namespace TaskControl.TaskModule.Application.Providers
 
             if (assignment == null) return (false, "Активная задача возврата не найдена.");
 
+            // === НОВАЯ ЛОГИКА: ПЕРЕХВАТ СКАНИРОВАНИЯ ЯЧЕЙКИ ИЗ FLUTTER ===
+            // Если мобилка прислала команду изменения ячейки (например: "CELL|45|STORAGE-RACK-01")
+            if (barcode.StartsWith("CELL|"))
+            {
+                var parts = barcode.Split('|');
+                if (parts.Length == 3 && int.TryParse(parts[1], out int lineId))
+                {
+                    string cellCode = parts[2].Trim();
+
+                    var branchPositions = await _db.GetTable<PositionModel>()
+                        .Where(p => p.BranchId == assignment.BranchId)
+                        .ToListAsync();
+
+                    var matchedPos = branchPositions.FirstOrDefault(p => GetFullPositionCode(p) == cellCode);
+
+                    if (matchedPos != null)
+                    {
+                        // Мгновенно сохраняем новую целевую ячейку в базу!
+                        await _db.GetTable<ReturnLineModel>()
+                            .Where(l => l.Id == lineId)
+                            .Set(l => l.TargetPositionId, matchedPos.PositionId)
+                            .UpdateAsync();
+
+                        return (true, $"Товар перенаправлен в ячейку:\n{cellCode}");
+                    }
+                    return (false, $"Ячейка {cellCode} не найдена в этом филиале.");
+                }
+            }
+
+            // === СТАРАЯ ЛОГИКА: СКАНИРОВАНИЕ ШТРИХ-КОДА ТОВАРА ===
             var lines = await _db.GetTable<ReturnLineModel>()
                 .Where(l => l.ReturnAssignmentId == assignment.Id)
                 .ToListAsync();
 
-            var itemPositions = _db.GetTable<ItemPositionModel>();
-            var positions = _db.GetTable<PositionModel>();
-
-            // 1. Пытаемся понять, это сканирование полки или товара?
-            // Допустим, штрих-код полки - это её FLSNumber или PositionId
-            var scannedPosition = await positions.FirstOrDefaultAsync(p => p.FLSNumber == barcode || p.PositionId.ToString() == barcode);
-
-            if (scannedPosition != null)
-            {
-                // Это полка! Привязываем её ко всем отсканированным товарам, у которых еще нет целевой полки
-                var linesToUpdate = lines.Where(l => l.ScannedQuantity > 0 && l.TargetPositionId == null).ToList();
-                if (!linesToUpdate.Any()) return (false, "Нет отсканированных товаров для размещения на эту полку.");
-
-                foreach (var line in linesToUpdate)
-                {
-                    await _db.GetTable<ReturnLineModel>()
-                        .Where(l => l.Id == line.Id)
-                        .Set(l => l.TargetPositionId, scannedPosition.PositionId)
-                        .UpdateAsync();
-                }
-                return (true, $"Полка {scannedPosition.ZoneCode}-{scannedPosition.FLSNumber} привязана к товарам.");
-            }
-
-            // 2. Если это не полка, значит это товар
             if (int.TryParse(barcode, out int itemId))
             {
+                var itemPositions = _db.GetTable<ItemPositionModel>();
                 ReturnLineModel targetLine = null;
+
                 foreach (var line in lines)
                 {
-                    if (line.ScannedQuantity >= line.Quantity) continue; // Этот уже взяли
+                    if (line.ScannedQuantity >= line.Quantity) continue;
 
                     var ip = await itemPositions.FirstOrDefaultAsync(x => x.Id == line.ItemPositionId);
                     if (ip != null && ip.ItemId == itemId)
@@ -112,37 +120,29 @@ namespace TaskControl.TaskModule.Application.Providers
                     }
                 }
 
-                if (targetLine == null) return (false, "Товар не из этого списка возврата или уже собран.");
+                if (targetLine == null) return (false, "Товар не найден или уже собран.");
 
                 await _db.GetTable<ReturnLineModel>()
                     .Where(l => l.Id == targetLine.Id)
                     .Set(l => l.ScannedQuantity, l => l.ScannedQuantity + 1)
                     .UpdateAsync();
 
-                return (true, "Товар отсканирован. Теперь отсканируйте полку хранения, куда вы его кладете.");
+                return (true, "Товар отсканирован.");
             }
 
             return (false, "Неизвестный штрих-код.");
         }
-
-        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? scannedTargetCells = null)
+        public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
         {
-            _logger.LogInformation("[RETURN] Старт завершения задачи {TaskId} (исполнитель {WorkerId})", taskId, workerId);
+            _logger.LogInformation("[RETURN] Завершение возврата {TaskId} (исполнитель {WorkerId})", taskId, workerId);
 
-            // 1. Валидация типа задачи (Защита от ошибок)
             var isOurTask = await _db.GetTable<BaseTaskModel>()
                 .AnyAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
-
-            if (!isOurTask)
-            {
-                _logger.LogError("[RETURN] Попытка вызвать ReturnExecutionProvider для задачи другого типа! TaskId: {TaskId}", taskId);
-                return false;
-            }
+            if (!isOurTask) return false;
 
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
             try
             {
-                // 2. Получаем назначение конкретного сотрудника
                 var currentAssignment = await _db.GetTable<ReturnAssignmentModel>()
                     .FirstOrDefaultAsync(a => a.TaskId == taskId && a.AssignedToUserId == workerId);
 
@@ -154,42 +154,32 @@ namespace TaskControl.TaskModule.Application.Providers
 
                 foreach (var line in lines)
                 {
-                    // 3. Определяем ячейку (приоритет - ввод со сканера)
-                    int finalPosId = (scannedTargetCells != null && scannedTargetCells.TryGetValue(line.Id, out int manualId))
-                        ? manualId
-                        : (line.TargetPositionId ?? 0);
-
-                    if (finalPosId == 0)
+                    // ПРОПУСКАЕМ товары, которые не отсканировали или не назначили ячейку
+                    if (line.ScannedQuantity == 0 || !line.TargetPositionId.HasValue)
                     {
-                        _logger.LogWarning("[RETURN] Для линии {LineId} не указана целевая ячейка. Пропуск.", line.Id);
+                        _logger.LogWarning("[RETURN] Линия {LineId} пропущена: не собрана или нет целевой ячейки.", line.Id);
                         continue;
                     }
 
-                    // 4. Логика перемещения остатков (Консолидация)
-                    var sourceItemPos = await _db.GetTable<ItemPositionModel>()
-                        .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+                    int finalPosId = line.TargetPositionId.Value;
+                    int qtyToMove = line.ScannedQuantity;
 
+                    var sourceItemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
                     if (sourceItemPos != null)
                     {
-                        // Учитываем ScannedQuantity (если вернули меньше, чем лежало в ячейке-источнике)
-                        int qtyToMove = line.Quantity;
                         int sourceOriginalPosId = sourceItemPos.PositionId;
 
-                        // А. Проверяем, есть ли такой товар в целевой ячейке
                         var existingTargetPos = await _db.GetTable<ItemPositionModel>()
                             .FirstOrDefaultAsync(ip => ip.PositionId == finalPosId && ip.ItemId == sourceItemPos.ItemId);
 
+                        // 1. Складываем остатки (Консолидация) или создаем новые
                         if (existingTargetPos != null)
                         {
-                            // Складываем количество (Консолидация)
-                            await _db.GetTable<ItemPositionModel>()
-                                .Where(ip => ip.Id == existingTargetPos.Id)
-                                .Set(ip => ip.Quantity, ip => ip.Quantity + qtyToMove)
-                                .UpdateAsync();
+                            await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == existingTargetPos.Id)
+                                .Set(ip => ip.Quantity, ip => ip.Quantity + qtyToMove).UpdateAsync();
                         }
                         else
                         {
-                            // Создаем новую запись в целевой ячейке
                             await _db.InsertAsync(new ItemPositionModel
                             {
                                 ItemId = sourceItemPos.ItemId,
@@ -199,14 +189,14 @@ namespace TaskControl.TaskModule.Application.Providers
                             });
                         }
 
-                        // Б. Вычитаем из источника
+                        // 2. Вычитаем из источника
                         if (sourceItemPos.Quantity <= qtyToMove)
                             await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
                         else
                             await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == sourceItemPos.Id)
                                 .Set(ip => ip.Quantity, ip => ip.Quantity - qtyToMove).UpdateAsync();
 
-                        // 5. АУДИТ: Запись в историю перемещений
+                        // 3. Логируем перемещение
                         await _db.InsertAsync(new ItemMovementModel
                         {
                             ItemId = sourceItemPos.ItemId,
@@ -217,32 +207,26 @@ namespace TaskControl.TaskModule.Application.Providers
                             CreatedAt = DateTime.UtcNow
                         });
 
-                        // 6. Обновляем статусы ячеек
+                        // 4. Обновляем статусы ячеек
                         await UpdatePositionStatus(sourceOriginalPosId);
                         await _db.GetTable<PositionModel>().Where(p => p.PositionId == finalPosId)
                             .Set(p => p.Status, "Occupied").UpdateAsync();
                     }
                 }
 
-                // 7. КООПЕРАЦИЯ: Если завершает "Main", закрываем всех "Helper"
                 var now = DateTime.UtcNow;
-                var updateQuery = _db.GetTable<ReturnAssignmentModel>().Where(a => a.TaskId == taskId);
-
                 if (currentAssignment.Role == "Main")
                 {
-                    _logger.LogInformation("[RETURN] Main-сотрудник завершил задачу. Закрываем всех помощников.");
-                    await updateQuery
-                        .Set(a => a.Status, 2) // Completed
-                        .Set(a => a.CompletedAt, now)
-                        .UpdateAsync();
+                    await _db.GetTable<ReturnAssignmentModel>().Where(a => a.TaskId == taskId)
+                        .Set(a => a.Status, 3).Set(a => a.CompletedAt, now).UpdateAsync();
+
+                    await _db.GetTable<BaseTaskModel>().Where(t => t.TaskId == taskId)
+                        .Set(t => t.Status, "Completed").UpdateAsync();
                 }
                 else
                 {
-                    await _db.GetTable<ReturnAssignmentModel>()
-                        .Where(a => a.Id == currentAssignment.Id)
-                        .Set(a => a.Status, 2)
-                        .Set(a => a.CompletedAt, now)
-                        .UpdateAsync();
+                    await _db.GetTable<ReturnAssignmentModel>().Where(a => a.Id == currentAssignment.Id)
+                        .Set(a => a.Status, 3).Set(a => a.CompletedAt, now).UpdateAsync();
                 }
 
                 await transaction.CommitAsync();
@@ -251,9 +235,20 @@ namespace TaskControl.TaskModule.Application.Providers
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "[RETURN] Критическая ошибка при завершении TaskId: {TaskId}", taskId);
+                _logger.LogError(ex, "[RETURN] Ошибка при завершении TaskId: {TaskId}", taskId);
                 return false;
             }
+        }
+        private string GetFullPositionCode(PositionModel pos)
+        {
+            if (pos == null) return null;
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(pos.ZoneCode)) parts.Add(pos.ZoneCode);
+            if (!string.IsNullOrEmpty(pos.FirstLevelStorageType)) parts.Add(pos.FirstLevelStorageType);
+            if (!string.IsNullOrEmpty(pos.FLSNumber)) parts.Add(pos.FLSNumber);
+            if (!string.IsNullOrEmpty(pos.SecondLevelStorage)) parts.Add(pos.SecondLevelStorage);
+            if (!string.IsNullOrEmpty(pos.ThirdLevelStorage)) parts.Add(pos.ThirdLevelStorage);
+            return string.Join("-", parts);
         }
 
         private async Task UpdatePositionStatus(int positionId)
