@@ -269,22 +269,22 @@ namespace TaskControl.TaskModule.Application.Providers
                 }
 
                 // === ИНТЕЛЛЕКТУАЛЬНЫЙ ПОДБОР ЦЕЛЕВОЙ ЯЧЕЙКИ ===
-                if (!line.TargetPositionId.HasValue && itemData != null)
-                {
-                    // Вызываем логику автоподбора с учетом габаритов и доступных зон
-                    int? suggestedPosId = await SuggestTargetPositionAsync(itemData.Item, workerAssignment.BranchId);
+                //if (!line.TargetPositionId.HasValue && itemData != null)
+                //{
+                //    // Вызываем логику автоподбора с учетом габаритов и доступных зон
+                //    int? suggestedPosId = await SuggestTargetPositionAsync(itemData.Item, workerAssignment.BranchId);
 
-                    if (suggestedPosId.HasValue)
-                    {
-                        // Фиксируем выбор в базе данных
-                        await _db.GetTable<ReturnLineModel>()
-                            .Where(l => l.Id == line.Id)
-                            .Set(l => l.TargetPositionId, suggestedPosId.Value)
-                            .UpdateAsync();
+                //    if (suggestedPosId.HasValue)
+                //    {
+                //        // Фиксируем выбор в базе данных
+                //        await _db.GetTable<ReturnLineModel>()
+                //            .Where(l => l.Id == line.Id)
+                //            .Set(l => l.TargetPositionId, suggestedPosId.Value)
+                //            .UpdateAsync();
 
-                        line.TargetPositionId = suggestedPosId.Value;
-                    }
-                }
+                //        line.TargetPositionId = suggestedPosId.Value;
+                //    }
+                //}
 
                 string targetCellCode = null;
                 if (line.TargetPositionId.HasValue)

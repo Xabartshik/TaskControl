@@ -9,5 +9,6 @@ namespace TaskControl.OrderModule.Application.Interface
     public interface IOrderService : IService<OrderDto>
     {
         Task<IEnumerable<OrderDto>> GetByCustomerAsync(int customerId);
+        Task<bool> CancelOrderAsync(int id);
     }
 }

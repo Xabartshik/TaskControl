@@ -74,6 +74,53 @@ namespace TaskControl.OrderModule.Application.Services
             }
         }
 
+        public async Task<bool> CancelOrderAsync(int id)
+        {
+            _logger.LogInformation("Попытка отмены заказа ID: {OrderId}", id);
+
+            try
+            {
+                // 1. Получаем заказ из БД
+                var order = await _repository.GetByIdAsync(id);
+
+                if (order == null)
+                {
+                    _logger.LogWarning("Заказ ID: {OrderId} не найден при попытке отмены", id);
+                    return false;
+                }
+
+                // 2. Защита от некорректной смены статуса
+                if (order.Status == OrderStatus.Completed || order.Status == OrderStatus.Cancelled)
+                {
+                    _logger.LogWarning("Отказ: заказ ID: {OrderId} уже находится в финальном статусе {Status}", id, order.Status);
+                    return false; // Нельзя отменить то, что уже завершено или отменено
+                }
+
+                // 3. Меняем статус
+                order.Status = OrderStatus.Cancelled;
+                var result = await _repository.UpdateAsync(order) == 1;
+
+                if (result)
+                {
+                    _logger.LogInformation("Заказ ID: {OrderId} успешно отменен", id);
+
+                    // ========================================================================
+                    // ВАЖНО ДЛЯ WMS: Здесь в будущем нужно добавить вызов снятия резервов!
+                    // Если статус был "Created", нужно просто освободить товар на полках:
+                    // await _itemAllocationService.ReleaseOrderItemsAsync(id);
+                    // Если статус "Assembly" или "Ready" - нужно сгенерировать задачу ReturnToStock
+                    // ========================================================================
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Критическая ошибка при отмене заказа ID: {OrderId}", id);
+                throw;
+            }
+        }
+
         public async Task<int> Add(OrderDto dto)
         {
             if (_appSettings.EnableDetailedLogging)

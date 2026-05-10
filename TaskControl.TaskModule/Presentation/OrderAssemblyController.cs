@@ -37,39 +37,54 @@ namespace TaskControl.TaskModule.Presentation
         public class ExpressHandoverRequest
         {
             public string QrToken { get; set; }
+            // ДОБАВЛЕНО: Словарь отмененных позиций (LineId -> Количество отмены)
+            public Dictionary<int, int>? CancelledLines { get; set; }
+        }
+
+        public class VerifyQrRequest
+        {
+            public string QrToken { get; set; }
+        }
+
+        [HttpPost("assignment/{assignmentId}/verify-qr")]
+        public async Task<IActionResult> VerifyQr(int assignmentId, [FromBody] VerifyQrRequest req)
+        {
+            try
+            {
+                var result = await _executionService.VerifyHandoverTokenAsync(assignmentId, req.QrToken);
+
+                if (result.Success)
+                    return Ok(new { Message = result.Message });
+
+                return BadRequest(result.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при верификации QR-кода.");
+                return StatusCode(500, ex.Message);
+            }
         }
 
         /// <summary>
         /// Эндпоинт для выдачи экспресс-заказа "из рук в руки" через сканирование QR клиента
         /// </summary>
         [HttpPost("assignment/{assignmentId}/express-handover")]
-        public async Task<IActionResult> HandoverExpressOrder(int assignmentId, [FromBody] ExpressHandoverRequest request)
+        public async Task<IActionResult> HandoverExpressOrder(int assignmentId, [FromBody] ExpressHandoverRequest req)
         {
-            if (string.IsNullOrWhiteSpace(request?.QrToken))
-            {
-                return BadRequest(new { message = "QR-токен не может быть пустым." });
-            }
-
             try
             {
-                await _executionService.HandoverExpressOrderAsync(assignmentId, request.QrToken);
-                return Ok(new { message = "Товар успешно передан клиенту, заказ завершен." });
-            }
-            catch (ArgumentException ex)
-            {
-                // ДОБАВЛЕНО ЛОГИРОВАНИЕ: Теперь ты увидишь это в консоли желтым цветом
-                _logger.LogWarning("Ошибка валидации при выдаче (AssignmentId: {Id}): {Message}", assignmentId, ex.Message);
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogWarning("Конфликт при выдаче (AssignmentId: {Id}): {Message}", assignmentId, ex.Message);
-                return Conflict(new { message = ex.Message });
+                // ИЗМЕНЕНИЕ: Передаем req.CancelledLines в сервис
+                var result = await _executionService.HandoverExpressOrder(assignmentId, req.QrToken, req.CancelledLines);
+
+                if (result.Success)
+                    return Ok(new { Message = result.Message });
+
+                return BadRequest(result.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при экспресс-выдаче (AssignmentId: {AssignmentId})", assignmentId);
-                return StatusCode(500, "Внутренняя ошибка сервера.");
+                _logger.LogError(ex, "Ошибка при экспресс-выдаче.");
+                return StatusCode(500, ex.Message);
             }
         }
 

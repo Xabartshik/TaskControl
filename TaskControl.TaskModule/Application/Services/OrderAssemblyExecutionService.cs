@@ -32,6 +32,7 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly ITaskDataConnection _db;
         private readonly IQRTokenService _qrTokenService;
         private readonly ITaskComplexityCalculator _complexityCalculator;
+        private readonly ReturnTaskGeneratorService _returnTaskGenerator;
 
         public OrderAssemblyExecutionService(
             IOrderAssemblyAssignmentRepository assignmentRepo,
@@ -42,7 +43,8 @@ namespace TaskControl.TaskModule.Application.Services
             ITelemetryService telemetryService,
             TaskWorkloadAggregator aggregator, 
             ITaskDataConnection db,
-            ITaskComplexityCalculator complexityCalculator)
+            ITaskComplexityCalculator complexityCalculator,
+            ReturnTaskGeneratorService returnTaskGenerator)
         {
             _assignmentRepo = assignmentRepo ?? throw new ArgumentNullException(nameof(assignmentRepo));
             _lineRepo = lineRepo ?? throw new ArgumentNullException(nameof(lineRepo));
@@ -53,57 +55,178 @@ namespace TaskControl.TaskModule.Application.Services
             _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
             _complexityCalculator = complexityCalculator ?? throw new ArgumentNullException(nameof(complexityCalculator));
+            _returnTaskGenerator = returnTaskGenerator ?? throw new ArgumentNullException(nameof(returnTaskGenerator));
         }
 
-        public async Task<bool> HandoverExpressOrderAsync(int assignmentId, string qrToken)
+
+
+        public async Task<(bool Success, string Message)> VerifyHandoverTokenAsync(int assignmentId, string qrToken)
+        {
+            var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
+            if (assignment == null) return (false, "Назначение сборки не найдено");
+
+            var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == assignment.OrderId);
+            if (order == null) return (false, "Заказ не найден");
+
+            if (order.DeliveryType != DeliveryType.Express.ToString())
+                return (false, "Этот заказ не предназначен для экспресс-выдачи.");
+
+            // Валидация самого токена через QRTokenService
+            if (!_qrTokenService.ValidateOrderPickupToken(qrToken, out int tokenCustomerId, out int tokenOrderId, out string errorMessage))
+            {
+                return (false, $"Ошибка QR-кода: {errorMessage}");
+            }
+
+            // Сверка токена с текущим заказом
+            if (order.CustomerId != tokenCustomerId || order.OrderId != tokenOrderId)
+            {
+                return (false, "QR-код не принадлежит этому заказу!");
+            }
+
+            return (true, "QR-код подтвержден.");
+        }
+
+        public async Task<(bool Success, string Message)> HandoverExpressOrder(int assignmentId, string qrToken, Dictionary<int, int>? cancelledLines = null)
         {
             // 1. Получаем назначение и заказ
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
-            if (assignment == null) throw new ArgumentException("Назначение сборки не найдено");
+            if (assignment == null) return (false, "Назначение сборки не найдено");
 
             var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == assignment.OrderId);
-            if (order == null) throw new ArgumentException("Заказ не найден");
+            if (order == null) return (false, "Заказ не найден");
 
             if (order.DeliveryType != DeliveryType.Express.ToString())
-                throw new InvalidOperationException("Этот метод предназначен только для Экспресс-выдачи.");
+                return (false, "Этот метод предназначен только для Экспресс-выдачи.");
 
             // 2. Валидация QR-кода покупателя
             if (!_qrTokenService.ValidateOrderPickupToken(qrToken, out int tokenCustomerId, out int tokenOrderId, out string errorMessage))
             {
-                throw new ArgumentException($"Ошибка QR-кода: {errorMessage}");
+                return (false, $"Ошибка QR-кода: {errorMessage}");
             }
 
-            // Защита: проверяем, что QR принадлежит именно этому клиенту и этому заказу
             if (order.CustomerId != tokenCustomerId || order.OrderId != tokenOrderId)
             {
-                throw new ArgumentException("QR-код не принадлежит этому заказу!");
+                return (false, "QR-код не принадлежит этому заказу!");
             }
 
-            // 3. Переводим все собранные (Picked) товары в статус размещенных (Placed)
-            // Концептуально - мы "размещаем" их прямо в руки клиенту (в зону EXPRESS)
             var linesToPlace = assignment.Lines.Where(l => l.Status == OrderAssemblyLineStatus.Picked).ToList();
+            var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
+
+            // === 3. НОВАЯ ЛОГИКА: ОБРАБОТКА ЧАСТИЧНОЙ ОТМЕНЫ ===
+            // === 3. НОВАЯ ЛОГИКА: ОБРАБОТКА ЧАСТИЧНОЙ ОТМЕНЫ ===
+            if (cancelledLines != null && cancelledLines.Any())
+            {
+                foreach (var kvp in cancelledLines)
+                {
+                    int lineId = kvp.Key;
+                    int cancelQty = kvp.Value;
+
+                    var line = linesToPlace.FirstOrDefault(l => l.Id == lineId);
+                    if (line == null || cancelQty <= 0) continue;
+
+                    // Защита от превышения количества
+                    if (cancelQty > line.Quantity) cancelQty = line.Quantity;
+
+                    // Откладываем данные для генератора задач возврата
+                    itemsToReturn.Add((line.ItemPositionId, cancelQty));
+
+                    // Ищем этот товар в чеке клиента (Ваша оригинальная рабочая логика)
+                    var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+                    if (itemPos != null)
+                    {
+                        var orderPosition = await _db.GetTable<OrderPositionModel>()
+                            .FirstOrDefaultAsync(op => op.OrderId == order.OrderId && op.ItemId == itemPos.ItemId);
+
+                        if (orderPosition != null)
+                        {
+                            // === ИСПРАВЛЕНИЕ ОШИБКИ 23503: СНИМАЕМ РЕЗЕРВЫ ПЕРВООЧЕРЕДНО ===
+                            // Ищем резерв, ссылающийся на эту позицию чека
+                            var reservation = await _db.GetTable<OrderReservationModel>()
+                                .FirstOrDefaultAsync(r => r.OrderPositionId == orderPosition.UniqueId);
+
+                            if (reservation != null)
+                            {
+                                if (orderPosition.Quantity <= cancelQty)
+                                {
+                                    // Удаляем резерв полностью
+                                    await _db.GetTable<OrderReservationModel>().Where(r => r.Id == reservation.Id).DeleteAsync();
+                                }
+                                else
+                                {
+                                    // Уменьшаем количество в резерве
+                                    await _db.GetTable<OrderReservationModel>().Where(r => r.Id == reservation.Id)
+                                        .Set(r => r.Quantity, r => r.Quantity - cancelQty).UpdateAsync();
+                                }
+                            }
+                            // ===============================================================
+
+                            // === ВАША ОРИГИНАЛЬНАЯ ЛОГИКА ОБНОВЛЕНИЯ ЧЕКА ===
+                            if (orderPosition.Quantity <= cancelQty)
+                            {
+                                // Теперь база разрешит удалить эту позицию
+                                await _db.GetTable<OrderPositionModel>().Where(op => op.UniqueId == orderPosition.UniqueId).DeleteAsync();
+                                await _db.GetTable<OrderModel>()
+                                    .Where(o => o.OrderId == order.OrderId)
+                                    .Set(o => o.TotalPrice, o => o.TotalPrice - orderPosition.Price)
+                                    .UpdateAsync();
+                            }
+                            else
+                            {
+                                // Уменьшаем количество и цену в чеке
+                                decimal unitPrice = orderPosition.Price / orderPosition.Quantity;
+                                decimal priceToDeduct = unitPrice * cancelQty;
+
+                                await _db.GetTable<OrderPositionModel>()
+                                    .Where(op => op.UniqueId == orderPosition.UniqueId)
+                                    .Set(op => op.Quantity, op => op.Quantity - cancelQty)
+                                    .Set(op => op.Price, op => op.Price - priceToDeduct)
+                                    .UpdateAsync();
+
+                                await _db.GetTable<OrderModel>()
+                                    .Where(o => o.OrderId == order.OrderId)
+                                    .Set(o => o.TotalPrice, o => o.TotalPrice - priceToDeduct)
+                                    .UpdateAsync();
+                            }
+                        }
+                    }
+                }
+            }
+            // 4. Переводим собранные товары в статус размещенных (в руки)
             foreach (var line in linesToPlace)
             {
                 line.MarkAsPlaced();
                 await _lineRepo.UpdateAsync(line);
             }
 
-            // 4. Штатно завершаем задачу сборки (это спишет товары со склада и переместит в виртуальную ячейку выдачи)
+            // 5. Штатно завершаем задачу сборки (она спишет со склада ВСЁ количество, включая отмены)
             await CompleteAssemblyTask(assignmentId);
 
-            // 5. Переводим заказ сразу в Completed (т.к. клиент уже забрал товар)
-            // В CompleteAssemblyTask он переводится в Assembled/Ready, поэтому мы делаем финальный апдейт
+            // 6. Проверяем, не отменили ли заказ целиком
+            var remainingPositions = await _db.GetTable<OrderPositionModel>().Where(op => op.OrderId == order.OrderId).ToListAsync();
+            string finalStatus = remainingPositions.Any() ? "Completed" : "Cancelled";
+
             await _db.GetTable<OrderModel>()
                 .Where(o => o.OrderId == order.OrderId)
-                .Set(o => o.Status, OrderStatus.Completed.ToString()) // Ставим финальный статус
+                .Set(o => o.Status, finalStatus)
                 .UpdateAsync();
 
-            _logger.LogInformation("|   [Express] Экспресс-заказ #{OrderId} успешно выдан клиенту {CustomerId} напрямую со сборки",
-                order.OrderId, order.CustomerId);
+            // 7. Генерируем задачу на возврат отказных товаров обратно на склад
+            if (itemsToReturn.Any())
+            {
+                await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(order.OrderId, assignment.BranchId, itemsToReturn);
+                _logger.LogInformation("|   [Express] Создана задача на возврат {Count} позиций для экспресс-заказа #{OrderId}", itemsToReturn.Count, order.OrderId);
 
-            return true;
+                // ИЗМЕНЕНИЕ: Возвращаем кортеж с информативным сообщением
+                return (true, $"Заказ выдан частично. Создана задача на возврат {itemsToReturn.Count} товаров.");
+            }
+            else
+            {
+                _logger.LogInformation("|   [Express] Экспресс-заказ #{OrderId} выдан клиенту полностью", order.OrderId);
+
+                // ИЗМЕНЕНИЕ: Возвращаем кортеж с успехом
+                return (true, "Экспресс-заказ успешно выдан полностью.");
+            }
         }
-
         //public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
         //{
         //    if (_appSettings.EnableDetailedLogging)

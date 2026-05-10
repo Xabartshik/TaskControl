@@ -72,11 +72,11 @@ namespace TaskControl.TaskModule.Application.Interface
     {
         Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId);
         Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId);
-        Task<bool> HandoverExpressOrderAsync(int assignmentId, string qrToken);
+        Task<(bool Success, string Message)> HandoverExpressOrder(int assignmentId, string qrToken, Dictionary<int, int>? cancelledLines = null);
         Task<bool> StartAssemblyAsync(int assignmentId);
         Task<bool> PauseAssemblyAsync(int assignmentId);
         Task<bool> CancelAssemblyAsync(int assignmentId);
-
+        Task<(bool Success, string Message)> VerifyHandoverTokenAsync(int assignmentId, string qrToken);
         Task ScanAndPickItem(int lineId, string scannedBarcode);
         Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode);
         Task ReportMissingItem(int lineId, string reason);

@@ -210,7 +210,7 @@ namespace TaskControl.TaskModule.Application.Providers
                         // 4. Обновляем статусы ячеек
                         await UpdatePositionStatus(sourceOriginalPosId);
                         await _db.GetTable<PositionModel>().Where(p => p.PositionId == finalPosId)
-                            .Set(p => p.Status, "Occupied").UpdateAsync();
+                            .Set(p => p.Status, "Active").UpdateAsync();
                     }
                 }
 

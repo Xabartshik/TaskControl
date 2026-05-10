@@ -82,6 +82,30 @@ namespace TaskControl.OrderModule.Presentation.Controllers
             return Ok(record);
         }
 
+        /// <summary>
+        /// Отменить заказ покупателя
+        /// </summary>
+        [HttpPost("{id}/cancel")]
+        public async Task<IActionResult> CancelOrder(int id)
+        {
+            try
+            {
+                var result = await _service.CancelOrderAsync(id);
+
+                if (!result)
+                {
+                    return BadRequest(new { message = "Не удалось отменить заказ. Возможно, он не существует или уже завершен." });
+                }
+
+                return Ok(new { message = "Заказ успешно отменен" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при отмене заказа ID: {OrderId} через API", id);
+                return StatusCode(500, new { message = "Внутренняя ошибка сервера при отмене заказа" });
+            }
+        }
+
         [HttpPost]
         public async Task<ActionResult<int>> Add([FromBody] OrderDto dto)
         {

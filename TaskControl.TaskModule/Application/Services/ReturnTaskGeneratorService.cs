@@ -121,16 +121,61 @@ namespace TaskControl.TaskModule.Application.Services
             }
             foreach (var item in itemsToReturn)
             {
+                int? suggestedPosId = null;
+
+                // Достаем товар из БД, чтобы узнать его габариты
+                var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == item.ItemPositionId);
+                if (itemPos != null)
+                {
+                    var itemModel = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
+                    if (itemModel != null)
+                    {
+                        // Вычисляем целевую ячейку в момент ГЕНЕРАЦИИ задачи
+                        suggestedPosId = await SuggestTargetPositionAsync(itemModel, branchId);
+                    }
+                }
+
                 await _db.InsertAsync(new ReturnLineModel
                 {
                     ReturnAssignmentId = returnAssignmentId,
                     ItemPositionId = item.ItemPositionId,
                     Quantity = item.Qty,
-                    ScannedQuantity = 0
+                    ScannedQuantity = 0,
+                    TargetPositionId = suggestedPosId // <--- Сразу сохраняем ячейку в БД
                 });
             }
 
             return returnTaskId;
+        }
+
+        private async Task<int?> SuggestTargetPositionAsync(ItemModel item, int branchId)
+        {
+            var reservedZones = new[] { "PICKUP", "BULK", "COURIER", "EXPRESS" };
+
+            // 1. Консолидация (ищем, где уже лежит такой товар)
+            var existingPos = await (from p in _db.GetTable<PositionModel>()
+                                     join ip in _db.GetTable<ItemPositionModel>() on p.PositionId equals ip.PositionId
+                                     where p.BranchId == branchId && !reservedZones.Contains(p.ZoneCode) && ip.ItemId == item.ItemId
+                                     select p.PositionId).FirstOrDefaultAsync();
+
+            if (existingPos != 0) return existingPos;
+
+            // 2. Поиск пустой полки по габаритам
+            var emptyFittedPos = await (from p in _db.GetTable<PositionModel>()
+                                        where p.BranchId == branchId && !reservedZones.Contains(p.ZoneCode) && p.Status == "Active"
+                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                           && (p.Length >= item.Length && p.Width >= item.Width && p.Height >= item.Height)
+                                        select p.PositionId).FirstOrDefaultAsync();
+
+            if (emptyFittedPos != 0) return emptyFittedPos;
+
+            // 3. Запасной вариант (любая пустая активная ячейка)
+            var fallbackPos = await (from p in _db.GetTable<PositionModel>()
+                                     where p.BranchId == branchId && !reservedZones.Contains(p.ZoneCode) && p.Status == "Active"
+                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                     select p.PositionId).FirstOrDefaultAsync();
+
+            return fallbackPos != 0 ? fallbackPos : null;
         }
     }
 }

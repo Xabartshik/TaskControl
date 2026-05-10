@@ -706,7 +706,8 @@ namespace TaskControl.Web.Controllers
                     inventory_assignments, 
                     active_assigned_tasks,
                     return_assignments,
-                    base_tasks, 
+                    base_tasks,
+                    return_lines,
                     orders 
                 RESTART IDENTITY CASCADE;";
 
