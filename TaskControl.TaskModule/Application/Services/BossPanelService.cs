@@ -107,20 +107,14 @@ namespace TaskControl.TaskModule.Application.Services
                 // Проверяем по строковому полю Role или наличию транспорта
                 if (capability != null || emp.Role == "Курьер" || emp.Role == "Courier")
                 {
-                    // --- ДОБАВЛЕНА ЛОГИКА DISPATCH ---
                     // Ищем самую последнюю отметку курьера
                     var latestCheck = recentChecks
                         .Where(c => c.EmployeeId == emp.EmployeeId)
                         .OrderByDescending(c => c.CheckTimeStamp)
                         .FirstOrDefault();
 
-                    // Если курьер "уехал" (dispatch) - он физически не на базе.
-                    // Прячем его с экрана логиста, чтобы ему не назначили новые заказы.
-                    if (latestCheck != null && latestCheck.CheckType == "dispatch")
-                    {
-                        continue;
-                    }
-                    // ---------------------------------
+                    // Определяем статус курьера: уехал он или на базе
+                    bool isOnRoute = latestCheck != null && latestCheck.CheckType == "dispatch";
 
                     result.Add(new AvailableEmployeeDto
                     {
@@ -132,6 +126,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                         // Переводим граммы в килограммы (DB: max_weight_grams)
                         MaxWeightKg = capability != null ? capability.MaxWeightGrams / 1000.0 : 0.0,
+
                         // Если есть ID типа ТС — выводим, иначе заглушка
                         VehicleName = capability != null
                             ? (capability.VehicleTypeId switch
@@ -143,7 +138,10 @@ namespace TaskControl.TaskModule.Application.Services
                                 5 => "Грузовик",
                                 _ => $"Неизвестно (ID: {capability.VehicleTypeId})"
                             })
-                            : "Пеший / Не указан"
+                            : "Пеший / Не указан",
+
+                        // Присваиваем статус
+                        IsOnRoute = isOnRoute
                     });
                 }
             }

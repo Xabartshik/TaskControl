@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.DataAccess.Model;
@@ -13,6 +14,7 @@ using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Models;
+using TaskControl.TaskModule.Application.Services; // <-- ДОБАВЛЕНО ДЛЯ СЕРВИСА
 
 namespace TaskControl.Web.Controllers
 {
@@ -26,11 +28,16 @@ namespace TaskControl.Web.Controllers
     {
         private readonly ITaskDataConnection _db;
         private readonly ILogger<DebugController> _logger;
+        private readonly ReturnTaskGeneratorService _returnTaskGenerator; // <-- ДОБАВЛЕНО
 
-        public DebugController(ITaskDataConnection db, ILogger<DebugController> logger)
+        public DebugController(
+            ITaskDataConnection db, 
+            ILogger<DebugController> logger,
+            ReturnTaskGeneratorService returnTaskGenerator) // <-- ДОБАВЛЕНО В КОНСТРУКТОР
         {
             _db = db;
             _logger = logger;
+            _returnTaskGenerator = returnTaskGenerator;
         }
 
         /// <summary>
@@ -350,6 +357,222 @@ namespace TaskControl.Web.Controllers
         }
 
         /// <summary>
+        /// ЧИТ-КОД 8: Мгновенная генерация кооперативной задачи выдачи (на 2 человека).
+        /// Создает тяжелый заказ (50кг+) и два пустых назначения (Main и Helper) в общем пуле.
+        /// </summary>
+        [HttpPost("tasks/generate-cooperative-handover")]
+        public async Task<IActionResult> GenerateCooperativeHandover([FromQuery] int branchId = 1)
+        {
+            _logger.LogInformation("|   [DEBUG] Генерация кооперативной задачи выдачи для филиала {BranchId}", branchId);
+            var db = (DataConnection)_db;
+            using var transaction = await db.BeginTransactionAsync();
+            try
+            {
+                // 1. Берем самый тяжелый товар из базы (эмулируем холодильник)
+                var heavyItem = await db.GetTable<ItemModel>()
+                    .OrderByDescending(i => i.Weight)
+                    .FirstOrDefaultAsync();
+
+                if (heavyItem == null) return BadRequest("Товары не найдены в БД.");
+                // 2. Создаем тестовый заказ (с добавлением обязательных полей)
+                int orderId = await db.InsertWithInt32IdentityAsync(new OrderModel
+                {
+                    CustomerId = 1,
+                    BranchId = branchId,
+                    Status = "Ready",
+                    DeliveryType = "Pickup",
+                    PaymentType = "Prepaid", // <-- ИСПРАВЛЕНИЕ: Добавлено обязательное поле
+                    DestinationAddress = "Самовывоз со склада", // Тоже лучше заполнить
+                    CreatedAt = DateTime.UtcNow,
+                    DeliveryDate = DateTime.UtcNow,
+                    TotalPrice = 50000
+                });
+
+                // 3. Создаем позицию заказа и физический остаток в зоне выдачи (PICKUP)
+                var pickupPos = await db.GetTable<PositionModel>().FirstOrDefaultAsync(p => p.ZoneCode == "PICKUP")
+                                ?? await db.GetTable<PositionModel>().FirstAsync();
+
+                int itemPosId = await db.InsertWithInt32IdentityAsync(new ItemPositionModel
+                {
+                    ItemId = heavyItem.ItemId,
+                    PositionId = pickupPos.PositionId,
+                    Quantity = 1,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                int orderPosId = await db.InsertWithInt32IdentityAsync(new OrderPositionModel
+                {
+                    OrderId = orderId,
+                    ItemId = heavyItem.ItemId,
+                    Quantity = 1,
+                    Price = 50000
+                });
+
+                // 4. Резервируем товар
+                await db.InsertAsync(new OrderReservationModel
+                {
+                    OrderPositionId = orderPosId,
+                    ItemPositionId = itemPosId,
+                    Quantity = 1,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // 5. Рассчитываем сложность через наш калькулятор
+                // (Эмулируем параметры для тяжелого товара)
+                double totalWeightKg = (double)heavyItem.Weight / 1000.0;
+
+                // Используем DI для доступа к калькулятору или эмулируем логику 60/40
+                double totalComplexity = 10.0 + (totalWeightKg * 0.1);
+                double mainComplexity = Math.Round(totalComplexity * 0.6, 2);
+                double helperComplexity = Math.Round(totalComplexity * 0.4, 2);
+
+                // 6. Создаем Базовую Задачу
+                int taskId = await db.InsertWithInt32IdentityAsync(new BaseTaskModel
+                {
+                    Title = $"[КООПЕРАЦИЯ] Выдача: {heavyItem.Name}",
+                    Type = "OrderHandover",
+                    Status = "New",
+                    PriorityLevel = 5, // Высокий приоритет для тяжелых заказов
+                    BranchId = branchId,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // 7. Создаем ДВА ПУСТЫХ назначения (Main и Helper)
+                // Именно отсутствие AssignedToUserId заставит их отображаться в общем пуле
+                int mainAssignmentId = await db.InsertWithInt32IdentityAsync(new OrderHandoverAssignmentModel
+                {
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    HandoverType = "ToCustomer",
+                    Status = 0, // New
+                    Role = "Main",
+                    Complexity = mainComplexity,
+                    AssignedAt = DateTime.UtcNow,
+                    AssignedToUserId = null // Вакансия
+                });
+
+                await db.InsertAsync(new OrderHandoverAssignmentModel
+                {
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    HandoverType = "ToCustomer",
+                    Status = 0, // New
+                    Role = "Helper",
+                    Complexity = helperComplexity,
+                    AssignedAt = DateTime.UtcNow,
+                    AssignedToUserId = null // Вакансия
+                });
+
+                // 8. Создаем строки выдачи для Main-назначения
+                await db.InsertAsync(new OrderHandoverLineModel
+                {
+                    OrderHandoverAssignmentId = mainAssignmentId,
+                    OrderPositionId = orderPosId,
+                    ItemPositionId = itemPosId,
+                    Quantity = 1,
+                    ScannedQuantity = 0,
+                    CancelledQuantity = 0
+                });
+
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    Message = "Кооперативная задача успешно создана. В общем пуле должны появиться назначения Main и Helper.",
+                    TaskId = taskId,
+                    OrderId = orderId,
+                    ItemName = heavyItem.Name,
+                    Weight = totalWeightKg
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в GenerateCooperativeHandover");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        // ==========================================
+        // ИЗМЕНЕННЫЙ ЭНДПОИНТ (ИСПОЛЬЗУЕТ СЕРВИС)
+        // ==========================================
+        [HttpPost("tasks/generate-return")]
+        public async Task<IActionResult> GenerateReturnTask([FromQuery] int branchId = 1)
+        {
+            _logger.LogInformation("|   [DEBUG] Быстрая генерация задачи ReturnToStock для филиала {BranchId} через Сервис-Генератор", branchId);
+            var db = (DataConnection)_db;
+            
+            int itemPosId = 0;
+            ItemModel item = null;
+
+            // ШАГ 1: Создаем фейковый остаток (эмуляция отказного товара в багажнике курьера)
+            using (var transaction = await db.BeginTransactionAsync())
+            {
+                try
+                {
+                    // Берем случайный товар для теста
+                    item = await db.GetTable<ItemModel>().OrderBy(_ => Guid.NewGuid()).FirstOrDefaultAsync();
+                    if (item == null) return BadRequest("Товары не найдены в БД.");
+
+                    // Находим ячейку-источник (PICKUP или COURIER)
+                    var sourcePosition = await db.GetTable<PositionModel>()
+                        .FirstOrDefaultAsync(p => p.ZoneCode == "PICKUP" || p.ZoneCode == "COURIER")
+                        ?? await db.GetTable<PositionModel>().FirstAsync();
+
+                    // Физический остаток в ячейке
+                    itemPosId = await db.InsertWithInt32IdentityAsync(new ItemPositionModel
+                    {
+                        ItemId = item.ItemId,
+                        PositionId = sourcePosition.PositionId,
+                        Quantity = 1,
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(500, $"Ошибка при подготовке тестовых данных: {ex.Message}");
+                }
+            }
+
+            // ШАГ 2: Формируем список для генератора
+            var itemsToReturn = new List<(int ItemPositionId, int Qty)> { (itemPosId, 1) };
+
+            // ШАГ 3: Вызываем сервис! Он сам посчитает вес, сложность и НАЙДЕТ помощника
+            int? taskId = await _returnTaskGenerator.GenerateReturnTaskForCourierAsync(999, branchId, itemsToReturn);
+
+            return Ok(new 
+            { 
+                Message = "Задача возврата успешно создана через ReturnTaskGeneratorService", 
+                TaskId = taskId,
+                ItemName = item?.Name,
+                Weight = item?.Weight
+            });
+        }
+        // ==========================================
+
+
+        [HttpGet("cell/{positionId}/inspect")]
+        public async Task<IActionResult> InspectCell(int positionId)
+        {
+            var pos = await _db.GetTable<PositionModel>().FirstOrDefaultAsync(p => p.PositionId == positionId);
+            var items = await _db.GetTable<ItemPositionModel>().Where(ip => ip.PositionId == positionId).ToListAsync();
+
+            // Логируем для отладки "зависших" статусов
+            _logger.LogInformation("|   [DEBUG] Инспекция ячейки {Id}: Статус={Status}, Кол-во записей={Count}",
+                positionId, pos?.Status, items.Count);
+
+            return Ok(new
+            {
+                CellId = positionId,
+                Status = pos?.Status,
+                Items = items.Select(i => new { i.Id, i.ItemId, i.Quantity })
+            });
+        }
+
+        /// <summary>
         /// ЧИТ-КОД 4: ГЛОБАЛЬНАЯ ОЧИСТКА БАЗЫ (Полный сброс)
         /// Аналог TRUNCATE ... RESTART IDENTITY CASCADE.
         /// Удаляет заказы, задачи, инвентаризацию и сбрасывает ID.
@@ -365,7 +588,8 @@ namespace TaskControl.Web.Controllers
                     inventory_statistics, 
                     inventory_assignment_lines, 
                     inventory_assignments, 
-                    active_assigned_tasks, 
+                    active_assigned_tasks,
+                    return_assignments,
                     base_tasks, 
                     orders 
                 RESTART IDENTITY CASCADE;";
@@ -532,23 +756,6 @@ namespace TaskControl.Web.Controllers
             }
 
             return Ok(new { Message = $"Событие 'Прибытие' для курьера {courierId} отправлено. Задачи возврата должны быть созданы." });
-        }
-
-        /// <summary>
-        /// ДИАГНОСТИКА: Проверка состояния ячейки и её содержимого.
-        /// </summary>
-        [HttpGet("cell/{positionId}/inspect")]
-        public async Task<IActionResult> InspectCell(int positionId)
-        {
-            var pos = await _db.GetTable<PositionModel>().FirstOrDefaultAsync(p => p.PositionId == positionId);
-            var items = await _db.GetTable<ItemPositionModel>().Where(ip => ip.PositionId == positionId).ToListAsync();
-
-            return Ok(new
-            {
-                CellStatus = pos?.Status,
-                CellCode = pos?.FLSNumber,
-                ItemsInCell = items.Select(i => new { i.ItemId, i.Quantity })
-            });
         }
     }
 }

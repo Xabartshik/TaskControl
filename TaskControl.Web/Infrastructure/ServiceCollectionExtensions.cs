@@ -45,6 +45,7 @@ using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Domain;
 using TaskControl.TaskModule.Presentation.Controllers;
 
 namespace TaskControl.Core.Infrastructure
@@ -212,6 +213,10 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<HandoverTaskGeneratorService>();
             services.AddScoped<IEmployeeCheckInObserver, ReturnTaskGeneratorObserver>();
             services.AddScoped<ITaskExecutionProvider, ReturnExecutionProvider>();
+            services.AddScoped<ITaskWorkloadProvider, ReturnWorkloadProvider>();
+
+            services.AddSingleton<ITaskComplexityCalculator, TaskComplexityCalculator>();
+            services.AddScoped<ReturnTaskGeneratorService>();
 
             return services;
         }

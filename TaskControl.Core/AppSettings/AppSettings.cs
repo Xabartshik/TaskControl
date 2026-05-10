@@ -40,5 +40,6 @@ namespace TaskControl.Core.AppSettings
         /// Максимально допустимый вес одного товара (или всего заказа) для постамата (в граммах)
         /// </summary>
         public int PostamatMaxWeightGrams { get; set; } = 15000; // 15 кг
+        public double CartCapacityM3 { get; set; } = 0.15;
     }
 }

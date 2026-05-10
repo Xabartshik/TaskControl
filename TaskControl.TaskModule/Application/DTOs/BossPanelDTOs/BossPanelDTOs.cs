@@ -49,6 +49,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public bool IsRecommended { get; set; }
         public double MaxWeightKg { get; set; }
         public string VehicleName { get; set; }
+        public bool IsOnRoute { get; set; }
     }
     public class AvailableOrderDto
     {

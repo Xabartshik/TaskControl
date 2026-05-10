@@ -33,22 +33,24 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId)
         {
-            // Связываем назначения с базовой таблицей задач, чтобы отфильтровать по BranchId
-            var unassignedHandoverTaskIds = await (
+            // ИСПРАВЛЕНИЕ: Фильтр в Общем пуле. 
+            // Помощник видит задачу только если роль Main уже кем-то занята.
+            var availableTasks = await (
                 from a in _db.GetTable<OrderHandoverAssignmentModel>()
                 join t in _db.GetTable<BaseTaskModel>() on a.TaskId equals t.TaskId
                 where a.AssignedToUserId == null
                       && a.Status == 0 // 0 = New
-                      && t.BranchId == branchId // Фильтр по филиалу теперь проверяется у главной задачи
-                select a.TaskId
+                      && t.BranchId == branchId
+                      && (
+                          a.Role == "Main" || // Главные роли всегда видны
+                          (a.Role == "Helper" && _db.GetTable<OrderHandoverAssignmentModel>()
+                              .Any(ma => ma.TaskId == a.TaskId && ma.Role == "Main" && ma.AssignedToUserId != null)) // Помощник виден только если есть Главный
+                      )
+                select t
             ).Distinct().ToListAsync();
 
-            if (!unassignedHandoverTaskIds.Any())
+            if (!availableTasks.Any())
                 return new List<MobileBaseTaskDto>();
-
-            var availableTasks = await _db.GetTable<BaseTaskModel>()
-                .Where(t => unassignedHandoverTaskIds.Contains(t.TaskId) && t.Status == "New")
-                .ToListAsync();
 
             var dtos = new List<MobileBaseTaskDto>();
             foreach (var task in availableTasks)
@@ -72,6 +74,7 @@ namespace TaskControl.TaskModule.Application.Providers
 
             return dtos;
         }
+
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
             // 0 = Assigned, 1 = InProgress
@@ -94,8 +97,6 @@ namespace TaskControl.TaskModule.Application.Providers
             if (shiftStart == null) return 0;
 
             // 2. Высчитываем суммарную сложность всех задач по выдаче (Handover)
-            // Считаем все задачи, назначенные ПОСЛЕ начала смены, кроме отмененных (4)
-            // Включаем завершенные (2), чтобы видеть общую выработку и усталость за день
             return await _db.GetTable<OrderHandoverAssignmentModel>()
                 .Where(a => a.AssignedToUserId == workerId &&
                             a.Status != 4 &&
@@ -108,10 +109,6 @@ namespace TaskControl.TaskModule.Application.Providers
             return await _db.GetTable<OrderHandoverAssignmentModel>()
                 .AnyAsync(a => a.AssignedToUserId == workerId && a.Status == 0);
         }
-
-        // ==========================================
-        // МЕТОДЫ СПИСКА (ВОЗВРАЩАЮТ ТОЛЬКО ЗАГОЛОВКИ)
-        // ==========================================
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId)
         {
@@ -135,16 +132,13 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             var result = new List<MobileBaseTaskDto>();
 
-            // ИСПРАВЛЕНИЕ 3: Группируем назначения по TaskId, 
-            // чтобы маршрут из 5 заказов рисовался как ОДНА карточка.
             var groupedAssignments = assignments.GroupBy(a => a.TaskId).ToList();
 
             foreach (var group in groupedAssignments)
             {
-                var mainAssignment = group.First(); // берем первое для базы
+                var mainAssignment = group.First();
                 var baseTask = await _baseTaskService.GetById(mainAssignment.TaskId);
 
-                // Собираем линии со всех заказов группы
                 var assignmentIds = group.Select(a => a.Id).ToList();
                 var lines = await _db.GetTable<OrderHandoverLineModel>()
                     .Where(l => assignmentIds.Contains(l.OrderHandoverAssignmentId))
@@ -178,39 +172,23 @@ namespace TaskControl.TaskModule.Application.Providers
             return result;
         }
 
-
         public async Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId)
         {
             return await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.TaskId == taskId && a.Status != 2 && a.Status != 3 && a.AssignedToUserId != null) // Отсекаем пустые
-                .Select(a => a.AssignedToUserId.Value) 
+                .Where(a => a.TaskId == taskId && a.Status != 2 && a.Status != 3 && a.AssignedToUserId != null)
+                .Select(a => a.AssignedToUserId.Value)
                 .Distinct()
                 .ToListAsync();
         }
 
-        // ==========================================
-        // ПОЛНЫЕ ДЕТАЛИ ЗАДАЧИ
-        // ==========================================
-
         public async Task<MobileBaseTaskDto?> GetTaskDetailsAsync(int taskId, int workerId)
         {
-            // Поскольку у нас УЖЕ написан метод сборки богатого DTO в OrderHandoverExecutionProvider,
-            // мы не будем дублировать код. Мы просто достанем базовые данные и 
-            // "попросим" ExecutionProvider (или просто скопируем логику, если не хотим связывать провайдеры).
-
-            // Но чтобы соблюсти чистоту (Workload отвечает за сборку DTO), перенесем логику сюды:
-
             var assignment = await _db.GetTable<OrderHandoverAssignmentModel>()
                 .FirstOrDefaultAsync(a => a.TaskId == taskId && a.AssignedToUserId == workerId);
 
             if (assignment == null) return null;
 
             var baseTask = await _baseTaskService.GetById(taskId);
-
-            // Чтобы не дублировать код из ExecutionProvider.GetTaskDetailsAsync, 
-            // мы можем либо внедрить его сюда, либо скопировать метод генерации HandoverTaskDetailsDto.
-            // Для простоты скопируем базовую логику сборки DTO:
-
             var richDetails = await BuildFullDetailsDtoAsync(assignment, baseTask);
 
             return new MobileBaseTaskDto
@@ -233,7 +211,6 @@ namespace TaskControl.TaskModule.Application.Providers
                                           .Where(a => a.TaskId == currentAssignment.TaskId)
                                           .ToListAsync();
 
-            // ИСПРАВЛЕНИЕ 4: Напарник - это человек с другим ID
             var partnerAssignment = allAssignments.FirstOrDefault(a =>
                 a.AssignedToUserId != null &&
                 a.AssignedToUserId != currentAssignment.AssignedToUserId);
@@ -259,6 +236,7 @@ namespace TaskControl.TaskModule.Application.Providers
                 PartnerName = partnerName,
                 PartnerStatus = partnerAssignment?.Status
             };
+
             if (currentAssignment.HandoverType == "ToCourier" && currentAssignment.TargetCourierId.HasValue)
             {
                 var courierInfo = await _db.GetTable<EmployeeModel>()
@@ -269,13 +247,15 @@ namespace TaskControl.TaskModule.Application.Providers
             {
                 dto.TargetName = "Покупатель (Самовывоз)";
             }
+
             var workerAssignments = allAssignments
                 .Where(a => a.AssignedToUserId == currentAssignment.AssignedToUserId)
                 .Select(a => a.Id)
                 .ToList();
+
             var lines = await _db.GetTable<OrderHandoverLineModel>()
-                                             .Where(l => workerAssignments.Contains(l.OrderHandoverAssignmentId))
-                                             .ToListAsync();
+                                 .Where(l => workerAssignments.Contains(l.OrderHandoverAssignmentId))
+                                 .ToListAsync();
 
             var positions = _db.GetTable<PositionModel>();
             var itemPositions = _db.GetTable<ItemPositionModel>();
@@ -303,8 +283,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     Barcode = (itemInfo?.ItemId ?? 0).ToString(),
                     SourceCellCode = sourceCellCode,
                     Quantity = line.Quantity,
-                    ScannedQuantity = line.ScannedQuantity,
-                    // Price опущен, если он не нужен для выдачи, или нужно дотянуть OrderPositionModel
+                    ScannedQuantity = line.ScannedQuantity
                 });
             }
 

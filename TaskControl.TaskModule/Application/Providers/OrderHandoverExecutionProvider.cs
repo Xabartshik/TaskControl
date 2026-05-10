@@ -12,6 +12,7 @@ using TaskControl.InventoryModule.DataAccess.Model;   // Для PositionModel, I
 using TaskControl.OrderModule.DataAccess.Model;       // Для OrderModel
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Models;
@@ -24,21 +25,30 @@ namespace TaskControl.TaskModule.Application.Providers
         private readonly ITaskDataConnection _db;
         private readonly IBaseTaskService _baseTaskService;
         private readonly ILogger<OrderHandoverExecutionProvider> _logger;
+        private readonly ReturnTaskGeneratorService _returnTaskGenerator; 
 
         public string TaskType => "OrderHandover"; // Определяет, какие задачи падают сюда
 
-        private readonly IQRTokenService _qrTokenService; 
+        private readonly IQRTokenService _qrTokenService;
+        private readonly ITaskComplexityCalculator _complexityCalculator;
+        private readonly TaskWorkloadAggregator _aggregator;
 
         public OrderHandoverExecutionProvider(
             ITaskDataConnection db,
             IBaseTaskService baseTaskService,
             ILogger<OrderHandoverExecutionProvider> logger,
+            ReturnTaskGeneratorService returnTaskGenerator,
+            ITaskComplexityCalculator complexityCalculator,
+            TaskWorkloadAggregator aggregator,
             IQRTokenService qrTokenService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _complexityCalculator = complexityCalculator ?? throw new ArgumentNullException(nameof(complexityCalculator));
             _qrTokenService = qrTokenService ?? throw new ArgumentNullException(nameof(qrTokenService));
+            _returnTaskGenerator = returnTaskGenerator ?? throw new ArgumentNullException(nameof(returnTaskGenerator));
+            _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
         }
         // 1. СОХРАНЯЕМ ОТМЕНЫ В БД
         public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
@@ -138,39 +148,13 @@ namespace TaskControl.TaskModule.Application.Providers
                             .Set(o => o.Status, finalOrderStatus)
                             .UpdateAsync();
 
-                        // 5. Генерация универсальной задачи возврата (ReturnToStock) для магазина
+                        // 5. Вызов внешнего сервиса генерации возвратов (Событийный подход)
                         if (itemsToReturn.Any())
                         {
                             var branchId = (await _db.GetTable<BaseTaskModel>().FirstAsync(t => t.TaskId == taskId)).BranchId;
 
-                            int returnTaskId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new BaseTaskModel
-                            {
-                                Type = "ReturnToStock",
-                                Status = "Pending",
-                                PriorityLevel = (int)TaskPriority.High,
-                                BranchId = branchId,
-                                CreatedAt = DateTime.UtcNow
-                            }));
-
-                            int returnAssignmentId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new ReturnAssignmentModel
-                            {
-                                TaskId = returnTaskId,
-                                BranchId = branchId,
-                                Status = 0,
-                                Role = "Main",
-                                AssignedAt = DateTime.UtcNow
-                            }));
-
-                            foreach (var item in itemsToReturn)
-                            {
-                                await _db.InsertAsync(new ReturnLineModel
-                                {
-                                    ReturnAssignmentId = returnAssignmentId,
-                                    ItemPositionId = item.ItemPositionId,
-                                    Quantity = item.Qty,
-                                    ScannedQuantity = 0
-                                });
-                            }
+                            // Делегируем создание задачи, расчет сложности и поиск напарника отдельному сервису
+                            await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, branchId, itemsToReturn);
                         }
                     }
                 }
@@ -1035,28 +1019,55 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<bool> AssignTaskToWorkerAsync(int taskId, int workerId)
         {
-            // Проверяем, наша ли это задача вообще (чтобы не трогать инвентаризацию и сборку)
-            var isOurTask = await _db.GetTable<BaseTaskModel>()
-                                     .AnyAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
-            if (!isOurTask) return false;
+            // 0. Вместо AnyAsync получаем саму задачу, чтобы иметь доступ к её свойствам (в т.ч. BranchId)
+            var task = await _db.GetTable<BaseTaskModel>()
+                                 .FirstOrDefaultAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
+
+            // Если задача не найдена или тип не совпадает — выходим
+            if (task == null) return false;
 
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
             try
             {
-                var assignmentsToUpdate = await _db.GetTable<OrderHandoverAssignmentModel>()
+                // 1. Находим все неназначенные роли для этой задачи
+                var assignments = await _db.GetTable<OrderHandoverAssignmentModel>()
                     .Where(a => a.TaskId == taskId && a.AssignedToUserId == null)
                     .ToListAsync();
 
-                if (!assignmentsToUpdate.Any()) return false;
+                if (!assignments.Any()) return false;
 
-                foreach (var assignment in assignmentsToUpdate)
+                // 2. Назначаем текущего сотрудника на роль "Main"
+                var mainAssignment = assignments.FirstOrDefault(a => a.Role == "Main");
+                if (mainAssignment == null) return false; // Кто-то уже перехватил роль главного
+
+                await _db.GetTable<OrderHandoverAssignmentModel>()
+                    .Where(a => a.Id == mainAssignment.Id)
+                    .Set(a => a.AssignedToUserId, workerId)
+                    .UpdateAsync();
+
+                // 3. АВТОПОИСК ПОМОЩНИКА (Triggered by Main)
+                var helperAssignment = assignments.FirstOrDefault(a => a.Role == "Helper");
+                if (helperAssignment != null)
                 {
-                    await _db.GetTable<OrderHandoverAssignmentModel>()
-                        .Where(a => a.Id == assignment.Id)
-                        .Set(a => a.AssignedToUserId, workerId)
-                        .UpdateAsync();
+                    // ИСПРАВЛЕНО: Теперь BranchId берется из объекта task (BaseTaskModel)
+                    int? autoHelperId = await _aggregator.FindAvailableHelperAsync(task.BranchId, workerId);
+
+                    if (autoHelperId.HasValue)
+                    {
+                        await _db.GetTable<OrderHandoverAssignmentModel>()
+                            .Where(a => a.Id == helperAssignment.Id)
+                            .Set(a => a.AssignedToUserId, autoHelperId.Value)
+                            .UpdateAsync();
+
+                        _logger.LogInformation("Для задачи {TaskId} автоматически назначен помощник {HelperId}", taskId, autoHelperId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Свободных помощников для задачи {TaskId} не найдено. Вакансия остается в пуле.", taskId);
+                    }
                 }
 
+                // 4. Обновляем статус базовой задачи
                 await _db.GetTable<BaseTaskModel>()
                     .Where(t => t.TaskId == taskId)
                     .Set(t => t.Status, "Assigned")
@@ -1068,11 +1079,9 @@ namespace TaskControl.TaskModule.Application.Providers
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Ошибка присвоения задачи {TaskId} сотруднику {WorkerId}", taskId, workerId);
+                _logger.LogError(ex, "Ошибка при динамическом назначении помощника для задачи {TaskId}", taskId);
                 return false;
             }
         }
-
-
     }
 }

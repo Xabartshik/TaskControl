@@ -38,17 +38,28 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             // Считаем задачи в статусе Assigned (0) или InProgress (1)
             return await _db.GetTable<ReturnAssignmentModel>()
-                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1));
+                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1 || a.Status == 2));
         }
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
         {
-            // Суммируем Complexity для запущенных задач (InProgress = 1)
-            var activeAssignments = await _db.GetTable<ReturnAssignmentModel>()
-                .Where(a => a.AssignedToUserId == workerId && a.Status == 1)
-                .ToListAsync();
+            // Находим начало текущей смены
+            var shiftStart = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.EmployeeId == workerId &&
+                            c.CheckType == "in" &&
+                            c.CheckTimeStamp >= DateTime.UtcNow.AddHours(-14))
+                .OrderByDescending(c => c.CheckTimeStamp)
+                .Select(c => (DateTime?)c.CheckTimeStamp)
+                .FirstOrDefaultAsync();
 
-            return activeAssignments.Sum(a => a.Complexity);
+            if (shiftStart == null) return 0;
+
+            // Суммируем сложность всех не отмененных задач возврата за смену
+            return await _db.GetTable<ReturnAssignmentModel>()
+                .Where(a => a.AssignedToUserId == workerId &&
+                            a.Status != 4 && // Исключаем отмененные
+                            a.AssignedAt >= shiftStart)
+                .SumAsync(a => a.Complexity);
         }
 
         public async Task<bool> HasNewAssignmentsAsync(int workerId)
@@ -61,30 +72,60 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId)
         {
-            return await GetMobileTasksByStatusAsync(workerId, 0); // New (Assigned)
+            // Возвращаем задачи как в статусе New (0), так и InProgress (1)
+            return await GetMobileTasksByStatusesAsync(workerId, 0, 1, 2); 
         }
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
         {
-            return await GetMobileTasksByStatusAsync(workerId, 1); // InProgress
+            // Только InProgress (1)
+            return await GetMobileTasksByStatusesAsync(workerId, 1);
         }
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId)
         {
-            var unassignedAssignments = await _db.GetTable<ReturnAssignmentModel>()
-                .Where(a => a.BranchId == branchId && a.AssignedToUserId == null && a.Status == 0) // Только New
-                .ToListAsync();
+            // Фильтр: показываем задачу только если это Main, 
+            // ИЛИ если это Helper, но Main уже кем-то занят.
+            var unassignedTaskIds = await (
+                from a in _db.GetTable<ReturnAssignmentModel>()
+                join t in _db.GetTable<BaseTaskModel>() on a.TaskId equals t.TaskId
+                where a.AssignedToUserId == null
+                      && a.Status == 0
+                      && t.BranchId == branchId
+                      && (
+                          a.Role == "Main" ||
+                          (a.Role == "Helper" && _db.GetTable<ReturnAssignmentModel>()
+                              .Any(ma => ma.TaskId == a.TaskId && ma.Role == "Main" && ma.AssignedToUserId != null))
+                      )
+                select a.TaskId
+            ).Distinct().ToListAsync();
+
+            if (!unassignedTaskIds.Any())
+                return new List<MobileBaseTaskDto>();
 
             var tasks = new List<MobileBaseTaskDto>();
-            foreach (var assignment in unassignedAssignments)
+
+            var availableTasks = await _db.GetTable<BaseTaskModel>()
+                .Where(t => unassignedTaskIds.Contains(t.TaskId) && t.Status == "New")
+                .ToListAsync();
+
+            foreach (var baseTask in availableTasks)
             {
-                var baseTask = await _baseTaskService.GetById(assignment.TaskId);
-                if (baseTask != null && baseTask.Status != TaskStatus.Completed && baseTask.Status != TaskStatus.Cancelled)
+                tasks.Add(new MobileBaseTaskDto
                 {
-                    // Детали для общего пула не генерируем, только базовую карточку
-                    tasks.Add(MapToMobileDto(baseTask, assignment, null));
-                }
+                    TaskId = baseTask.TaskId,
+                    Title = baseTask.Title,
+                    Description = baseTask.Description,
+                    BranchId = baseTask.BranchId,
+                    Type = baseTask.Type,
+                    CreatedAt = baseTask.CreatedAt,
+                    PriorityLevel = baseTask.PriorityLevel,
+                    Status = Enum.Parse<TaskStatus>(baseTask.Status),
+                    TaskType = this.TaskType,
+                    AssignmentStatus = AssignmentStatus.Assigned
+                });
             }
+
             return tasks;
         }
 
@@ -120,10 +161,10 @@ namespace TaskControl.TaskModule.Application.Providers
 
         // --- ПРИВАТНЫЕ Вспомогательные методы ---
 
-        private async Task<IEnumerable<MobileBaseTaskDto>> GetMobileTasksByStatusAsync(int workerId, int assignmentStatus)
+        private async Task<IEnumerable<MobileBaseTaskDto>> GetMobileTasksByStatusesAsync(int workerId, params int[] statuses)
         {
             var assignments = await _db.GetTable<ReturnAssignmentModel>()
-                .Where(a => a.AssignedToUserId == workerId && a.Status == assignmentStatus)
+                .Where(a => a.AssignedToUserId == workerId && statuses.Contains(a.Status))
                 .ToListAsync();
 
             var tasks = new List<MobileBaseTaskDto>();
@@ -166,7 +207,7 @@ namespace TaskControl.TaskModule.Application.Providers
 
         private async Task<ReturnTaskDetailsDto> BuildReturnDetailsAsync(int taskId, ReturnAssignmentModel workerAssignment, List<ReturnAssignmentModel> allAssignments)
         {
-            // Поиск напарника (если задача кооперативная)
+            // 1. Поиск напарника для кооперативных задач
             var partnerAssignment = allAssignments.FirstOrDefault(a =>
                 a.AssignedToUserId != null &&
                 a.AssignedToUserId != workerAssignment.AssignedToUserId);
@@ -177,12 +218,14 @@ namespace TaskControl.TaskModule.Application.Providers
 
             if (isCooperative)
             {
-                // ИСПРАВЛЕНИЕ: Используем EmployeesId и FullName
-                var partnerUser = await _db.GetTable<EmployeeModel>().FirstOrDefaultAsync(u => u.EmployeesId == partnerAssignment.AssignedToUserId);
+                var partnerUser = await _db.GetTable<EmployeeModel>()
+                    .FirstOrDefaultAsync(u => u.EmployeesId == partnerAssignment.AssignedToUserId);
+
                 partnerName = partnerUser?.FullName ?? $"Сотрудник ID: {partnerAssignment.AssignedToUserId}";
                 partnerStatus = partnerAssignment.Status;
             }
 
+            // 2. Формирование базового DTO
             var dto = new ReturnTaskDetailsDto
             {
                 AssignmentId = workerAssignment.Id,
@@ -192,10 +235,11 @@ namespace TaskControl.TaskModule.Application.Providers
                 Role = workerAssignment.Role,
                 IsCooperative = isCooperative,
                 PartnerName = partnerName,
-                PartnerStatus = partnerStatus
+                PartnerStatus = partnerStatus,
+                ItemsToScan = new List<ReturnItemDto>()
             };
 
-            // Получаем линии возврата
+            // 3. Подготовка данных
             var lines = await _db.GetTable<ReturnLineModel>()
                 .Where(l => l.ReturnAssignmentId == workerAssignment.Id)
                 .ToListAsync();
@@ -204,34 +248,57 @@ namespace TaskControl.TaskModule.Application.Providers
             var itemPositions = _db.GetTable<ItemPositionModel>();
             var items = _db.GetTable<ItemModel>();
 
+            // Кэширование всех ячеек филиала для оптимизации производительности
+            var branchPositions = await positions
+                .Where(p => p.BranchId == workerAssignment.BranchId)
+                .ToListAsync();
+
+            // 4. Обработка товарных позиций возврата
             foreach (var line in lines)
             {
-                // Собираем инфу о товаре и исходной ячейке
-                var itemInfo = await (from ip in itemPositions
+                var itemData = await (from ip in itemPositions
                                       join i in items on ip.ItemId equals i.ItemId
                                       where ip.Id == line.ItemPositionId
-                                      select new { i.ItemId, i.Name, ip.PositionId }).FirstOrDefaultAsync();
+                                      select new { Item = i, ip.PositionId }).FirstOrDefaultAsync();
 
                 string sourceCellCode = "Неизвестная ячейка";
-                if (itemInfo != null)
+                if (itemData != null)
                 {
-                    var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == itemInfo.PositionId);
-                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemInfo.PositionId.ToString();
+                    var sourcePosModel = branchPositions.FirstOrDefault(p => p.PositionId == itemData.PositionId);
+                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemData.PositionId.ToString();
+                }
+
+                // === ИНТЕЛЛЕКТУАЛЬНЫЙ ПОДБОР ЦЕЛЕВОЙ ЯЧЕЙКИ ===
+                if (!line.TargetPositionId.HasValue && itemData != null)
+                {
+                    // Вызываем логику автоподбора с учетом габаритов и доступных зон
+                    int? suggestedPosId = await SuggestTargetPositionAsync(itemData.Item, workerAssignment.BranchId);
+
+                    if (suggestedPosId.HasValue)
+                    {
+                        // Фиксируем выбор в базе данных
+                        await _db.GetTable<ReturnLineModel>()
+                            .Where(l => l.Id == line.Id)
+                            .Set(l => l.TargetPositionId, suggestedPosId.Value)
+                            .UpdateAsync();
+
+                        line.TargetPositionId = suggestedPosId.Value;
+                    }
                 }
 
                 string targetCellCode = null;
                 if (line.TargetPositionId.HasValue)
                 {
-                    var targetPosInfo = await positions.FirstOrDefaultAsync(p => p.PositionId == line.TargetPositionId.Value);
+                    var targetPosInfo = branchPositions.FirstOrDefault(p => p.PositionId == line.TargetPositionId.Value);
                     targetCellCode = GetFullPositionCode(targetPosInfo);
                 }
 
                 dto.ItemsToScan.Add(new ReturnItemDto
                 {
                     LineId = line.Id,
-                    ItemId = itemInfo?.ItemId ?? 0,
-                    ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                    Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+                    ItemId = itemData?.Item.ItemId ?? 0,
+                    ItemName = itemData?.Item.Name ?? "Неизвестный товар",
+                    Barcode = (itemData?.Item.ItemId ?? 0).ToString(),
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity,
                     SourceCellCode = sourceCellCode,
@@ -242,6 +309,57 @@ namespace TaskControl.TaskModule.Application.Providers
             return dto;
         }
 
+        // =====================================================================
+        // Логика подбора оптимальной ячейки с фильтрацией зарезервированных зон
+        // =====================================================================
+        private async Task<int?> SuggestTargetPositionAsync(ItemModel item, int branchId)
+        {
+            var positions = _db.GetTable<PositionModel>();
+            var itemPositions = _db.GetTable<ItemPositionModel>();
+
+            // Список зон, зарезервированных под отгрузку и выдачу, куда нельзя возвращать товар
+            var reservedZones = new[] { "PICKUP", "BULK", "COURIER", "EXPRESS" };
+
+            double itemL = item.Length;
+            double itemW = item.Width;
+            double itemH = item.Height;
+
+            // ПРИОРИТЕТ 1: Консолидация
+            // Ищем ячейку в любой разрешенной зоне, где этот товар уже хранится.
+            var existingPos = await (from p in positions
+                                     join ip in itemPositions on p.PositionId equals ip.PositionId
+                                     where p.BranchId == branchId
+                                        && !reservedZones.Contains(p.ZoneCode)
+                                        && ip.ItemId == item.ItemId
+                                     select p.PositionId).FirstOrDefaultAsync();
+
+            if (existingPos != 0) return existingPos;
+
+            // ПРИОРИТЕТ 2: Поиск пустой ячейки по габаритам
+            // Выбираем активную ячейку в любой разрешенной зоне, способную вместить товар.
+            var emptyFittedPos = await (from p in positions
+                                        where p.BranchId == branchId
+                                           && !reservedZones.Contains(p.ZoneCode)
+                                           && p.Status == "Active"
+                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                           && (p.Length >= itemL && p.Width >= itemW && p.Height >= itemH)
+                                        select p.PositionId).FirstOrDefaultAsync();
+
+            if (emptyFittedPos != 0) return emptyFittedPos;
+
+            // ПРИОРИТЕТ 3: Резервный вариант (Fallback)
+            // Любая пустая активная ячейка вне зарезервированных зон.
+            var fallbackPos = await (from p in positions
+                                     where p.BranchId == branchId
+                                        && !reservedZones.Contains(p.ZoneCode)
+                                        && p.Status == "Active"
+                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                     select p.PositionId).FirstOrDefaultAsync();
+
+            if (fallbackPos != 0) return fallbackPos;
+
+            return null;
+        }
         private string GetFullPositionCode(PositionModel pos)
         {
             if (pos == null) return null;

@@ -115,9 +115,12 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         }
 
         // DTO для приема данных об отмене
-        public class CompleteTaskRequest
+        public record CompleteTaskRequest
         {
             public Dictionary<int, int>? CancelledLines { get; set; }
+
+            // НОВОЕ: Словарь { LineId задачи : Id ячейки, куда положили }
+            public Dictionary<int, int>? ScannedTargetCells { get; set; }
         }
 
         [HttpPost("{taskId}/complete")]

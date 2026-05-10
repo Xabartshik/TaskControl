@@ -32,9 +32,11 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly IBaseTaskService _baseTaskService;
         private readonly INotificationService _notificationService;
+        private readonly ITaskComplexityCalculator _complexityCalculator;
 
         public OrderAssemblyPlannerJob(
             ITaskDataConnection db,
+            ITaskComplexityCalculator complexityCalculator,
             IBoxPackingService packingService,
             ILogger<OrderAssemblyPlannerJob> logger,
             IOptions<AppSettings> appSettings,
@@ -43,6 +45,7 @@ namespace TaskControl.TaskModule.Application.Services
             IBaseTaskService baseTaskService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
+            _complexityCalculator = complexityCalculator ?? throw new ArgumentNullException(nameof(complexityCalculator));
             _packingService = packingService ?? throw new ArgumentNullException(nameof(packingService));
             _logger = logger;
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
@@ -235,26 +238,36 @@ namespace TaskControl.TaskModule.Application.Services
             }
 
             // 2. Расчет сложности (с помощником или без)
-            var (needsHelper, mainComplexity, helperComplexity) = CalculateWorkloadComplexity(orderItems);
+            var metrics = orderItems.Select(i => new TaskItemMetrics
+            {
+                WeightGrams = i.Weight,
+                LengthMm = i.Length,
+                WidthMm = i.Width,
+                HeightMm = i.Height,
+                Quantity = i.Quantity
+            }).ToList();
+
+            var complexityResult = _complexityCalculator.CalculateForItems(metrics);
 
             // 3. Маршрутизация упаковки (Где будут лежать товары?)
             var finalPackedItems = await RouteItemsForPackingAsync(order, orderItems, bulkCellId);
 
             // 4. Подбор персонала
-            var sortedWorkers = await AssignWorkersAsync(order.BranchId, needsHelper, manualWorkerId, throwOnWorkerShortage);
-            if (sortedWorkers == null) return false;        
+            var sortedWorkers = await AssignWorkersAsync(order.BranchId, complexityResult.RequiresHelper, manualWorkerId, throwOnWorkerShortage);
+            if (sortedWorkers == null) return false;
 
-            // 5. Создание задачи в БД
+            // 5. Создание задачи в БД (передаем новые метрики)
             TaskPriority basePriority = order.DeliveryType == DeliveryType.Express.ToString() ? TaskPriority.Critical : TaskPriority.Normal;
             TaskPriority finalPriority = PriorityCalculator.CalculatePriority(calculatedDeadline, basePriority);
-            string taskTitle = $"Сборка заказа {order.OrderId}";
+            string taskTitle = complexityResult.RequiresHelper ? $"[ТЯЖЕЛЫЙ] Сборка заказа {order.OrderId}" : $"Сборка заказа {order.OrderId}";
 
             var taskId = await CreateTaskAndAssignmentsAsync(
                 order, calculatedDeadline, finalPriority, taskTitle,
-                mainComplexity, helperComplexity, needsHelper, sortedWorkers, finalPackedItems);
+                complexityResult.MainComplexity, complexityResult.HelperComplexity, complexityResult.RequiresHelper,
+                sortedWorkers, finalPackedItems);
 
             // 6. Уведомления и статусы
-            await SendNotificationsAsync(order.OrderId, taskId, taskTitle, finalPriority, sortedWorkers, needsHelper, manualWorkerId.HasValue);
+            await SendNotificationsAsync(order.OrderId, taskId, taskTitle, finalPriority, sortedWorkers, complexityResult.RequiresHelper, manualWorkerId.HasValue);
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == order.OrderId).Set(o => o.Status, "Assembly").UpdateAsync();
 
             _logger.LogInformation("|   [Заказ #{OrderId}] Успешно спланирован. Приоритет: {Priority}, Дедлайн: {Deadline}", order.OrderId, finalPriority, calculatedDeadline);
