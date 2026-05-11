@@ -157,6 +157,29 @@ namespace TaskControl.TaskModule.Presentation
         }
 
         /// <summary>
+        /// Получить всех сотрудников, чей последний чекин был в данном филиале
+        /// </summary>
+        [HttpGet("employees/all")]
+        [ProducesResponseType(typeof(IEnumerable<AvailableEmployeeDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllBranchEmployees()
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue)
+                return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var employees = await _bossPanelService.GetAllBranchEmployeesAsync(branchId.Value);
+                return Ok(employees);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении полного списка сотрудников филиала {BranchId}", branchId);
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Автоматический подбор сотрудников на основе нагрузки
         /// </summary>
         [HttpGet("employees/auto-select")]

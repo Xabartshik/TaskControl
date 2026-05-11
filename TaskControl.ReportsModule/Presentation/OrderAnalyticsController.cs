@@ -71,6 +71,22 @@ namespace TaskControl.ReportsModule.Presentation
             return File(pdfBytes, "application/pdf", $"Detailed_Orders_{DateTime.Now:yyyyMMdd}.pdf");
         }
 
+        [HttpGet("export/employee-full/pdf")]
+        public async Task<IActionResult> ExportEmployeeFullPdf([FromQuery] AnalyticsFilterDto filter)
+        {
+            EnsureValidDates(filter);
+            var pdfBytes = await _analyticsService.GenerateEmployeeFullReportPdfAsync(filter);
+            return File(pdfBytes, "application/pdf", $"Employee_Deep_Analysis_{DateTime.Now:yyyyMMdd}.pdf");
+        }
+
+        [HttpGet("export/dashboard/pdf")]
+        public async Task<IActionResult> ExportDashboardPdf([FromQuery] AnalyticsFilterDto filter)
+        {
+            EnsureValidDates(filter);
+            var pdfBytes = await _analyticsService.GenerateOrderDashboardPdfAsync(filter);
+            return File(pdfBytes, "application/pdf", $"Order_Management_Dashboard_{DateTime.Now:yyyyMMdd}.pdf");
+        }
+
         [HttpGet("export/orders/csv")]
         public async Task<IActionResult> ExportOrderLeadTimeCsv([FromQuery] AnalyticsFilterDto filter)
         {

@@ -18,5 +18,11 @@ namespace TaskControl.ReportsModule.Application.Interface
         // Методы генерации PDF (новые)
         Task<byte[]> GenerateDetailedOrdersPdfAsync(AnalyticsFilterDto filter);
         Task<byte[]> GenerateTopItemsPdfAsync(AnalyticsFilterDto filter);
+        Task<List<EmployeeFullReportDto>> GetEmployeeFullReportsAsync(AnalyticsFilterDto filter);
+        Task<OrderDashboardReportDto> GetOrderDashboardAsync(AnalyticsFilterDto filter);
+
+        // Методы для получения готовых файлов (PDF)
+        Task<byte[]> GenerateEmployeeFullReportPdfAsync(AnalyticsFilterDto filter);
+        Task<byte[]> GenerateOrderDashboardPdfAsync(AnalyticsFilterDto filter);
     }
 }

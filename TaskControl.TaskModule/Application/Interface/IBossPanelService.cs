@@ -17,7 +17,7 @@ namespace TaskControl.TaskModule.Application.Interface
         /// Создать задачу инвентаризации в рамках филиала начальника
         /// </summary>
         Task<CompleteInventoryDto> CreateInventoryTaskAsync(CreateInventoryTaskDto dto, int bossBranchId);
-
+        Task<IEnumerable<AvailableEmployeeDto>> GetAllBranchEmployeesAsync(int branchId);
         /// <summary>
         /// Получить отчеты производительности сотрудников филиала начальника
         /// </summary>

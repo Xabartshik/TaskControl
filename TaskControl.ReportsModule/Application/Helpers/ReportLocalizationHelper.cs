@@ -42,7 +42,7 @@ namespace TaskControl.ReportsModule.Application.Helpers
         {
             { "OrderAssembly", "Сборка заказа" },
             { "OrderHandover", "Выдача заказа" },
-            { "Return", "Возврат" }
+            { "ReturnToStock", "Возврат товара" }
         };
 
         public static string TranslateOrderStatus(string status) =>

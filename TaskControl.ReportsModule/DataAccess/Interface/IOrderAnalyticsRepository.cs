@@ -12,5 +12,9 @@ namespace TaskControl.ReportsModule.DataAccess.Interface
         Task<List<BranchSummaryDto>> GetBranchSummaryAsync(AnalyticsFilterDto filter);
         Task<List<OrderDetailedDto>> GetDetailedOrdersAsync(AnalyticsFilterDto filter);
         Task<List<EmployeeTaskDetailDto>> GetEmployeeTasksDetailAsync(int employeeId, AnalyticsFilterDto filter);
+        Task<List<EmployeeFullReportDto>> GetEmployeeFullReportsAsync(AnalyticsFilterDto filter);
+
+        // Получение дашборда заказов: рекорды (вес/объем), финансовая сводка и полный реестр с составом
+        Task<OrderDashboardReportDto> GetOrderDashboardAsync(AnalyticsFilterDto filter);
     }
 }

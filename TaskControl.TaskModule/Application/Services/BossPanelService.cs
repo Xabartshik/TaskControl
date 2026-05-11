@@ -369,11 +369,9 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<IEnumerable<BossPanelTaskCardDto>> GetActiveTasksAsync(int bossBranchId)
         {
-            _logger.LogInformation("Получение активных задач для филиала {BossBranchId}", bossBranchId);
+            _logger.LogInformation("Получение активных задач для филиала {BossBranchId} через агрегатор", bossBranchId);
 
             var tasks = await _activeTaskRepository.GetByBranchAsync(bossBranchId);
-            var invAssignments = await _assignmentRepository.GetByBranchIdAsync(bossBranchId);
-
             var activeTasks = tasks.Where(t => t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled);
             var result = new List<BossPanelTaskCardDto>();
 
@@ -381,70 +379,66 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 var dict = new Dictionary<int, TaskAssigneeProgressDto>();
 
-                if (t.Type == "OrderAssembly")
+                // 1. Спрашиваем агрегатор: кто работает над этой задачей? (Поддерживает ВСЕ типы задач)
+                var assignedIds = await _aggregator.GetAssignedEmployeeIdsAsync(t.TaskId);
+
+                foreach (var empId in assignedIds)
                 {
-                    var oaAssignments = await _orderAssemblyRepository.GetByTaskIdAsync(t.TaskId);
+                    // 2. Получаем детали конкретного назначения через агрегатор
+                    var details = await _aggregator.GetTaskDetailsAsync(t.TaskId, empId);
+                    var emp = await _activeEmployeeService.GetEmployeeByIdAsync(empId);
 
-                    if (oaAssignments != null && oaAssignments.Any())
+                    int assignedVolume = 1;
+                    int completedVolume = 0;
+                    string statusStr = "Назначено";
+
+                    if (details != null)
                     {
-                        foreach (var assignment in oaAssignments)
+                        statusStr = details.AssignmentStatus switch
                         {
-                            // --- ИСПРАВЛЕНИЕ ДЛЯ NULLABLE ID ---
-                            int userId = assignment.AssignedToUserId ?? 0;
-                            var emp = assignment.AssignedToUserId.HasValue
-                                ? await _activeEmployeeService.GetEmployeeByIdAsync(userId)
-                                : null;
+                            Domain.AssignmentStatus.InProgress => "В процессе",
+                            Domain.AssignmentStatus.Completed => "Завершено",
+                            Domain.AssignmentStatus.Paused => "На паузе",
+                            Domain.AssignmentStatus.Cancelled => "Отменена",
+                            _ => "Назначена"
+                        };
 
-                            int total = assignment.TotalLines;
-                            int completed = assignment.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed);
-
-                            dict[userId] = new TaskAssigneeProgressDto
+                        // 3. Динамически вытягиваем прогресс из TaskDetails (так как структура зависит от типа задачи)
+                        if (details.TaskDetails != null)
+                        {
+                            try
                             {
-                                EmployeeId = userId,
-                                FullName = emp != null
-                                    ? $"{emp.Surname} {emp.Name}"
-                                    : (assignment.AssignedToUserId.HasValue ? $"Работник {userId}" : "Не назначено"),
-                                AssignedVolume = total,
-                                CompletedVolume = completed,
-                                Status = assignment.Status == AssignmentStatus.InProgress ? "В процессе"
-                                         : assignment.Status == AssignmentStatus.Completed ? "Завершено" : "Назначено"
-                            };
+                                var json = System.Text.Json.JsonSerializer.Serialize(details.TaskDetails);
+                                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+
+                                if (root.TryGetProperty("totalLines", out var tLines) || root.TryGetProperty("TotalLines", out tLines))
+                                    if (tLines.ValueKind == System.Text.Json.JsonValueKind.Number) assignedVolume = tLines.GetInt32();
+
+                                if (root.TryGetProperty("completedLinesCount", out var cLines) || root.TryGetProperty("CompletedLinesCount", out cLines))
+                                    if (cLines.ValueKind == System.Text.Json.JsonValueKind.Number) completedVolume = cLines.GetInt32();
+                            }
+                            catch
+                            {
+                                // Игнорируем ошибки парсинга, оставляем значения по умолчанию (1 и 0)
+                            }
+                        }
+
+                        // Защита: если статус завершен, прогресс 100%
+                        if (details.AssignmentStatus == Domain.AssignmentStatus.Completed)
+                        {
+                            completedVolume = assignedVolume;
                         }
                     }
-                }
-                else
-                {
-                    var taskAssignments = invAssignments.Where(a => a.TaskId == t.TaskId).ToList();
-                    foreach (var a in taskAssignments)
+
+                    dict[empId] = new TaskAssigneeProgressDto
                     {
-                        // --- ИСПРАВЛЕНИЕ ДЛЯ NULLABLE ID ---
-                        int userId = a.AssignedToUserId ?? 0;
-
-                        if (!dict.ContainsKey(userId))
-                        {
-                            var emp = a.AssignedToUserId.HasValue
-                                ? await _activeEmployeeService.GetEmployeeByIdAsync(userId)
-                                : null;
-
-                            dict[userId] = new TaskAssigneeProgressDto
-                            {
-                                EmployeeId = userId,
-                                FullName = emp != null
-                                    ? $"{emp.Surname} {emp.Name}"
-                                    : (a.AssignedToUserId.HasValue ? $"Работник {userId}" : "Не назначено"),
-                                AssignedVolume = 1,
-                                CompletedVolume = a.Status == AssignmentStatus.Completed ? 1 : 0,
-                                Status = a.Status == AssignmentStatus.InProgress ? "В процессе"
-                                         : a.Status == AssignmentStatus.Completed ? "Завершено" : "Ожидается"
-                            };
-                        }
-                        else
-                        {
-                            dict[userId].AssignedVolume += 1;
-                            if (a.Status == AssignmentStatus.Completed)
-                                dict[userId].CompletedVolume += 1;
-                        }
-                    }
+                        EmployeeId = empId,
+                        FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {empId}",
+                        AssignedVolume = assignedVolume,
+                        CompletedVolume = completedVolume,
+                        Status = statusStr
+                    };
                 }
 
                 var assignees = dict.Values.ToList();
@@ -466,63 +460,47 @@ namespace TaskControl.TaskModule.Application.Services
 
             return result;
         }
-
         public async Task<IEnumerable<EmployeeWorkloadDto>> GetEmployeeWorkloadAsync(int bossBranchId)
         {
-            _logger.LogInformation("Получение загруженности сотрудников филиала {BossBranchId}", bossBranchId);
-            var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
-            var result = new List<EmployeeWorkloadDto>();
+            _logger.LogInformation("Получение загруженности сотрудников филиала {BossBranchId} через агрегатор", bossBranchId);
 
-            foreach (var emp in employees)
-            {
-                var activeTaskDtos = new List<ActiveTaskBriefDto>();
-
-                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeInv = invAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach (var a in activeInv)
-                {
-                    var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if (task != null)
-                    {
-                        activeTaskDtos.Add(new ActiveTaskBriefDto
-                        {
-                            TaskId = task.TaskId,
-                            Title = task.Title,
-                            TaskType = task.Type,
-                            Status = a.Status.ToString()
-                        });
-                    }
-                }
-
-                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeOa = oaAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach (var a in activeOa)
-                {
-                    var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if (task != null)
-                    {
-                        activeTaskDtos.Add(new ActiveTaskBriefDto
-                        {
-                            TaskId = task.TaskId,
-                            Title = task.Title,
-                            TaskType = task.Type,
-                            Status = a.Status.ToString()
-                        });
-                    }
-                }
-
-                result.Add(new EmployeeWorkloadDto
-                {
-                    EmployeeId = emp.EmployeeId,
-                    FullName = $"{emp.Surname} {emp.Name}",
-                    IsAtWork = true,
-                    ActiveTasksCount = activeTaskDtos.Count,
-                    ActiveTasks = activeTaskDtos
-                });
-            }
-            return result;
+            // Агрегатор сам соберет все задачи (Инвентаризация, Выдача, Сборка, Возврат)
+            return await _aggregator.GetBranchWorkloadAsync(bossBranchId);
         }
 
+        public async Task<IEnumerable<AvailableEmployeeDto>> GetAllBranchEmployeesAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение всех сотрудников филиала {BossBranchId} через фильтрацию последних чекинов", bossBranchId);
+
+            // 1. Получаем только те записи, которые являются последними для конкретного сотрудника
+            // и при этом относятся к вашему филиалу.
+            var lastChecks = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.CheckTimeStamp == _db.GetTable<CheckIOEmployeeModel>()
+                    .Where(sub => sub.EmployeeId == c.EmployeeId)
+                    .Max(sub => sub.CheckTimeStamp))
+                .Where(c => c.BranchId == bossBranchId)
+                .ToListAsync();
+
+            var result = new List<AvailableEmployeeDto>();
+
+            foreach (var check in lastChecks)
+            {
+                var emp = await _activeEmployeeService.GetEmployeeByIdAsync(check.EmployeeId);
+                if (emp == null) continue;
+
+                result.Add(new AvailableEmployeeDto
+                {
+                    EmployeeId = emp.EmployeesId,
+                    FullName = $"{emp.Surname} {emp.Name}",
+                    // Если последний тип записи не 'check-out' — значит он на месте или на маршруте
+                    IsAtWork = check.CheckType != "check-out",
+                    ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeesId),
+                    IsRecommended = false
+                });
+            }
+
+            return result.OrderBy(e => e.FullName);
+        }
         public async Task<IEnumerable<AvailableEmployeeDto>> GetAvailableEmployeesAsync(int bossBranchId)
         {
             _logger.LogInformation("Получение доступных сотрудников филиала {BossBranchId}", bossBranchId);
@@ -531,18 +509,12 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var invActiveCount = invAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
-                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var oaActiveCount = oaAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
                 result.Add(new AvailableEmployeeDto
                 {
                     EmployeeId = emp.EmployeeId,
                     FullName = $"{emp.Surname} {emp.Name}",
                     IsAtWork = true,
-                    ActiveTasksCount = invActiveCount + oaActiveCount,
+                    ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId),
                     IsRecommended = false
                 });
             }

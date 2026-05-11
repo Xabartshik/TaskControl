@@ -10,7 +10,31 @@ namespace TaskControl.ReportsModule.Application.Services
     {
         private readonly IOrderAnalyticsRepository _repository;
         private readonly ReportExportService _exportService; // Раскомментируем, когда перепишем генератор
+                                                             // Добавьте в TaskControl.ReportsModule.Application.Services.OrderAnalyticsService
 
+        public async Task<List<EmployeeFullReportDto>> GetEmployeeFullReportsAsync(AnalyticsFilterDto filter)
+        {
+            return await _repository.GetEmployeeFullReportsAsync(filter);
+        }
+
+        public async Task<OrderDashboardReportDto> GetOrderDashboardAsync(AnalyticsFilterDto filter)
+        {
+            return await _repository.GetOrderDashboardAsync(filter);
+        }
+
+        public async Task<byte[]> GenerateEmployeeFullReportPdfAsync(AnalyticsFilterDto filter)
+        {
+            var data = await _repository.GetEmployeeFullReportsAsync(filter);
+
+            // Передаем даты из фильтра в генератор для отображения периода
+            return _exportService.GenerateEmployeeFullReportPdf(data, "Аналитический отчет по персоналу", filter.StartDate, filter.EndDate);
+        }
+
+        public async Task<byte[]> GenerateOrderDashboardPdfAsync(AnalyticsFilterDto filter)
+        {
+            var data = await _repository.GetOrderDashboardAsync(filter);
+            return _exportService.GenerateOrderDashboardPdf(data, "Управленческий дашборд заказов", filter.StartDate, filter.EndDate);
+        }
         public OrderAnalyticsService(IOrderAnalyticsRepository repository, ReportExportService exportService)
         {
             _repository = repository;
