@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
@@ -121,6 +122,21 @@ namespace TaskControl.TaskModule.Presentation.Controllers
 
             // НОВОЕ: Словарь { LineId задачи : Id ячейки, куда положили }
             public Dictionary<int, int>? ScannedTargetCells { get; set; }
+        }
+
+        // Получить загруженность всех сотрудников филиала
+        [HttpGet("branch/{branchId}/workload")]
+        public async Task<ActionResult<IEnumerable<EmployeeWorkloadDto>>> GetBranchWorkload(int branchId)
+        {
+            try
+            {
+                var workload = await _taskWorkloadAggregator.GetBranchWorkloadAsync(branchId);
+                return Ok(workload);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = "Ошибка при получении данных о нагрузке", Details = ex.Message });
+            }
         }
 
         [HttpPost("{taskId}/complete")]

@@ -121,6 +121,50 @@ namespace TaskControl.OrderModule.Application.Services
             }
         }
 
+        public async Task<IEnumerable<OrderDto>> GetByBranchAsync(int branchId)
+        {
+            _logger.LogInformation("Запрос всех заказов для филиала ID: {BranchId}", branchId);
+
+            try
+            {
+                // 1. Получаем все заказы филиала
+                var orders = await _repository.GetByBranchAsync(branchId);
+                var result = new List<OrderDto>();
+
+                foreach (var order in orders)
+                {
+                    // 2. Маппим в DTO
+                    var dto = OrderDto.ToDto(order);
+
+                    // 3. Получаем и обогащаем позиции для каждого заказа
+                    var positions = await _positionRepository.GetByOrderIdAsync(order.OrderId);
+
+                    if (positions != null && positions.Any())
+                    {
+                        var enrichedPositions = new List<OrderPositionDto>();
+                        foreach (var pos in positions)
+                        {
+                            var posDto = OrderPositionDto.ToDto(pos);
+                            var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+                            posDto.ItemName = item?.Name ?? "Неизвестный товар";
+                            enrichedPositions.Add(posDto);
+                        }
+                        dto.Positions = enrichedPositions;
+                    }
+
+                    result.Add(dto);
+                }
+
+                _logger.LogInformation("Для филиала {BranchId} найдено {Count} заказов", branchId, result.Count);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения списка заказов для филиала {BranchId}", branchId);
+                throw;
+            }
+        }
+
         public async Task<int> Add(OrderDto dto)
         {
             if (_appSettings.EnableDetailedLogging)

@@ -1,4 +1,5 @@
 ﻿using CsvHelper;
+using CsvHelper.Configuration;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -6,146 +7,89 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using TaskControl.ReportsModule.Application.DTOs;
 
 namespace TaskControl.ReportsModule.Application.Services
 {
     public class ReportExportService
     {
+        public ReportExportService()
+        {
+            // Для использования QuestPDF необходимо указать тип лицензии
+            QuestPDF.Settings.License = LicenseType.Community;
+        }
+
         public byte[] ExportToCsv<T>(IEnumerable<T> data)
         {
             using var ms = new MemoryStream();
             using var sw = new StreamWriter(ms, new System.Text.UTF8Encoding(true));
-            using var csv = new CsvWriter(sw, CultureInfo.InvariantCulture);
+            var config = new CsvConfiguration(CultureInfo.InvariantCulture) { Delimiter = ";" };
+            using var csv = new CsvWriter(sw, config);
+
             csv.WriteRecords(data);
             sw.Flush();
             return ms.ToArray();
         }
 
-        public byte[] ExportGroupedReportToPdf(IEnumerable<TaskGroupReportDto> groups, string title)
+        // 1. ОТЧЕТ ПО KPI СОТРУДНИКОВ (С графиками нагрузки и тоннажом)
+        public byte[] GenerateEmployeeKpiPdf(IEnumerable<EmployeeKpiDto> data, string title = "Глубокая аналитика: Эффективность и нагрузка сотрудников")
         {
-
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
-                    page.Size(PageSizes.A4.Landscape()); // Альбомная ориентация
+                    page.Size(PageSizes.A4.Landscape()); // Широкий формат для максимума инфы
                     page.Margin(1, Unit.Centimetre);
                     page.PageColor(Colors.White);
                     page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
 
-                    // Заголовок документа
-                    page.Header().Row(row =>
-                    {
-                        row.RelativeItem().Column(col =>
-                        {
-                            col.Item().Text(title).FontSize(22).SemiBold().FontColor(Colors.Indigo.Darken2);
-                            col.Item().Text($"Сформировано: {DateTime.Now:dd.MM.yyyy HH:mm}").FontSize(10).FontColor(Colors.Grey.Medium);
-                        });
-                    });
-
-                    // Таблица
-                    page.Content().PaddingVertical(1, Unit.Centimetre).Table(table =>
-                    {
-                        table.ColumnsDefinition(columns =>
-                        {
-                            columns.RelativeColumn(3);   // Задача / Имя сотрудника
-                            columns.ConstantColumn(100); // Завершено (Время)
-                            columns.RelativeColumn(1);   // Товаров
-                            columns.RelativeColumn(1);   // Ожидание
-                            columns.RelativeColumn(1);   // Выполнение
-                            columns.RelativeColumn(1);   // Ошибки
-                        });
-
-                        // Шапка таблицы
-                        table.Header(header =>
-                        {
-                            header.Cell().Element(HeaderStyle).Text("Задача / Назначенный сотрудник");
-                            header.Cell().Element(HeaderStyle).Text("Время сдачи");
-                            header.Cell().Element(HeaderStyle).AlignRight().Text("Позиций");
-                            header.Cell().Element(HeaderStyle).AlignRight().Text("Ожидание");
-                            header.Cell().Element(HeaderStyle).AlignRight().Text("Выполнение");
-                            header.Cell().Element(HeaderStyle).AlignRight().Text("Ошибки");
-
-                            static IContainer HeaderStyle(IContainer c) => c.DefaultTextStyle(x => x.SemiBold().FontColor(Colors.White))
-                                .Background(Colors.Indigo.Darken2)        
-                                .PaddingVertical(6).PaddingHorizontal(5);
-                        });
-
-                        foreach (var group in groups)
-                        {
-                            // СТРОКА ЗАДАЧИ
-                            table.Cell().Element(GroupStyle).Text(group.GroupName).SemiBold().FontColor(Colors.Indigo.Darken3);
-                            table.Cell().Element(GroupStyle).Text($"Сотрудников: {group.TotalWorkers}").FontColor(Colors.Indigo.Medium);
-                            table.Cell().Element(GroupStyle).AlignRight().Text(group.TotalItems.ToString()).SemiBold();
-                            table.Cell().Element(GroupStyle).AlignRight().Text("-");
-                            table.Cell().Element(GroupStyle).AlignRight().Text(FormatDuration(group.TotalDurationSeconds)).SemiBold();
-
-                            var discCell = table.Cell().Element(GroupStyle).AlignRight();
-                            if (group.TotalDiscrepancies > 0) discCell.Text(group.TotalDiscrepancies.ToString()).FontColor(Colors.Red.Medium).SemiBold();
-                            else discCell.Text("-").FontColor(Colors.Grey.Medium);
-
-                            // СТРОКИ СОТРУДНИКОВ
-                            bool isEven = false;
-                            foreach (var worker in group.Workers)
-                            {
-                                var bgColor = isEven ? Colors.White : Colors.Grey.Lighten4;
-
-                                // СМЕЩЕНИЕ ВПРАВО 
-                                table.Cell().Element(c => WorkerStyle(c, bgColor)).PaddingLeft(20).Text("↳ " + worker.WorkerFullName);
-
-                                table.Cell().Element(c => WorkerStyle(c, bgColor)).Text(worker.CompletedAt.ToString("HH:mm:ss")).FontColor(Colors.Grey.Darken1);
-                                table.Cell().Element(c => WorkerStyle(c, bgColor)).AlignRight().Text(worker.ItemsProcessed.ToString());
-                                table.Cell().Element(c => WorkerStyle(c, bgColor)).AlignRight().Text(FormatDuration(worker.WaitTimeSeconds));
-                                table.Cell().Element(c => WorkerStyle(c, bgColor)).AlignRight().Text(FormatDuration(worker.DurationSeconds));
-
-                                var wDiscCell = table.Cell().Element(c => WorkerStyle(c, bgColor)).AlignRight();
-                                if (worker.Discrepancies > 0) wDiscCell.Text(worker.Discrepancies.ToString()).FontColor(Colors.Red.Medium);
-                                else wDiscCell.Text("-").FontColor(Colors.Grey.Lighten1);
-
-                                isEven = !isEven;
-                            }
-                        }
-
-                        // Стили ячеек
-                        static IContainer GroupStyle(IContainer c) => c.BorderBottom(1).BorderColor(Colors.Indigo.Medium)
-                            .Background(Colors.Indigo.Lighten4).PaddingVertical(6).PaddingHorizontal(5); // Светло-синий фон группы
-
-                        static IContainer WorkerStyle(IContainer c, string bg) => c.BorderBottom(1).BorderColor(Colors.Grey.Lighten3)
-                            .Background(bg).PaddingVertical(4).PaddingHorizontal(5); // Чередование цветов сотрудников
-                    });
-
-                    // Футер
-                    page.Footer().AlignCenter().Text(x =>
-                    {
-                        x.Span("Страница ");
-                        x.CurrentPageNumber();
-                        x.Span(" из ");
-                        x.TotalPages();
-                    });
+                    page.Header().Element(c => ComposeHeader(c, title));
+                    page.Content().Element(c => ComposeKpiTable(c, data));
+                    page.Footer().Element(ComposeFooter);
                 });
             }).GeneratePdf();
         }
 
-
-        public byte[] ExportDetailedReportToPdf(IEnumerable<DetailedTaskReportDto> data, string title)
+        // 2. ОТЧЕТ ПО ЗАКАЗАМ (С детализацией состава, весом и кубатурой)
+        public byte[] GenerateDetailedOrdersPdf(IEnumerable<OrderDetailedDto> data, string title = "Детализированный отчет по управлению заказами")
         {
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
-                    // Альбомная ориентация для вместимости всех колонок
                     page.Size(PageSizes.A4.Landscape());
                     page.Margin(1, Unit.Centimetre);
                     page.PageColor(Colors.White);
                     page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
 
-                    page.Header().Element(header => ComposeHeader(header, title));
-                    page.Content().Element(content => ComposeContent(content, data));
+                    page.Header().Element(c => ComposeHeader(c, title));
+                    page.Content().Element(c => ComposeDetailedOrdersTable(c, data));
                     page.Footer().Element(ComposeFooter);
                 });
             }).GeneratePdf();
         }
+
+        // 3. ОТЧЕТ ПО ТОВАРАМ (С графиками популярности)
+        public byte[] GenerateTopItemsPdf(IEnumerable<TopItemDto> data, string title = "Аналитика: Топ востребованных товаров")
+        {
+            return Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4.Portrait());
+                    page.Margin(1, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
+
+                    page.Header().Element(c => ComposeHeader(c, title));
+                    page.Content().Element(c => ComposeTopItemsChart(c, data));
+                    page.Footer().Element(ComposeFooter);
+                });
+            }).GeneratePdf();
+        }
+
+        #region Вспомогательные методы верстки (QuestPDF)
 
         private void ComposeHeader(IContainer container, string title)
         {
@@ -153,91 +97,254 @@ namespace TaskControl.ReportsModule.Application.Services
             {
                 row.RelativeItem().Column(column =>
                 {
-                    column.Item().Text(title)
-                        .FontSize(20)
-                        .SemiBold()
-                        .FontColor(Colors.Indigo.Darken2);
-
-                    column.Item().Text($"Дата формирования: {DateTime.Now:dd.MM.yyyy HH:mm}")
-                        .FontSize(10)
-                        .FontColor(Colors.Grey.Medium);
+                    column.Item().Text(title).FontSize(18).SemiBold().FontColor(Colors.Blue.Darken2);
+                    column.Item().Text($"Сгенерировано системой управления: {DateTime.Now:dd.MM.yyyy HH:mm}").FontSize(10).FontColor(Colors.Grey.Medium);
                 });
             });
         }
 
-        private void ComposeContent(IContainer container, IEnumerable<DetailedTaskReportDto> data)
+        // Верстка таблицы KPI
+        private void ComposeKpiTable(IContainer container, IEnumerable<EmployeeKpiDto> data)
         {
-            container.PaddingVertical(1, Unit.Centimetre).Table(table =>
+            var dataList = data.ToList();
+            float maxComplexity = dataList.Any() ? dataList.Max(x => x.TotalComplexity) : 1;
+
+            container.PaddingVertical(10).Table(table =>
             {
-                // Настройка ширины колонок
                 table.ColumnsDefinition(columns =>
                 {
-                    columns.ConstantColumn(100); // Дата
-                    columns.RelativeColumn(2);   // ФИО
-                    columns.RelativeColumn(1.5f);  // Тип
-                    columns.RelativeColumn(1);   // Товаров
-                    columns.RelativeColumn(1);   // Очередь
-                    columns.RelativeColumn(1);   // Ожидание
-                    columns.RelativeColumn(1);   // Выполнение
-                    columns.RelativeColumn(1);   // Расхождения
+                    columns.ConstantColumn(30);  // #
+                    columns.RelativeColumn(3);  // ФИО
+                    columns.RelativeColumn(3);  // График Нагрузки
+                    columns.RelativeColumn(2);  // Задач закрыто
+                    columns.RelativeColumn(2);  // Ср. время
+                    columns.RelativeColumn(2);  // Вес (кг)
+                    columns.RelativeColumn(2);  // Объем (м3)
                 });
 
-                // Шапка таблицы
                 table.Header(header =>
                 {
-                    header.Cell().Element(CellStyle).Text("Завершено").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).Text("Исполнитель").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).Text("Тип задачи").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).AlignRight().Text("Позиций").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).AlignRight().Text("Очередь").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).AlignRight().Text("Ожидание").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).AlignRight().Text("Выполнение").SemiBold().FontColor(Colors.White);
-                    header.Cell().Element(CellStyle).AlignRight().Text("Ошибки").SemiBold().FontColor(Colors.White);
+                    header.Cell().Element(CellStyle).Text("#").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Сотрудник").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Уровень нагрузки (Complexity)").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Выполнено").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Ср. время").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Перенесено (кг)").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Объем (м³)").SemiBold();
 
-                    static IContainer CellStyle(IContainer container)
-                    {
-                        return container.DefaultTextStyle(x => x.SemiBold())
-                            .PaddingVertical(5)
-                            .BorderBottom(1).BorderColor(Colors.Black)
-                            .Background(Colors.Indigo.Darken2)
-                            .PaddingHorizontal(5);
-                    }
+                    static IContainer CellStyle(IContainer container) => container.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(5).BorderBottom(1).BorderColor(Colors.Black);
                 });
 
-                // Заполнение данными с чередованием цветов строк
-                var rowIndex = 0;
+                int index = 1;
+                foreach (var item in dataList)
+                {
+                    var bgColor = index % 2 == 0 ? Colors.Grey.Lighten4 : Colors.White;
+                    float fillWeight = maxComplexity > 0 ? ((float)item.TotalComplexity / maxComplexity) : 0;
+                    float emptyWeight = 1f - fillWeight;
+
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(index.ToString());
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text($"{item.FullName}\n({item.BranchName})").FontSize(9);
+
+                    // ГРАФИК НАГРУЗКИ
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignMiddle().Row(row =>
+                    {
+                        row.RelativeItem().AlignMiddle().Row(barRow =>
+                        {
+                            if (fillWeight > 0)
+                                barRow.RelativeItem(fillWeight).Height(10)
+                                      .Background(fillWeight > 0.8f ? Colors.Red.Lighten1 : Colors.Green.Medium); // Красный, если перегружен
+
+                            if (emptyWeight > 0)
+                                barRow.RelativeItem(emptyWeight).Height(10).Background(Colors.Grey.Lighten3);
+                        });
+                        row.ConstantItem(30).AlignRight().Text(item.TotalComplexity.ToString()).SemiBold().FontSize(9);
+                    });
+
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.TasksCompleted.ToString());
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.AverageTaskDuration);
+
+                    // Выделяем вес > 1 тонны
+                    var weightCell = table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight();
+                    if (item.TotalWeightMovedKg > 1000)
+                        weightCell.Text(item.TotalWeightMovedKg.ToString("F2")).FontColor(Colors.Red.Medium).SemiBold();
+                    else
+                        weightCell.Text(item.TotalWeightMovedKg.ToString("F2"));
+
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.TotalVolumeMovedCubicMeters.ToString("F4"));
+                    index++;
+                }
+
+                static IContainer ItemStyle(IContainer container, string bgColor) => container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Background(bgColor).PaddingVertical(6).PaddingHorizontal(2);
+            });
+        }
+
+        // Верстка детализации заказов
+        private void ComposeDetailedOrdersTable(IContainer container, IEnumerable<OrderDetailedDto> data)
+        {
+            container.PaddingVertical(10).Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.ConstantColumn(50);   // ID
+                    columns.RelativeColumn(1.5f); // Дата
+                    columns.RelativeColumn(5);    // Состав заказа
+                    columns.RelativeColumn(1.5f); // Статус
+                    columns.RelativeColumn(1.2f); // Вес
+                    columns.RelativeColumn(1.2f); // Объем
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Element(CellStyle).Text("ID").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Дата создания").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Состав заказа (Номенклатура и кол-во)").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Статус").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Вес (кг)").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Объем (м³)").SemiBold();
+
+                    static IContainer CellStyle(IContainer container) => container.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(5).BorderBottom(1).BorderColor(Colors.Black);
+                });
+
+                int index = 1;
                 foreach (var item in data)
                 {
-                    var isEven = rowIndex % 2 == 0;
-                    var backgroundColor = isEven ? Colors.White : Colors.Grey.Lighten4;
+                    var bgColor = index % 2 == 0 ? Colors.Grey.Lighten4 : Colors.White;
 
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).Text(item.CompletedAt.ToString("dd.MM.yyyy HH:mm"));
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).Text(item.WorkerFullName);
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).Text(item.TaskCategoryDisplayName);
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text($"#{item.OrderId}");
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(item.CreatedAt.ToString("dd.MM.yyyy HH:mm")).FontSize(9);
 
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).AlignRight().Text(item.ItemsProcessed.ToString());
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).AlignRight().Text(item.QueueSize.ToString());
+                    // Вывод списка товаров
+                    var itemsText = string.IsNullOrEmpty(item.ItemsList) ? "Корзина пуста" : item.ItemsList;
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(itemsText).FontSize(9).Italic().FontColor(Colors.Grey.Darken3);
 
-                    // Форматируем время
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).AlignRight().Text(FormatDuration(item.WaitTimeSeconds));
-                    table.Cell().Element(c => CellStyle(c, backgroundColor)).AlignRight().Text(FormatDuration(item.DurationSeconds));
+                    var statusColor = item.StatusRaw == "Completed" ? Colors.Green.Darken1 :
+                                      item.StatusRaw == "Cancelled" || item.StatusRaw == "Rejected" ? Colors.Red.Darken1 : Colors.Black;
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(item.Status).FontColor(statusColor).SemiBold().FontSize(9);
 
-                    // Расхождения (ошибки) подсвечиваем красным
-                    var discCell = table.Cell().Element(c => CellStyle(c, backgroundColor)).AlignRight();
-                    if (item.Discrepancies > 0)
-                        discCell.Text(item.Discrepancies.ToString()).FontColor(Colors.Red.Medium).SemiBold();
-                    else
-                        discCell.Text("-").FontColor(Colors.Grey.Medium);
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.TotalWeightKg.ToString("F2")).FontSize(9);
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.TotalVolumeCubicMeters.ToString("F4")).FontSize(9);
 
-                    rowIndex++;
+                    index++;
                 }
 
-                static IContainer CellStyle(IContainer container, string bgColor)
+                static IContainer ItemStyle(IContainer container, string bgColor) => container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Background(bgColor).PaddingVertical(6).PaddingHorizontal(4);
+            });
+        }
+
+        // Добавьте этот метод в ReportExportService.cs для исправления ошибки компиляции
+        public byte[] GenerateOrderLeadTimePdf(IEnumerable<OrderLeadTimeDto> data, string title = "Аналитика времени выполнения заказов (Lead Time)")
+        {
+            return Document.Create(container =>
+            {
+                container.Page(page =>
                 {
-                    return container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2)
-                        .Background(bgColor)
-                        .PaddingVertical(5).PaddingHorizontal(5);
+                    page.Size(PageSizes.A4.Landscape());
+                    page.Margin(1, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
+
+                    page.Header().Element(c => ComposeHeader(c, title));
+
+                    page.Content().PaddingVertical(10).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.ConstantColumn(40);  // ID
+                            columns.RelativeColumn(2);   // Филиал
+                            columns.RelativeColumn(2);   // Создан
+                            columns.RelativeColumn(2);   // Выдан
+                            columns.RelativeColumn(1.5f); // Тип
+                            columns.RelativeColumn(1.5f); // Статус
+                            columns.RelativeColumn(2);   // Lead Time (График)
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Element(CellStyle).Text("ID");
+                            header.Cell().Element(CellStyle).Text("Филиал");
+                            header.Cell().Element(CellStyle).Text("Создан");
+                            header.Cell().Element(CellStyle).Text("Завершен");
+                            header.Cell().Element(CellStyle).Text("Тип");
+                            header.Cell().Element(CellStyle).Text("Статус");
+                            header.Cell().Element(CellStyle).AlignRight().Text("Lead Time");
+                            static IContainer CellStyle(IContainer container) => container.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(5).BorderBottom(1);
+                        });
+
+                        foreach (var item in data)
+                        {
+                            table.Cell().PaddingVertical(5).Text($"#{item.OrderId}");
+                            table.Cell().PaddingVertical(5).Text(item.BranchName);
+                            table.Cell().PaddingVertical(5).Text(item.CreatedAt.ToString("g"));
+                            table.Cell().PaddingVertical(5).Text(item.DeliveryDate?.ToString("g") ?? "---");
+                            table.Cell().PaddingVertical(5).Text(item.DeliveryType);
+                            table.Cell().PaddingVertical(5).Text(item.Status);
+
+                            // ВИЗУАЛИЗАЦИЯ ВРЕМЕНИ (Если заказ шел дольше 2 часов - подсвечиваем риск)
+                            table.Cell().PaddingVertical(5).AlignRight().Column(col => {
+                                col.Item().Text(item.LeadTimeFormatted).SemiBold();
+                                if (item.LeadTimeMinutes > 120) // Пример порога в 2 часа
+                                    col.Item().Text("Задержка").FontSize(8).FontColor(Colors.Red.Medium);
+                            });
+                        }
+                    });
+                    page.Footer().Element(ComposeFooter);
+                });
+            }).GeneratePdf();
+        }
+
+        // Верстка популярных товаров
+        private void ComposeTopItemsChart(IContainer container, IEnumerable<TopItemDto> data)
+        {
+            var dataList = data.ToList();
+            if (!dataList.Any()) return;
+
+            float maxQuantity = dataList.Max(x => x.QuantitySold);
+
+            container.PaddingVertical(10).Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.ConstantColumn(30);  // #
+                    columns.RelativeColumn(3);   // Товар
+                    columns.RelativeColumn(4);   // График продаж
+                    columns.RelativeColumn(1);   // Кол-во
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Element(CellStyle).Text("#").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Наименование товара").SemiBold();
+                    header.Cell().Element(CellStyle).Text("Объем продаж (Популярность)").SemiBold();
+                    header.Cell().Element(CellStyle).AlignRight().Text("Шт.").SemiBold();
+
+                    static IContainer CellStyle(IContainer container) => container.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(5).BorderBottom(1).BorderColor(Colors.Black);
+                });
+
+                int index = 1;
+                foreach (var item in dataList)
+                {
+                    var bgColor = index % 2 == 0 ? Colors.Grey.Lighten4 : Colors.White;
+                    float fillWeight = maxQuantity > 0 ? ((float)item.QuantitySold / maxQuantity) : 0;
+                    float emptyWeight = 1f - fillWeight;
+
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(index.ToString());
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).Text(item.ItemName);
+
+                    // ГРАФИК ПРОДАЖ
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignMiddle().Row(row =>
+                    {
+                        if (fillWeight > 0)
+                            row.RelativeItem(fillWeight).Height(12).Background(Colors.Blue.Medium);
+
+                        if (emptyWeight > 0)
+                            row.RelativeItem(emptyWeight).Height(12).Background(Colors.Grey.Lighten3);
+                    });
+
+                    table.Cell().Element(c => ItemStyle(c, bgColor)).AlignRight().Text(item.QuantitySold.ToString()).SemiBold();
+                    index++;
                 }
+
+                static IContainer ItemStyle(IContainer container, string bgColor) => container.BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Background(bgColor).PaddingVertical(6).PaddingHorizontal(2);
             });
         }
 
@@ -251,13 +358,6 @@ namespace TaskControl.ReportsModule.Application.Services
                 x.TotalPages();
             });
         }
-
-        // Вспомогательный метод для перевода секунд в формат ЧЧ:ММ:СС
-        private string FormatDuration(int seconds)
-        {
-            if (seconds == 0) return "00:00:00";
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
-        }
+        #endregion
     }
 }

@@ -10,5 +10,6 @@ namespace TaskControl.OrderModule.Application.Interface
     {
         Task<IEnumerable<OrderDto>> GetByCustomerAsync(int customerId);
         Task<bool> CancelOrderAsync(int id);
+        Task<IEnumerable<OrderDto>> GetByBranchAsync(int branchId);
     }
 }

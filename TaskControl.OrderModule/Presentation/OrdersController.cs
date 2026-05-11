@@ -83,6 +83,30 @@ namespace TaskControl.OrderModule.Presentation.Controllers
         }
 
         /// <summary>
+        /// Получить все заказы филиала с вложенными позициями (для панели руководителя)
+        /// </summary>
+        [HttpGet("branch/{branchId}")]
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetByBranch(int branchId)
+        {
+            try
+            {
+                var orders = await _service.GetByBranchAsync(branchId);
+
+                if (orders == null || !orders.Any())
+                {
+                    return Ok(new List<OrderDto>());
+                }
+
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении заказов филиала {BranchId}", branchId);
+                return StatusCode(500, "Внутренняя ошибка сервера");
+            }
+        }
+
+        /// <summary>
         /// Отменить заказ покупателя
         /// </summary>
         [HttpPost("{id}/cancel")]

@@ -33,6 +33,7 @@ namespace TaskControl.OrderModule.Application.DTOs
         public OrderStatus Status { get; init; } = OrderStatus.Created;
 
         public decimal TotalPrice { get; set; }
+        public DateTime CreatedAt { get; set; }
 
         public List<OrderPositionDto> Positions { get; set; } = new();
 
@@ -53,6 +54,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             PaymentType = dto.PaymentType,
             Status = dto.Status,
             TotalPrice = dto.TotalPrice,
+            CreatedAt = dto.CreatedAt,
         };
 
         public static OrderDto ToDto(Order entity) => new()
@@ -71,6 +73,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             DeliveryType = entity.DeliveryType,
             PaymentType = entity.PaymentType,
             Status = entity.Status,
+            CreatedAt = entity.CreatedAt,
             TotalPrice = entity.TotalPrice // Восстановлен вывод суммы
         };
     }

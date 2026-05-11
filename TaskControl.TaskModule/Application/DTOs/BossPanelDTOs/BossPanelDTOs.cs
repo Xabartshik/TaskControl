@@ -29,6 +29,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public string FullName { get; set; }
         public bool IsAtWork { get; set; }
         public int ActiveTasksCount { get; set; }
+        public double TotalComplexity { get; set; }
         public List<ActiveTaskBriefDto> ActiveTasks { get; set; } = new();
     }
 

@@ -21,89 +21,105 @@ namespace TaskControl.TaskModule.Application.Services
     {
         private readonly ITaskDataConnection _db;
         private readonly ILogger<CourierReturnService> _logger;
+        private readonly IOrderCancellationService _cancellationService;
+        private readonly ReturnTaskGeneratorService _returnTaskGenerator;
 
-        public CourierReturnService(ITaskDataConnection db, ILogger<CourierReturnService> logger)
+        public CourierReturnService(ITaskDataConnection db, ILogger<CourierReturnService> logger, IOrderCancellationService cancellationService, ReturnTaskGeneratorService returnTaskGenerator)
         {
             _db = db;
             _logger = logger;
+            _cancellationService = cancellationService;
+            _returnTaskGenerator = returnTaskGenerator;
         }
 
         public async Task GenerateReturnsIfAnyAsync(int courierId, int branchId)
         {
             var db = (DataConnection)_db;
 
-            // 1. Ищем багажник именно этого курьера
+            // 1. Ищем багажник курьера (ZoneCode = "COURIER", FLSNumber = ID курьера)
             var courierCell = await db.GetTable<PositionModel>()
                 .FirstOrDefaultAsync(p => p.ZoneCode == "COURIER" && p.FLSNumber == courierId.ToString());
 
-            if (courierCell == null) return; // Это не курьер или у него нет ячейки
+            if (courierCell == null)
+            {
+                _logger.LogWarning("Багажник для курьера {CourierId} не найден в системе.", courierId);
+                return;
+            }
 
-            // 2. Ищем "сирот" (товары в его машине, на которые нет резерва)
-            var orphansQuery = from ip in db.GetTable<ItemPositionModel>()
-                               join i in db.GetTable<ItemModel>() on ip.ItemId equals i.ItemId
-                               from r in db.GetTable<OrderReservationModel>().Where(res => res.ItemPositionId == ip.Id).DefaultIfEmpty()
-                               where ip.PositionId == courierCell.PositionId && r == null // r == null означает, что резерва нет
-                               select new { ItemPosition = ip, Item = i };
+            // 2. Находим все товары, физически находящиеся в багажнике
+            var itemsInTrunk = await db.GetTable<ItemPositionModel>()
+                .Where(ip => ip.PositionId == courierCell.PositionId)
+                .ToListAsync();
 
-            var orphans = await orphansQuery.ToListAsync();
+            if (!itemsInTrunk.Any()) return;
 
-            if (!orphans.Any()) return; // Возвращать нечего, багажник чист
+            var itemsToReturnFinal = new List<(int ItemPositionId, int Qty)>();
+
+            // Временные структуры для группировки
+            var orderGroups = new Dictionary<int, Dictionary<int, int>>(); // OrderId -> { ItemPositionId: Qty }
+            var orphans = new List<(int ItemPositionId, int Qty)>();
+
+            // 3. Анализируем содержимое: что привязано к заказам, а что - "сироты"
+            foreach (var item in itemsInTrunk)
+            {
+                var reservation = await db.GetTable<OrderReservationModel>()
+                    .FirstOrDefaultAsync(r => r.ItemPositionId == item.Id);
+
+                if (reservation != null)
+                {
+                    // Находим OrderId через OrderPosition
+                    var orderId = await db.GetTable<OrderPositionModel>()
+                        .Where(op => op.UniqueId == reservation.OrderPositionId)
+                        .Select(op => op.OrderId)
+                        .FirstOrDefaultAsync();
+
+                    if (orderId != 0)
+                    {
+                        if (!orderGroups.ContainsKey(orderId))
+                            orderGroups[orderId] = new Dictionary<int, int>();
+
+                        orderGroups[orderId][item.Id] = item.Quantity;
+                    }
+                    else
+                    {
+                        orphans.Add((item.Id, item.Quantity));
+                    }
+                }
+                else
+                {
+                    orphans.Add((item.Id, item.Quantity));
+                }
+            }
 
             using var transaction = await db.BeginTransactionAsync();
             try
             {
-                // 3. Считаем общий вес возвратов
-                double totalWeight = orphans.Sum(o => o.Item.Weight * o.ItemPosition.Quantity);
-                _logger.LogInformation("Генерация задачи возврата для курьера {CourierId}. Найдено {Count} позиций, вес: {Weight} кг.", courierId, orphans.Count, totalWeight);
-
-                // 4. Создаем базовую задачу
-                int baseTaskId = await db.InsertWithInt32IdentityAsync(new BaseTaskModel
+                // 4. Обрабатываем заказы через единый сервис отмены
+                foreach (var group in orderGroups)
                 {
-                    Title = $"Разгрузка возвратов курьера ID:{courierId}",
-                    Type = "ReturnToStock",
-                    BranchId = branchId,
-                    Status = "New",
-                    PriorityLevel = 3, // Высокий приоритет, чтобы машина не простаивала
-                    CreatedAt = DateTime.UtcNow
-                });
+                    int orderId = group.Key;
+                    var positionsToCancel = group.Value;
 
-                // 5. Создаем назначение для Основного работника
-                int mainAssignmentId = await db.InsertWithInt32IdentityAsync(new ReturnAssignmentModel
-                {
-                    TaskId = baseTaskId,
-                    BranchId = branchId,
-                    Status = 0,
-                    Role = "Main",
-                    Complexity = totalWeight > 20 ? 1.5 : 1.0,
-                    AssignedAt = DateTime.UtcNow
-                });
+                    // Вызываем сервис: он снимет резервы, поправит финансы и вернет список для ReturnTask
+                    var cancelledItems = await _cancellationService.ProcessCancellationAsync(
+                        orderId,
+                        positionsToCancel,
+                        isFullCancellation: true // Курьер возвращает товары => для него этот заказ отменен
+                    );
 
-                // 6. Если тяжелое - призываем Помощника!
-                if (totalWeight >= 50.0)
-                {
-                    await db.InsertAsync(new ReturnAssignmentModel
-                    {
-                        TaskId = baseTaskId,
-                        BranchId = branchId,
-                        Status = 0,
-                        Role = "Helper",
-                        Complexity = 1.0,
-                        AssignedAt = DateTime.UtcNow
-                    });
-                    _logger.LogInformation("Для возврата курьера {CourierId} добавлен Помощник (перевес).", courierId);
+                    itemsToReturnFinal.AddRange(cancelledItems);
                 }
 
-                // 7. Добавляем строки для возврата
-                foreach (var orphan in orphans)
+                // 5. Добавляем "сирот" (товары без резервов) в общий список возврата
+                itemsToReturnFinal.AddRange(orphans);
+
+                // 6. Генерируем одну общую задачу разгрузки возвратов на склад
+                if (itemsToReturnFinal.Any())
                 {
-                    await db.InsertAsync(new ReturnLineModel
-                    {
-                        ReturnAssignmentId = mainAssignmentId,
-                        ItemPositionId = orphan.ItemPosition.Id,
-                        TargetPositionId = null, // Кладовщик сам решит, на какую полку положить
-                        Quantity = orphan.ItemPosition.Quantity,
-                        ScannedQuantity = 0
-                    });
+                    // Передаем 0 как OrderId, так как это сводная задача по нескольким заказам (или без них)
+                    await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(0, branchId, itemsToReturnFinal);
+
+                    _logger.LogInformation("Сформирована задача возврата для курьера {CourierId}: {Count} позиций.", courierId, itemsToReturnFinal.Count);
                 }
 
                 await transaction.CommitAsync();
@@ -111,7 +127,7 @@ namespace TaskControl.TaskModule.Application.Services
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Ошибка при генерации задачи возврата для курьера {CourierId}", courierId);
+                _logger.LogError(ex, "Ошибка при автоматической генерации возвратов для курьера {CourierId}", courierId);
             }
         }
     }

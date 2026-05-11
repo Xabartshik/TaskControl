@@ -15,6 +15,7 @@ using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Mapper;
 using TaskControl.TaskModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
@@ -23,6 +24,7 @@ namespace TaskControl.TaskModule.Application.Services
 {
     public class OrderAssemblyExecutionService : IOrderAssemblyExecutionService
     {
+        private readonly IOrderCancellationService _cancellationService;
         private readonly IOrderAssemblyAssignmentRepository _assignmentRepo;
         private readonly IOrderAssemblyLineRepository _lineRepo;
         private readonly ILogger<OrderAssemblyExecutionService> _logger;
@@ -44,7 +46,8 @@ namespace TaskControl.TaskModule.Application.Services
             TaskWorkloadAggregator aggregator, 
             ITaskDataConnection db,
             ITaskComplexityCalculator complexityCalculator,
-            ReturnTaskGeneratorService returnTaskGenerator)
+            ReturnTaskGeneratorService returnTaskGenerator,
+            IOrderCancellationService cancellationService)
         {
             _assignmentRepo = assignmentRepo ?? throw new ArgumentNullException(nameof(assignmentRepo));
             _lineRepo = lineRepo ?? throw new ArgumentNullException(nameof(lineRepo));
@@ -56,6 +59,7 @@ namespace TaskControl.TaskModule.Application.Services
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
             _complexityCalculator = complexityCalculator ?? throw new ArgumentNullException(nameof(complexityCalculator));
             _returnTaskGenerator = returnTaskGenerator ?? throw new ArgumentNullException(nameof(returnTaskGenerator));
+            _cancellationService = cancellationService;
         }
 
 
@@ -88,145 +92,92 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<(bool Success, string Message)> HandoverExpressOrder(int assignmentId, string qrToken, Dictionary<int, int>? cancelledLines = null)
         {
-            // 1. Получаем назначение и заказ
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
             if (assignment == null) return (false, "Назначение сборки не найдено");
 
             var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == assignment.OrderId);
             if (order == null) return (false, "Заказ не найден");
 
-            if (order.DeliveryType != DeliveryType.Express.ToString())
+            if (order.DeliveryType != "Express")
                 return (false, "Этот метод предназначен только для Экспресс-выдачи.");
 
-            // 2. Валидация QR-кода покупателя
             if (!_qrTokenService.ValidateOrderPickupToken(qrToken, out int tokenCustomerId, out int tokenOrderId, out string errorMessage))
-            {
                 return (false, $"Ошибка QR-кода: {errorMessage}");
-            }
 
             if (order.CustomerId != tokenCustomerId || order.OrderId != tokenOrderId)
-            {
                 return (false, "QR-код не принадлежит этому заказу!");
-            }
 
-            var linesToPlace = assignment.Lines.Where(l => l.Status == OrderAssemblyLineStatus.Picked).ToList();
+            // === ИСПРАВЛЕНИЕ 1: Грузим линии напрямую из БД, обходя ленивую загрузку ===
+            var linesToPlace = await _db.GetTable<OrderAssemblyLineModel>()
+                .Where(l => l.OrderAssemblyAssignmentId == assignmentId && l.Status == (int)OrderAssemblyLineStatus.Picked)
+                .ToListAsync();
+
             var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
+            bool isFullCancellation = false;
+            var positionsToCancel = new Dictionary<int, int>();
 
-            // === 3. НОВАЯ ЛОГИКА: ОБРАБОТКА ЧАСТИЧНОЙ ОТМЕНЫ ===
-            // === 3. НОВАЯ ЛОГИКА: ОБРАБОТКА ЧАСТИЧНОЙ ОТМЕНЫ ===
             if (cancelledLines != null && cancelledLines.Any())
             {
+                int totalPicked = linesToPlace.Sum(l => l.Quantity);
+                int totalCancelled = 0;
+
                 foreach (var kvp in cancelledLines)
                 {
-                    int lineId = kvp.Key;
-                    int cancelQty = kvp.Value;
-
-                    var line = linesToPlace.FirstOrDefault(l => l.Id == lineId);
-                    if (line == null || cancelQty <= 0) continue;
-
-                    // Защита от превышения количества
-                    if (cancelQty > line.Quantity) cancelQty = line.Quantity;
-
-                    // Откладываем данные для генератора задач возврата
-                    itemsToReturn.Add((line.ItemPositionId, cancelQty));
-
-                    // Ищем этот товар в чеке клиента (Ваша оригинальная рабочая логика)
-                    var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
-                    if (itemPos != null)
+                    var line = linesToPlace.FirstOrDefault(l => l.Id == kvp.Key);
+                    if (line != null)
                     {
-                        var orderPosition = await _db.GetTable<OrderPositionModel>()
-                            .FirstOrDefaultAsync(op => op.OrderId == order.OrderId && op.ItemId == itemPos.ItemId);
-
-                        if (orderPosition != null)
-                        {
-                            // === ИСПРАВЛЕНИЕ ОШИБКИ 23503: СНИМАЕМ РЕЗЕРВЫ ПЕРВООЧЕРЕДНО ===
-                            // Ищем резерв, ссылающийся на эту позицию чека
-                            var reservation = await _db.GetTable<OrderReservationModel>()
-                                .FirstOrDefaultAsync(r => r.OrderPositionId == orderPosition.UniqueId);
-
-                            if (reservation != null)
-                            {
-                                if (orderPosition.Quantity <= cancelQty)
-                                {
-                                    // Удаляем резерв полностью
-                                    await _db.GetTable<OrderReservationModel>().Where(r => r.Id == reservation.Id).DeleteAsync();
-                                }
-                                else
-                                {
-                                    // Уменьшаем количество в резерве
-                                    await _db.GetTable<OrderReservationModel>().Where(r => r.Id == reservation.Id)
-                                        .Set(r => r.Quantity, r => r.Quantity - cancelQty).UpdateAsync();
-                                }
-                            }
-                            // ===============================================================
-
-                            // === ВАША ОРИГИНАЛЬНАЯ ЛОГИКА ОБНОВЛЕНИЯ ЧЕКА ===
-                            if (orderPosition.Quantity <= cancelQty)
-                            {
-                                // Теперь база разрешит удалить эту позицию
-                                await _db.GetTable<OrderPositionModel>().Where(op => op.UniqueId == orderPosition.UniqueId).DeleteAsync();
-                                await _db.GetTable<OrderModel>()
-                                    .Where(o => o.OrderId == order.OrderId)
-                                    .Set(o => o.TotalPrice, o => o.TotalPrice - orderPosition.Price)
-                                    .UpdateAsync();
-                            }
-                            else
-                            {
-                                // Уменьшаем количество и цену в чеке
-                                decimal unitPrice = orderPosition.Price / orderPosition.Quantity;
-                                decimal priceToDeduct = unitPrice * cancelQty;
-
-                                await _db.GetTable<OrderPositionModel>()
-                                    .Where(op => op.UniqueId == orderPosition.UniqueId)
-                                    .Set(op => op.Quantity, op => op.Quantity - cancelQty)
-                                    .Set(op => op.Price, op => op.Price - priceToDeduct)
-                                    .UpdateAsync();
-
-                                await _db.GetTable<OrderModel>()
-                                    .Where(o => o.OrderId == order.OrderId)
-                                    .Set(o => o.TotalPrice, o => o.TotalPrice - priceToDeduct)
-                                    .UpdateAsync();
-                            }
-                        }
+                        int qty = Math.Min(kvp.Value, line.Quantity);
+                        totalCancelled += qty;
+                        positionsToCancel[line.ItemPositionId] = qty;
                     }
                 }
+                isFullCancellation = (totalPicked > 0 && totalPicked == totalCancelled);
             }
-            // 4. Переводим собранные товары в статус размещенных (в руки)
+
+            if (positionsToCancel.Any())
+            {
+                itemsToReturn = await _cancellationService.ProcessCancellationAsync(order.OrderId, positionsToCancel, isFullCancellation);
+            }
+
+            // === ИСПРАВЛЕНИЕ 2: Находим служебную ячейку Express для фиксации в истории ===
+            var expressCell = await _db.GetTable<PositionModel>()
+                .FirstOrDefaultAsync(p => p.BranchId == assignment.BranchId && p.ZoneCode == "EXPRESS");
+
             foreach (var line in linesToPlace)
             {
-                line.MarkAsPlaced();
-                await _lineRepo.UpdateAsync(line);
+                if (!isFullCancellation || !cancelledLines.ContainsKey(line.Id))
+                {
+                    line.Status = (int)OrderAssemblyLineStatus.Placed;
+
+                    // Привязываем служебную ячейку
+                    if (expressCell != null) line.TargetPositionId = expressCell.PositionId;
+
+                    await _lineRepo.UpdateAsync(line.ToDomain());
+                }
             }
 
-            // 5. Штатно завершаем задачу сборки (она спишет со склада ВСЁ количество, включая отмены)
             await CompleteAssemblyTask(assignmentId);
 
-            // 6. Проверяем, не отменили ли заказ целиком
-            var remainingPositions = await _db.GetTable<OrderPositionModel>().Where(op => op.OrderId == order.OrderId).ToListAsync();
-            string finalStatus = remainingPositions.Any() ? "Completed" : "Cancelled";
+            if (!isFullCancellation)
+            {
+                await _db.GetTable<OrderModel>().Where(o => o.OrderId == order.OrderId)
+                    .Set(o => o.Status, "Completed").UpdateAsync();
+            }
 
-            await _db.GetTable<OrderModel>()
-                .Where(o => o.OrderId == order.OrderId)
-                .Set(o => o.Status, finalStatus)
-                .UpdateAsync();
-
-            // 7. Генерируем задачу на возврат отказных товаров обратно на склад
             if (itemsToReturn.Any())
             {
                 await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(order.OrderId, assignment.BranchId, itemsToReturn);
                 _logger.LogInformation("|   [Express] Создана задача на возврат {Count} позиций для экспресс-заказа #{OrderId}", itemsToReturn.Count, order.OrderId);
 
-                // ИЗМЕНЕНИЕ: Возвращаем кортеж с информативным сообщением
-                return (true, $"Заказ выдан частично. Создана задача на возврат {itemsToReturn.Count} товаров.");
+                return (true, isFullCancellation
+                    ? "Заказ полностью отменен. Создана задача на возврат."
+                    : $"Заказ выдан частично. Создана задача на возврат {itemsToReturn.Count} товаров.");
             }
-            else
-            {
-                _logger.LogInformation("|   [Express] Экспресс-заказ #{OrderId} выдан клиенту полностью", order.OrderId);
 
-                // ИЗМЕНЕНИЕ: Возвращаем кортеж с успехом
-                return (true, "Экспресс-заказ успешно выдан полностью.");
-            }
+            _logger.LogInformation("|   [Express] Экспресс-заказ #{OrderId} выдан клиенту полностью", order.OrderId);
+            return (true, "Экспресс-заказ успешно выдан полностью.");
         }
+
         //public async Task<List<WorkerAssemblyTaskDto>> GetWorkerAssemblyTasks(int userId)
         //{
         //    if (_appSettings.EnableDetailedLogging)
@@ -547,159 +498,65 @@ namespace TaskControl.TaskModule.Application.Services
         public async Task CompleteAssemblyTask(int assignmentId)
         {
             var assignment = await _assignmentRepo.GetByIdAsync(assignmentId);
-            if (assignment == null) throw new ArgumentException("Assignment not found");
+            if (assignment == null) return;
 
-            // Проверка, что все товары физически размещены в ячейки ожидания или экспресс-зону
-            if (assignment.Lines.Any(l => l.Status == OrderAssemblyLineStatus.Pending || l.Status == OrderAssemblyLineStatus.Picked))
-                throw new InvalidOperationException("Не все товары размещены.");
+            var order = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == assignment.OrderId);
+            var itemPositions = _db.GetTable<ItemPositionModel>();
 
-            assignment.Complete(DateTime.UtcNow);
-            await _assignmentRepo.UpdateAsync(assignment);
+            // Прямой запрос линий (избегаем пустых списков из-за ленивой загрузки)
+            var placedLines = await _db.GetTable<OrderAssemblyLineModel>()
+                .Where(l => l.OrderAssemblyAssignmentId == assignmentId && l.Status == (int)OrderAssemblyLineStatus.Placed)
+                .ToListAsync();
 
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
-
             try
             {
-                // 1. Освобождаем ячейки PICKUP (Исключаем NULL для экспресс-заказов)
-                var targetCellIds = assignment.Lines
-                    .Where(l => l.TargetPositionId.HasValue)
-                    .Select(l => l.TargetPositionId.Value)
-                    .Distinct()
-                    .ToList();
-
-                if (targetCellIds.Any())
-                {
-                    await _db.GetTable<PositionModel>()
-                        .Where(p => targetCellIds.Contains(p.PositionId))
-                        .Set(p => p.Status, "Active")
-                        .UpdateAsync();
-                }
-
-                // 2. Обновляем статус заказа
-                await _db.GetTable<OrderModel>()
-                    .Where(o => o.OrderId == assignment.OrderId)
-                    .Set(o => o.Status, OrderStatus.Ready.ToString())
-                    .UpdateAsync();
-
-                // === НОВЫЙ БЛОК: ГЕНЕРАЦИЯ ЗАДАЧИ ВЫДАЧИ (Одиночной или Кооперативной) ===
-                var orderInfo = await _db.GetTable<OrderModel>().FirstOrDefaultAsync(o => o.OrderId == assignment.OrderId);
-                if (orderInfo != null && orderInfo.DeliveryType != DeliveryType.Express.ToString())
-                {
-                    // Собираем метрики товаров этого заказа для расчета сложности выдачи
-                    var orderLinesForMetrics = await (from op in _db.GetTable<OrderPositionModel>()
-                                                      join i in _db.GetTable<ItemModel>() on op.ItemId equals i.ItemId
-                                                      where op.OrderId == assignment.OrderId
-                                                      select new TaskItemMetrics
-                                                      {
-                                                          WeightGrams = i.Weight,
-                                                          LengthMm = i.Length,
-                                                          WidthMm = i.Width,
-                                                          HeightMm = i.Height,
-                                                          Quantity = op.Quantity
-                                                      }).ToListAsync();
-
-                    // Рассчитываем сложность выдачи через наш обновленный калькулятор
-                    var hoComplexity = _complexityCalculator.CalculateForItems(orderLinesForMetrics);
-
-                    int handoverPriority = hoComplexity.RequiresHelper ? (int)TaskPriority.High : (int)TaskPriority.Normal;
-                    string hoTitle = hoComplexity.RequiresHelper ? $"[ТЯЖЕЛЫЙ] Выдача заказа #{assignment.OrderId}" : $"Выдача заказа #{assignment.OrderId}";
-
-                    // Создаем базовую задачу на выдачу
-                    int handoverTaskId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new BaseTaskModel
-                    {
-                        Title = hoTitle,
-                        Type = "OrderHandover",
-                        Status = "New", // Задача упадет в общий пул для назначения балансировщиком
-                        PriorityLevel = handoverPriority,
-                        BranchId = assignment.BranchId,
-                        CreatedAt = DateTime.UtcNow
-                    }));
-
-                    // Создаем основное назначение (Main)
-                    await _db.InsertAsync(new OrderHandoverAssignmentModel
-                    {
-                        TaskId = handoverTaskId,
-                        OrderId = assignment.OrderId,
-                        Role = "Main",
-                        Status = 0,
-                        Complexity = hoComplexity.MainComplexity,
-                        HandoverType = orderInfo.DeliveryType == DeliveryType.Delivery.ToString() ? "ToCourier" : "ToCustomer",
-                        AssignedAt = DateTime.UtcNow
-                    });
-
-                    // Если калькулятор определил, что нужен помощник — создаем второе назначение (Helper)
-                    if (hoComplexity.RequiresHelper)
-                    {
-                        await _db.InsertAsync(new OrderHandoverAssignmentModel
-                        {
-                            TaskId = handoverTaskId,
-                            OrderId = assignment.OrderId,
-                            Role = "Helper",
-                            Status = 0,
-                            Complexity = hoComplexity.HelperComplexity,
-                            HandoverType = orderInfo.DeliveryType == DeliveryType.Delivery.ToString() ? "ToCourier" : "ToCustomer",
-                            AssignedAt = DateTime.UtcNow
-                        });
-                    }
-                }
-                // =========================================================================
-
-                // 3. Обновляем текущую базовую задачу сборки
-                await _db.GetTable<BaseTaskModel>()
-                    .Where(t => t.TaskId == assignment.TaskId)
-                    .Set(t => t.Status, "Completed")
-                    .Set(t => t.CompletedAt, DateTime.UtcNow)
-                    .UpdateAsync();
-
-                // 4. Авто-закрытие помощника сборки (если завершает Main)
-                if (assignment.Role == (int)AssignmentRole.Main)
-                {
-                    await _db.GetTable<OrderAssemblyAssignmentModel>()
-                        .Where(a => a.TaskId == assignment.TaskId && a.Role == (int)AssignmentRole.Helper && a.Status != 2) // 2 = Completed
-                        .Set(a => a.Status, 2)
-                        .Set(a => a.CompletedAt, DateTime.UtcNow)
-                        .UpdateAsync();
-                }
-
-                // 5. Перемещение товаров (логирование и обновление позиций в БД)
-                var itemPositions = _db.GetTable<ItemPositionModel>();
-
-                foreach (var line in assignment.Lines.Where(l => l.Status == OrderAssemblyLineStatus.Placed))
+                foreach (var line in placedLines)
                 {
                     var originalItem = await itemPositions.FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
 
-                    if (originalItem != null)
+                    if (originalItem != null && originalItem.Quantity > 0)
                     {
-                        // Фиксируем перемещение в историю
+                        int qtyToDeduct = Math.Min(originalItem.Quantity, line.Quantity);
+
+                        // Фиксируем перемещение в историю (здесь будет ID ячейки EXPRESS)
                         await _db.InsertAsync(new ItemMovementModel
                         {
                             ItemId = originalItem.ItemId,
                             SourcePositionId = originalItem.PositionId,
                             DestinationPositionId = line.TargetPositionId,
-                            Quantity = line.Quantity,
+                            Quantity = qtyToDeduct,
                             TaskId = assignment.TaskId,
                             WorkerId = assignment.AssignedToUserId,
                             CreatedAt = DateTime.UtcNow
                         });
 
-                        // Списываем количество с исходной полки хранения
+                        // Списываем товар с полки хранения
                         await itemPositions
                             .Where(ip => ip.Id == line.ItemPositionId)
-                            .Set(ip => ip.Quantity, ip => ip.Quantity - line.Quantity)
+                            .Set(ip => ip.Quantity, originalItem.Quantity - qtyToDeduct)
                             .UpdateAsync();
 
+                        // Проверяем, не является ли целевая ячейка зоной EXPRESS
+                        bool isExpressZone = false;
                         if (line.TargetPositionId.HasValue)
                         {
-                            // Создаем запись товара в ячейке ожидания (PICKUP)
+                            var targetCell = await _db.GetTable<PositionModel>()
+                                .FirstOrDefaultAsync(p => p.PositionId == line.TargetPositionId.Value);
+                            isExpressZone = targetCell?.ZoneCode == "EXPRESS";
+                        }
+
+                        if (line.TargetPositionId.HasValue && !isExpressZone)
+                        {
+                            // Для обычной выдачи (PICKUP) создаем остаток в ячейке ожидания
                             var newPosId = await _db.InsertWithInt32IdentityAsync(new ItemPositionModel
                             {
                                 ItemId = originalItem.ItemId,
                                 PositionId = line.TargetPositionId.Value,
-                                Quantity = line.Quantity,
+                                Quantity = qtyToDeduct,
                                 CreatedAt = DateTime.UtcNow
                             });
 
-                            // Переносим резерв заказа на новую ячейку
                             await _db.GetTable<OrderReservationModel>()
                                 .Where(r => r.ItemPositionId == line.ItemPositionId)
                                 .Set(r => r.ItemPositionId, newPosId)
@@ -707,7 +564,8 @@ namespace TaskControl.TaskModule.Application.Services
                         }
                         else
                         {
-                            // Для экспресс-выдачи отвязываем резерв (товар уходит клиенту)
+                            // Для EXPRESS (или если ячейка не задана) товар уходит в "никуда" (клиенту)
+                            // Просто отвязываем резерв, чтобы он не мешал удалению пустых позиций
                             await _db.GetTable<OrderReservationModel>()
                                 .Where(r => r.ItemPositionId == line.ItemPositionId)
                                 .Set(r => r.ItemPositionId, (int?)null)
@@ -716,41 +574,55 @@ namespace TaskControl.TaskModule.Application.Services
                     }
                 }
 
-                // 6. Логирование телеметрии производительности
-                int itemsProcessed = assignment.Lines.Sum(line => line.Quantity);
-                DateTime startTime = assignment.StartedAt ?? assignment.AssignedAt;
-                int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;
-                int waitTimeSeconds = assignment.StartedAt.HasValue
-                    ? (int)(assignment.StartedAt.Value - assignment.AssignedAt).TotalSeconds
-                    : 0;
+                // Завершаем назначение сборки
+                assignment.Status = AssignmentStatus.Completed;
+                assignment.CompletedAt = DateTime.UtcNow;
+                await _assignmentRepo.UpdateAsync(assignment);
 
-                int workerId = assignment.AssignedToUserId ?? 0;
-                int globalQueueSize = await _aggregator.GetTotalActiveWorkloadAsync(workerId);
+                await _db.GetTable<BaseTaskModel>()
+                    .Where(t => t.TaskId == assignment.TaskId)
+                    .Set(t => t.Status, "Completed")
+                    .UpdateAsync();
 
-                await _telemetryService.LogTaskEventAsync(
-                    workerId: workerId,
-                    branchId: assignment.BranchId,
-                    taskCategory: "OrderAssembly",
-                    itemsProcessed: itemsProcessed,
-                    durationSeconds: durationSeconds,
-                    discrepanciesFound: 0,
-                    waitTimeSeconds: waitTimeSeconds,
-                    queueSize: globalQueueSize
-                );
+                // Логика создания задачи выдачи (Handover)
+                if (order != null && order.DeliveryType != "Express")
+                {
+                    // Создаем базовую задачу (здесь BranchId нужен)
+                    var handoverTaskId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new BaseTaskModel
+                    {
+                        Title = $"Выдача заказа #{order.OrderId}",
+                        Type = "OrderHandover",
+                        Status = order.DeliveryType == "Express" ? "Completed" : "New",
+                        PriorityLevel = 1,
+                        BranchId = assignment.BranchId,
+                        CreatedAt = DateTime.UtcNow
+                    }));
+
+                    // Создаем назначение (BranchId УДАЛЕН согласно вашей модели)
+                    await _db.InsertAsync(new OrderHandoverAssignmentModel
+                    {
+                        TaskId = handoverTaskId,
+                        OrderId = order.OrderId,
+                        AssignedToUserId = assignment.AssignedToUserId,
+                        Status = order.DeliveryType == "Express" ? (int)AssignmentStatus.Completed : (int)AssignmentStatus.Assigned,
+                        Role = "Main",
+                        Complexity = 1.0,
+                        AssignedAt = DateTime.UtcNow,
+                        StartedAt = order.DeliveryType == "Express" ? DateTime.UtcNow : null,
+                        CompletedAt = order.DeliveryType == "Express" ? DateTime.UtcNow : null
+                    });
+                }
 
                 await transaction.CommitAsync();
-
-                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА и создана выдача ===", assignment.TaskId);
+                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА ===", assignment.TaskId);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "|   !!! Ошибка при завершении задачи {Id}", assignmentId);
+                _logger.LogError(ex, "Ошибка при завершении сборки {TaskId}", assignment.TaskId);
                 throw;
             }
         }
-
-
 
         public async Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId)
         {

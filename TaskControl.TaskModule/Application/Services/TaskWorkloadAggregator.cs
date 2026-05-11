@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.DataAccess.Model;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
@@ -174,6 +175,50 @@ namespace TaskControl.TaskModule.Application.Services
             return bestHelperId;
         }
 
+        public async Task<IEnumerable<EmployeeWorkloadDto>> GetBranchWorkloadAsync(int branchId)
+        {
+            // 1. Получаем всех сотрудников филиала и их статус чекина
+            var employees = await (from e in _db.GetTable<EmployeeModel>()
+                                   where _db.GetTable<MobileAppUserModel>().Any(u => u.EmployeeId == e.EmployeesId)
+                                   select new
+                                   {
+                                       e.EmployeesId,
+                                       FullName = e.Surname + " " + e.Name,
+                                       // Проверка, зачекинен ли он (последний статус "in")
+                                       IsAtWork = _db.GetTable<CheckIOEmployeeModel>()
+                                           .Where(c => c.EmployeeId == e.EmployeesId && c.BranchId == branchId)
+                                           .OrderByDescending(c => c.CheckTimeStamp)
+                                           .Select(c => c.CheckType)
+                                           .FirstOrDefault() == "in"
+                                   }).ToListAsync();
+
+            var result = new List<EmployeeWorkloadDto>();
+
+            foreach (var emp in employees)
+            {
+                var workload = new EmployeeWorkloadDto
+                {
+                    EmployeeId = emp.EmployeesId,
+                    FullName = emp.FullName,
+                    IsAtWork = emp.IsAtWork,
+                    TotalComplexity = await GetTotalActiveComplexityAsync(emp.EmployeesId)
+                };
+
+                // Собираем краткую информацию о задачах от всех провайдеров
+                var activeTasks = await GetAllActiveTasksAsync(emp.EmployeesId);
+                workload.ActiveTasksCount = activeTasks.Count();
+                workload.ActiveTasks = activeTasks.Select(t => new ActiveTaskBriefDto
+                {
+                    TaskId = t.TaskId,
+                    TaskType = t.Type,
+                    Status = t.Status.ToString()
+                }).ToList();
+
+                result.Add(workload);
+            }
+
+            return result.OrderByDescending(r => r.IsAtWork).ThenByDescending(r => r.TotalComplexity);
+        }
 
         public async Task<double> GetTotalActiveComplexityAsync(int workerId)
         {

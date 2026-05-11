@@ -33,7 +33,6 @@ using TaskControl.ReportsModule.Application.Interface;
 using TaskControl.ReportsModule.Application.Services;
 using TaskControl.ReportsModule.DataAccess.Infrastructure;
 using TaskControl.ReportsModule.DataAccess.Interface;
-using TaskControl.ReportsModule.DataAccess.Providers;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Handlers;
@@ -137,8 +136,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IService<RawEventDto>, RawEventService>();
 
             services.AddScoped<ITelemetryService, TelemetryService>();
-            services.AddScoped<IAnalyticsQueryProvider, AnalyticsQueryProvider>();
-
+            services.AddScoped<IOrderAnalyticsRepository, OrderAnalyticsRepository>();
+            services.AddScoped<IOrderAnalyticsService, OrderAnalyticsService>();
             services.AddScoped<ReportExportService>();
 
             QuestPDF.Settings.License = LicenseType.Community;
@@ -217,6 +216,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddSingleton<ITaskComplexityCalculator, TaskComplexityCalculator>();
             services.AddScoped<ReturnTaskGeneratorService>();
+            services.AddScoped<IOrderCancellationService, OrderCancellationService>();  
 
             return services;
         }

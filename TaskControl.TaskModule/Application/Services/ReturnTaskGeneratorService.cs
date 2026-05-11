@@ -55,36 +55,54 @@ namespace TaskControl.TaskModule.Application.Services
         }
 
         /// <summary>
-        /// Универсальное ядро генерации задачи возврата с авто-поиском помощника
+        /// Универсальное ядро генерации задачи возврата с автоматическим определением 
+        /// точек забора (Source) и размещения (Target), а также расчетом сложности.
         /// </summary>
         private async Task<int?> GenerateReturnTaskCoreAsync(string titleBase, int branchId, List<(int ItemPositionId, int Qty)> itemsToReturn)
         {
             var returnMetrics = new List<TaskItemMetrics>();
+            // Временный список, чтобы не запрашивать ItemModel и ItemPositionModel повторно в циклах
+            var itemsData = new List<(int ItemPositionId, int Qty, ItemModel Model, int? SourcePosId)>();
 
             foreach (var item in itemsToReturn)
             {
                 var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == item.ItemPositionId);
-                if (itemPos != null)
+                if (itemPos == null) continue;
+
+                var itemModel = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
+                if (itemModel == null) continue;
+
+                // === ЛОГИКА ОПРЕДЕЛЕНИЯ ТОЧКИ ЗАБОРА (Source) ===
+                // Проверяем, было ли движение этого товара недавно (например, в зону EXPRESS при сборке).
+                // Это позволит кладовщику точно знать, что товар нужно забрать из зоны выдачи, а не искать его на основной полке.
+                var lastMovement = await _db.GetTable<ItemMovementModel>()
+                    .Where(m => m.ItemId == itemModel.ItemId && m.Quantity >= item.Qty)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                // Если движения не было, считаем точкой забора текущую позицию записи ItemPosition
+                int? sourcePosId = lastMovement?.DestinationPositionId ?? itemPos.PositionId;
+
+                returnMetrics.Add(new TaskItemMetrics
                 {
-                    var itemModel = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
-                    if (itemModel != null)
-                    {
-                        returnMetrics.Add(new TaskItemMetrics
-                        {
-                            WeightGrams = itemModel.Weight,
-                            LengthMm = itemModel.Length,
-                            WidthMm = itemModel.Width,
-                            HeightMm = itemModel.Height,
-                            Quantity = item.Qty
-                        });
-                    }
-                }
+                    WeightGrams = itemModel.Weight,
+                    LengthMm = itemModel.Length,
+                    WidthMm = itemModel.Width,
+                    HeightMm = itemModel.Height,
+                    Quantity = item.Qty
+                });
+
+                itemsData.Add((item.ItemPositionId, item.Qty, itemModel, sourcePosId));
             }
 
+            if (!itemsData.Any()) return null;
+
+            // 1. Расчет сложности и определение необходимости напарника
             var returnComplexity = _complexityCalculator.CalculateForItems(returnMetrics);
             int priority = returnComplexity.RequiresHelper ? (int)TaskPriority.High : (int)TaskPriority.Background;
             string finalTitle = returnComplexity.RequiresHelper ? $"[ТЯЖЕЛЫЙ] {titleBase}" : titleBase;
 
+            // 2. Создание базовой задачи
             int returnTaskId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new BaseTaskModel
             {
                 Title = finalTitle,
@@ -95,7 +113,7 @@ namespace TaskControl.TaskModule.Application.Services
                 CreatedAt = DateTime.UtcNow
             }));
 
-            // Создаем Main назначение
+            // 3. Создание назначения для основного сотрудника (Main)
             int returnAssignmentId = Convert.ToInt32(await _db.InsertWithIdentityAsync(new ReturnAssignmentModel
             {
                 TaskId = returnTaskId,
@@ -105,49 +123,40 @@ namespace TaskControl.TaskModule.Application.Services
                 Complexity = returnComplexity.MainComplexity,
                 AssignedAt = DateTime.UtcNow
             }));
+
+            // 4. Если задача тяжелая — создаем вакансию для помощника (Helper)
             if (returnComplexity.RequiresHelper)
             {
-                // Просто создаем вакансию помощника. Агрегатор здесь больше не вызываем!
                 await _db.InsertAsync(new ReturnAssignmentModel
                 {
                     TaskId = returnTaskId,
                     BranchId = branchId,
-                    Status = 0, // New
+                    Status = 0,
                     Role = "Helper",
-                    AssignedToUserId = null, // ВАЖНО: Оставляем пустым для пула
+                    AssignedToUserId = null, // Оставляем пустым для свободного пула
                     Complexity = returnComplexity.HelperComplexity,
                     AssignedAt = DateTime.UtcNow
                 });
             }
-            foreach (var item in itemsToReturn)
-            {
-                int? suggestedPosId = null;
 
-                // Достаем товар из БД, чтобы узнать его габариты
-                var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == item.ItemPositionId);
-                if (itemPos != null)
-                {
-                    var itemModel = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
-                    if (itemModel != null)
-                    {
-                        // Вычисляем целевую ячейку в момент ГЕНЕРАЦИИ задачи
-                        suggestedPosId = await SuggestTargetPositionAsync(itemModel, branchId);
-                    }
-                }
+            // 5. Формирование строк задачи с указанием маршрута (Откуда -> Куда)
+            foreach (var data in itemsData)
+            {
+                // Алгоритм подбора оптимальной ячейки для возврата (Target)
+                int? suggestedTargetPosId = await SuggestTargetPositionAsync(data.Model, branchId);
 
                 await _db.InsertAsync(new ReturnLineModel
                 {
                     ReturnAssignmentId = returnAssignmentId,
-                    ItemPositionId = item.ItemPositionId,
-                    Quantity = item.Qty,
+                    ItemPositionId = data.SourcePosId ?? data.ItemPositionId,
+                    Quantity = data.Qty,
                     ScannedQuantity = 0,
-                    TargetPositionId = suggestedPosId // <--- Сразу сохраняем ячейку в БД
+                    TargetPositionId = suggestedTargetPosId // Куда его нужно вернуть (напр. Стеллаж A-1)
                 });
             }
 
             return returnTaskId;
         }
-
         private async Task<int?> SuggestTargetPositionAsync(ItemModel item, int branchId)
         {
             var reservedZones = new[] { "PICKUP", "BULK", "COURIER", "EXPRESS" };

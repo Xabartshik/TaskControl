@@ -32,6 +32,7 @@ namespace TaskControl.TaskModule.Application.Providers
         private readonly IQRTokenService _qrTokenService;
         private readonly ITaskComplexityCalculator _complexityCalculator;
         private readonly TaskWorkloadAggregator _aggregator;
+        private readonly IOrderCancellationService _cancellationService;
 
         public OrderHandoverExecutionProvider(
             ITaskDataConnection db,
@@ -40,7 +41,8 @@ namespace TaskControl.TaskModule.Application.Providers
             ReturnTaskGeneratorService returnTaskGenerator,
             ITaskComplexityCalculator complexityCalculator,
             TaskWorkloadAggregator aggregator,
-            IQRTokenService qrTokenService)
+            IQRTokenService qrTokenService,
+            IOrderCancellationService cancellationService)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _baseTaskService = baseTaskService ?? throw new ArgumentNullException(nameof(baseTaskService));
@@ -49,19 +51,20 @@ namespace TaskControl.TaskModule.Application.Providers
             _qrTokenService = qrTokenService ?? throw new ArgumentNullException(nameof(qrTokenService));
             _returnTaskGenerator = returnTaskGenerator ?? throw new ArgumentNullException(nameof(returnTaskGenerator));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
+            _cancellationService = cancellationService;
         }
         // 1. СОХРАНЯЕМ ОТМЕНЫ В БД
         public async Task<bool> TryCompleteAssignmentAsync(int taskId, int workerId, Dictionary<int, int>? cancelledLines = null)
         {
-            // Проверяем, наша ли это задача
-            var isOurTask = await _db.GetTable<BaseTaskModel>()
-                                     .AnyAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
-            if (!isOurTask) return false;
+            // Проверяем, относится ли задача к данному типу
+            var baseTask = await _db.GetTable<BaseTaskModel>()
+                                     .FirstOrDefaultAsync(t => t.TaskId == taskId && t.Type == this.TaskType);
+            if (baseTask == null) return false;
 
             using var transaction = await ((DataConnection)_db).BeginTransactionAsync();
             try
             {
-                // 1. Получаем все назначения задачи (понадобится для авто-закрытия помощника)
+                // 1. Получаем все назначения задачи
                 var allAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
                     .Where(a => a.TaskId == taskId)
                     .ToListAsync();
@@ -69,110 +72,103 @@ namespace TaskControl.TaskModule.Application.Providers
                 var assignment = allAssignments.FirstOrDefault(a => a.AssignedToUserId == workerId);
                 if (assignment == null) return false;
 
-                // 2. Получаем линии выдачи (именно их ID приходят из мобилки в cancelledLines)
+                // 2. Получаем линии выдачи и определяем OrderId
                 var handoverLines = await _db.GetTable<OrderHandoverLineModel>()
                     .Where(l => l.OrderHandoverAssignmentId == assignment.Id)
                     .ToListAsync();
 
-                if (handoverLines.Any())
+                if (!handoverLines.Any()) return false;
+
+                // Определяем OrderId через первую попавшуюся позицию
+                var firstLine = handoverLines.First();
+                var firstPos = await _db.GetTable<OrderPositionModel>()
+                    .FirstOrDefaultAsync(p => p.UniqueId == firstLine.OrderPositionId);
+
+                if (firstPos == null) return false;
+                int orderId = firstPos.OrderId;
+
+                var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
+
+                // === 3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС ===
+                // === 3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС ===
+                if (cancelledLines != null && cancelledLines.Any())
                 {
-                    var firstLine = handoverLines.First();
-                    var orderPositionForId = await _db.GetTable<OrderPositionModel>()
-                        .FirstOrDefaultAsync(p => p.UniqueId == firstLine.OrderPositionId);
+                    var positionsToCancel = new Dictionary<int, int>();
+                    int totalPicked = handoverLines.Sum(l => l.Quantity);
+                    int totalCancelled = 0;
 
-                    if (orderPositionForId != null)
+                    foreach (var kvp in cancelledLines)
                     {
-                        int orderId = orderPositionForId.OrderId;
-                        var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
+                        int lineId = kvp.Key;
+                        int rejectedQty = kvp.Value;
 
-                        // 3. Обрабатываем отмены
-                        foreach (var line in handoverLines)
+                        var line = handoverLines.FirstOrDefault(l => l.Id == lineId);
+                        if (line == null || rejectedQty <= 0) continue;
+
+                        int qty = Math.Min(rejectedQty, line.Quantity);
+                        totalCancelled += qty;
+
+                        // --- ИСПРАВЛЕНИЕ: Достаем физический ItemPositionId из резерва ---
+                        var reservation = await _db.GetTable<OrderReservationModel>()
+                            .FirstOrDefaultAsync(r => r.OrderPositionId == line.OrderPositionId);
+
+                        if (reservation != null && reservation.ItemPositionId.HasValue)
                         {
-                            // Ищем отмену по ID линии выдачи (как отправляет Flutter)
-                            int rejectedQty = cancelledLines?.GetValueOrDefault(line.Id) ?? 0;
+                            int itemPosId = reservation.ItemPositionId.Value; // Безопасно извлекаем int
 
-                            if (rejectedQty > 0)
-                            {
-                                // === ТВОЙ БЛОК КОДА ИНТЕГРИРОВАН СЮДА ===
-                                // Обновляем статистику отмен и урезаем сканы, если они превышают остаток
-                                await _db.GetTable<OrderHandoverLineModel>()
-                                    .Where(l => l.Id == line.Id)
-                                    .Set(l => l.CancelledQuantity, rejectedQty) // Записываем точное число из Flutter
-                                    .Set(l => l.ScannedQuantity, l =>
-                                         (l.Quantity - rejectedQty < l.ScannedQuantity)
-                                         ? (l.Quantity - rejectedQty)
-                                         : l.ScannedQuantity)
-                                    .UpdateAsync();
-                                // ========================================
-
-                                // Уменьшаем количество в самом заказе
-                                await _db.GetTable<OrderPositionModel>()
-                                    .Where(p => p.UniqueId == line.OrderPositionId)
-                                    .Set(p => p.Quantity, p => p.Quantity - rejectedQty)
-                                    .UpdateAsync();
-                            }
-
-                            // Снимаем резерв
-                            var reservation = await _db.GetTable<OrderReservationModel>()
-                                .FirstOrDefaultAsync(r => r.OrderPositionId == line.OrderPositionId);
-
-                            if (reservation != null)
-                            {
-                                // Если клиент отменил товар, и товар физически лежал в зоне выдачи
-                                if (rejectedQty > 0 && reservation.ItemPositionId.HasValue)
-                                {
-                                    itemsToReturn.Add((reservation.ItemPositionId.Value, rejectedQty));
-                                }
-
-                                // Удаляем резерв
-                                await _db.GetTable<OrderReservationModel>()
-                                    .Where(r => r.Id == reservation.Id)
-                                    .DeleteAsync();
-                            }
+                            if (positionsToCancel.ContainsKey(itemPosId))
+                                positionsToCancel[itemPosId] += qty;
+                            else
+                                positionsToCancel[itemPosId] = qty;
                         }
+                        // ------------------------------------------------------------------
 
-                        // 4. Пересчитываем сумму заказа ПОСЛЕ применения всех отмен
-                        var allPositions = await _db.GetTable<OrderPositionModel>()
-                            .Where(p => p.OrderId == orderId)
-                            .ToListAsync();
-
-                        decimal newTotalPrice = allPositions.Sum(p => p.Quantity * p.Price);
-
-                        // Если сумма 0 (отказались от всего), заказ отменяется, иначе - успешно завершен
-                        string finalOrderStatus = newTotalPrice > 0 ? "Completed" : "Cancelled";
-
-                        // Закрываем заказ
-                        await _db.GetTable<OrderModel>()
-                            .Where(o => o.OrderId == orderId)
-                            .Set(o => o.TotalPrice, newTotalPrice)
-                            .Set(o => o.Status, finalOrderStatus)
+                        // СОХРАНЯЕМ ЛОГИКУ МОДУЛЯ ВЫДАЧИ: обновляем статистику в строке выдачи
+                        await _db.GetTable<OrderHandoverLineModel>()
+                            .Where(l => l.Id == line.Id)
+                            .Set(l => l.CancelledQuantity, qty)
+                            .Set(l => l.ScannedQuantity, l =>
+                                 (l.Quantity - qty < l.ScannedQuantity)
+                                 ? (l.Quantity - qty)
+                                 : l.ScannedQuantity)
                             .UpdateAsync();
-
-                        // 5. Вызов внешнего сервиса генерации возвратов (Событийный подход)
-                        if (itemsToReturn.Any())
-                        {
-                            var branchId = (await _db.GetTable<BaseTaskModel>().FirstAsync(t => t.TaskId == taskId)).BranchId;
-
-                            // Делегируем создание задачи, расчет сложности и поиск напарника отдельному сервису
-                            await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, branchId, itemsToReturn);
-                        }
                     }
+
+                    // Определяем, полная это отмена или частичная
+                    bool isFullCancellation = totalPicked > 0 && totalPicked == totalCancelled;
+
+                    // ВЫЗОВ ЕДИНОГО СЕРВИСА: он сам снимет резервы, поправит чек и сменит статус заказа
+                    itemsToReturn = await _cancellationService.ProcessCancellationAsync(orderId, positionsToCancel, isFullCancellation);
+                }
+                else
+                {
+                    // Если отмен нет, просто завершаем заказ как Completed
+                    await _db.GetTable<OrderModel>()
+                        .Where(o => o.OrderId == orderId)
+                        .Set(o => o.Status, "Completed")
+                        .UpdateAsync();
+                }
+
+                // 4. Генерация задач на возврат
+                if (itemsToReturn.Any())
+                {
+                    await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, baseTask.BranchId, itemsToReturn);
                 }
 
                 var completionTime = DateTime.UtcNow;
 
-                // 6. Финализируем само назначение выдачи (текущего сотрудника)
+                // 5. Финализируем назначение текущего сотрудника
                 await _db.GetTable<OrderHandoverAssignmentModel>()
                     .Where(a => a.Id == assignment.Id)
                     .Set(a => a.Status, 2) // Completed
                     .Set(a => a.CompletedAt, completionTime)
                     .UpdateAsync();
 
-                // 7. АВТО-ЗАКРЫТИЕ ПОМОЩНИКА
+                // 6. АВТО-ЗАКРЫТИЕ ПОМОЩНИКА (только если закрывается Основной)
                 if (assignment.Role == "Main")
                 {
-                    var helperAssignments = allAssignments.Where(a => a.Role == "Helper" && a.Status != 2).ToList();
-                    if (helperAssignments.Any())
+                    var activeHelpers = allAssignments.Where(a => a.Role == "Helper" && a.Status != 2);
+                    if (activeHelpers.Any())
                     {
                         await _db.GetTable<OrderHandoverAssignmentModel>()
                             .Where(a => a.TaskId == taskId && a.Role == "Helper")
@@ -180,7 +176,7 @@ namespace TaskControl.TaskModule.Application.Providers
                             .Set(a => a.CompletedAt, completionTime)
                             .UpdateAsync();
 
-                        _logger.LogInformation("Назначения помощника для задачи {TaskId} автоматически закрыты", taskId);
+                        _logger.LogInformation("Помощники задачи {TaskId} закрыты автоматически вслед за основным сотрудником", taskId);
                     }
                 }
 
@@ -190,7 +186,7 @@ namespace TaskControl.TaskModule.Application.Providers
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Ошибка при частичном завершении выдачи {TaskId}", taskId);
+                _logger.LogError(ex, "Ошибка при завершении выдачи {TaskId} для воркера {WorkerId}", taskId, workerId);
                 return false;
             }
         }
