@@ -45,6 +45,8 @@ namespace TaskControl.InformationModule.Application.DTOs
         [Required(ErrorMessage = "Укажите высоту товара")]
         public double Height { get; init; }
 
+        public decimal Price { get; set; }
+
         /// <summary>
         /// Преобразует сущность в DTO
         /// </summary>
@@ -55,7 +57,8 @@ namespace TaskControl.InformationModule.Application.DTOs
             Weight = entity.Weight.Grams,
             Length = entity.Length.Millimeters,
             Width = entity.Width.Millimeters,
-            Height = entity.Height.Millimeters
+            Height = entity.Height.Millimeters,
+            Price = entity.Price
         };
 
         /// <summary>
@@ -68,7 +71,8 @@ namespace TaskControl.InformationModule.Application.DTOs
             Weight = Mass.FromGrams(dto.Weight),
             Length = UnitsNet.Length.FromMillimeters(dto.Length),
             Width = UnitsNet.Length.FromMillimeters(dto.Width),
-            Height = UnitsNet.Length.FromMillimeters(dto.Height)
+            Height = UnitsNet.Length.FromMillimeters(dto.Height),
+            Price = dto.Price
         };
     }
 }

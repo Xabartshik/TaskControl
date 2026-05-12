@@ -16,6 +16,7 @@ namespace TaskControl.InformationModule.DataAccess.Model
         [Column("length")][NotNull] public double Length { get; set; }
         [Column("width")][NotNull] public double Width { get; set; }
         [Column("height")][NotNull] public double Height { get; set; }
+        [Column("price")][NotNull] public decimal Price { get; set; }
         [Column("created_at")][NotNull] public DateTime CreatedAt { get; set; }
     }
 }

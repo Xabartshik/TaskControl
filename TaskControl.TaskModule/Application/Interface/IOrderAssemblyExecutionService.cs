@@ -27,6 +27,10 @@ namespace TaskControl.TaskModule.Application.Interface
         public DateTime? CreatedDate { get; set; }
         public DateTime? Deadline { get; set; }
         public int TotalLines { get; set; }
+        public int CompletedLines { get; set; }
+        public bool IsCooperative { get; set; }
+        public string? PartnerName { get; set; } // Имя напарника, чтобы знать, кого искать
+        public AssignmentStatus? PartnerStatus { get; set; } // Нажал ли напарник "Начать"?
         public List<CellPlacementInfoDto> CellPlacements { get; set; } = new();
     }
 
@@ -35,7 +39,7 @@ namespace TaskControl.TaskModule.Application.Interface
     /// </summary>
     public class CellPlacementInfoDto
     {
-        public int TargetPositionId { get; set; }
+        public int? TargetPositionId { get; set; }
         public string? CellCode { get; set; }
         public string? CellDisplayName { get; set; }
         public List<PlacementLineDto> Items { get; set; } = new();
@@ -68,14 +72,15 @@ namespace TaskControl.TaskModule.Application.Interface
     {
         Task<List<OrderAssemblyHeaderDto>> GetAssignmentsHeaderForWorkerAsync(int userId);
         Task<WorkerAssemblyTaskDto> GetAssemblyTaskDetailsAsync(int assignmentId);
-
+        Task<(bool Success, string Message)> HandoverExpressOrder(int assignmentId, string qrToken, Dictionary<int, int>? cancelledLines = null);
         Task<bool> StartAssemblyAsync(int assignmentId);
         Task<bool> PauseAssemblyAsync(int assignmentId);
         Task<bool> CancelAssemblyAsync(int assignmentId);
-
+        Task<(bool Success, string Message)> VerifyHandoverTokenAsync(int assignmentId, string qrToken);
         Task ScanAndPickItem(int lineId, string scannedBarcode);
         Task<BulkPlaceResultDto> ScanAndPlaceBulk(int assignmentId, string scannedCellCode);
         Task ReportMissingItem(int lineId, string reason);
         Task CompleteAssemblyTask(int assignmentId);
+        Task ApplyItemMovementsForCompletedTaskAsync(int taskId);
     }
 }

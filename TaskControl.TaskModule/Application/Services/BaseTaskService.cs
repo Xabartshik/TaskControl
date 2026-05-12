@@ -3,14 +3,16 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.Application.Services;
+using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.Interface;
-using TaskControl.InformationModule.Application.Services;
-using TaskControl.InventoryModule.DataAccess.Interface;
+using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Application.Services
 {
@@ -22,12 +24,14 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IOrderAssemblyAssignmentRepository _assemblyAssignmentRepository;
         private readonly ILogger<BaseTaskService> _logger;
         private readonly AppSettings _appSettings;
+        private readonly IMobileAppUserRepository _mobileAppUserRepository;
 
         public BaseTaskService(
             IActiveTaskRepository repository,
             ActiveEmployeeService employeeService,
             IInventoryAssignmentRepository assignmentRepository,
             IOrderAssemblyAssignmentRepository assemblyAssignmentRepository,
+            IMobileAppUserRepository mobileAppUserRepository,
             ILogger<BaseTaskService> logger,
             IOptions<AppSettings> options)
         {
@@ -36,8 +40,11 @@ namespace TaskControl.TaskModule.Application.Services
             _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
             _assemblyAssignmentRepository = assemblyAssignmentRepository ?? throw new ArgumentNullException(nameof(assemblyAssignmentRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _mobileAppUserRepository = mobileAppUserRepository ?? throw new ArgumentNullException(nameof(mobileAppUserRepository));
             _appSettings = options?.Value ?? new AppSettings();
         }
+
+
 
         public async Task<int> Add(BaseTaskDto dto)
         {
@@ -178,23 +185,41 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
+
         public async Task<IEnumerable<int>> GetAutoSelectedEmployeesAsync(int branchId, int requiredCount)
         {
             _logger.LogInformation("|   [Автоподбор] ищем {Count} сотрудников для филиала {BranchId}", requiredCount, branchId);
-            
-            var employees = await _employeeService.GetWorkingEmployeesByBranchAsync(branchId);
-            if (!employees.Any())
+
+            // 1. Получаем всех, кто "на смене" из InformationModule
+            var allWorkingEmployees = await _employeeService.GetWorkingEmployeesByBranchAsync(branchId);
+            if (!allWorkingEmployees.Any())
             {
                 _logger.LogWarning("|   ! нет работающих сотрудников в филиале {BranchId}", branchId);
                 return new List<int>();
             }
 
-            _logger.LogDebug("|     найдено {Count} работающих сотрудников",
-                employees.Count());
+            // 2. Узнаем, кто из них сейчас на перерыве (запрос в рамках TaskModule)
+            var workingEmployeeIds = allWorkingEmployees.Select(e => e.EmployeeId).ToList();
+            var employeesOnBreak = await _mobileAppUserRepository.GetEmployeesOnBreakAsync(workingEmployeeIds);
+
+            // 3. Фильтруем: оставляем только доступных
+            var availableEmployees = allWorkingEmployees
+                .Where(e => !employeesOnBreak.Contains(e.EmployeeId))
+                .ToList();
+
+            if (!availableEmployees.Any())
+            {
+                _logger.LogWarning("|   ! все работающие сотрудники в филиале {BranchId} находятся на перерыве", branchId);
+                return new List<int>();
+            }
+
+            _logger.LogDebug("|     найдено {Total} работающих, из них {Available} доступны для задач (не на перерыве)",
+                allWorkingEmployees.Count(), availableEmployees.Count);
 
             var workLoads = new List<(int EmployeeId, int ActiveCount)>();
 
-            foreach (var emp in employees)
+            // 4. Дальше ваш оригинальный код расчета нагрузки, но цикл идет по availableEmployees
+            foreach (var emp in availableEmployees)
             {
                 var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
                 var invActiveCount = invAssignments.Count(a =>
@@ -222,10 +247,42 @@ namespace TaskControl.TaskModule.Application.Services
                 .Select(w => w.EmployeeId)
                 .ToList();
 
-            _logger.LogInformation("|   [Автоподбор] выбраны: [{SelectedIds}] (из {Total} сотрудников)",
+            _logger.LogInformation("|   [Автоподбор] выбраны: [{SelectedIds}] (из {TotalAvailable} доступных)",
                 string.Join(", ", selectedIds), workLoads.Count);
 
             return selectedIds;
+        }
+
+
+
+        public async Task<bool> UpdateTaskStatusAsync(int taskId, TaskStatus newStatus)
+        {
+            // 1. Достаем задачу напрямую из базы данных (Модель базы данных, а не DTO)
+            var taskModel = await _repository.GetByIdAsync(taskId);
+
+            if (taskModel == null)
+            {
+                _logger.LogWarning("Попытка обновить статус для несуществующей задачи с ID {TaskId}", taskId);
+                return false;
+            }
+
+            // 2. Если статус уже такой, какой нужно — ничего не делаем (экономим запрос к БД)
+            if (taskModel.Status == newStatus)
+            {
+                return true;
+            }
+
+            // 3. Обновляем статус
+            var oldStatus = taskModel.Status;
+            taskModel.Status = newStatus;
+
+            // 4. Сохраняем изменения в базу данных
+            await _repository.UpdateAsync(taskModel);
+
+            _logger.LogInformation("Статус базовой задачи {TaskId} изменен с {OldStatus} на {NewStatus}",
+                taskId, oldStatus, newStatus);
+
+            return true;
         }
     }
 }

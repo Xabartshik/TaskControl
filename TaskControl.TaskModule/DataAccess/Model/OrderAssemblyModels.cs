@@ -1,5 +1,6 @@
 using LinqToDB.Mapping;
 using System;
+using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Models
 {
@@ -16,14 +17,18 @@ namespace TaskControl.TaskModule.DataAccess.Models
         [Column("order_id"), NotNull]
         public int OrderId { get; set; }
 
-        [Column("assigned_to_user_id"), NotNull]
-        public int AssignedToUserId { get; set; }
+        [Column("assigned_to_user_id")]
+        public int? AssignedToUserId { get; set; }
 
         [Column("branch_id"), NotNull]
         public int BranchId { get; set; }
 
         [Column("status"), NotNull]
         public int Status { get; set; }
+        [Column("complexity"), NotNull]
+        public double Complexity { get; set; }
+        [Column("role")]
+        public int Role { get; set; }
 
         [Column("started_at")]
         public DateTime? StartedAt { get; set; }
@@ -51,8 +56,8 @@ namespace TaskControl.TaskModule.DataAccess.Models
         [Column("source_position_id"), NotNull]
         public int SourcePositionId { get; set; }
 
-        [Column("target_position_id"), NotNull]
-        public int TargetPositionId { get; set; }
+        [Column("target_position_id")]
+        public int? TargetPositionId { get; set; }
 
         [Column("quantity"), NotNull]
         public int Quantity { get; set; }

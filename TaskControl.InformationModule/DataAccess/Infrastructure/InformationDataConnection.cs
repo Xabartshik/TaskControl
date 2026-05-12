@@ -18,5 +18,7 @@ namespace TaskControl.InformationModule.DataAccess.Infrastructure
         public ITable<CheckIOEmployeeModel> CheckIOEmployees => this.GetTable<CheckIOEmployeeModel>();
         public ITable<EmployeeModel> Employees => this.GetTable<EmployeeModel>();
         public ITable<ItemModel> Items => this.GetTable<ItemModel>();
+        public ITable<CourierCapabilityModel> CourierCapabilities => this.GetTable<CourierCapabilityModel>();
+        public ITable<CustomerModel> Customers => this.GetTable<CustomerModel>();
     }
 }

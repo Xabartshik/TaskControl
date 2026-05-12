@@ -1,6 +1,8 @@
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Interface;
@@ -40,8 +42,10 @@ namespace TaskControl.TaskModule.Application.Services
         private readonly IItemRepository _itemRepository;
         private readonly IOrderPositionRepository _orderPositionRepository;
         private readonly IPostamatCellRepository _postamatCellRepository;
+        private readonly ITaskDataConnection _db;
 
         public BossPanelService(
+            ITaskDataConnection db,
             IInventoryProcessService inventoryProcessService,
             IInventoryReportService inventoryReportService,
             IDiscrepancyManagementService discrepancyManagementService,
@@ -59,6 +63,7 @@ namespace TaskControl.TaskModule.Application.Services
             IPostamatCellRepository postamatCellRepository,
             ILogger<BossPanelService> logger)
         {
+            _db = db ?? throw new ArgumentNullException(nameof(db));
             _inventoryProcessService = inventoryProcessService ?? throw new ArgumentNullException(nameof(inventoryProcessService));
             _inventoryReportService = inventoryReportService ?? throw new ArgumentNullException(nameof(inventoryReportService));
             _discrepancyManagementService = discrepancyManagementService ?? throw new ArgumentNullException(nameof(discrepancyManagementService));
@@ -77,6 +82,106 @@ namespace TaskControl.TaskModule.Application.Services
             _postamatCellRepository = postamatCellRepository ?? throw new ArgumentNullException(nameof(postamatCellRepository));
         }
 
+        public async Task<IEnumerable<AvailableEmployeeDto>> GetAvailableCouriersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение доступных курьеров для филиала {BossBranchId}", bossBranchId);
+
+            var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
+            var result = new List<AvailableEmployeeDto>();
+
+            var courierCapabilities = await _db.GetTable<CourierCapabilityModel>().ToListAsync();
+
+            var employeeIds = employees.Select(e => e.EmployeeId).ToList();
+            var today = DateTime.UtcNow.Date;
+            var recentChecks = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => employeeIds.Contains(c.EmployeeId) && c.CheckTimeStamp >= today)
+                .ToListAsync();
+
+            foreach (var emp in employees)
+            {
+                var capability = courierCapabilities.FirstOrDefault(c => c.EmployeeId == emp.EmployeeId);
+
+                if (capability != null || emp.Role == "Курьер" || emp.Role == "Courier")
+                {
+                    var latestCheck = recentChecks
+                        .Where(c => c.EmployeeId == emp.EmployeeId)
+                        .OrderByDescending(c => c.CheckTimeStamp)
+                        .FirstOrDefault();
+
+                    bool isOnRoute = latestCheck != null && latestCheck.CheckType == "dispatch";
+
+                    result.Add(new AvailableEmployeeDto
+                    {
+                        EmployeeId = emp.EmployeeId,
+                        FullName = $"{emp.Surname} {emp.Name}",
+                        IsAtWork = true,
+                        ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId),
+                        IsRecommended = false,
+
+                        MaxWeightKg = capability != null ? capability.MaxWeightGrams / 1000.0 : 0.0,
+
+                        VehicleName = capability != null
+                            ? (capability.VehicleTypeId switch
+                            {
+                                1 => "Пешком",
+                                2 => "Велосипед",
+                                3 => "Легковое авто",
+                                4 => "Фургон",
+                                5 => "Грузовик",
+                                _ => $"Неизвестно (ID: {capability.VehicleTypeId})"
+                            })
+                            : "Пеший / Не указан",
+
+                        IsOnRoute = isOnRoute
+                    });
+                }
+            }
+            return result;
+        }
+
+        public async Task<IEnumerable<AvailableOrderDto>> GetReadyForDispatchOrdersAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение готовых заказов для курьеров филиала {BossBranchId}", bossBranchId);
+
+            var allOrders = await _orderRepository.GetByBranchAsync(bossBranchId);
+
+            var readyOrders = allOrders.Where(o =>
+                o.Status == OrderStatus.Ready &&
+                o.DeliveryType == DeliveryType.Delivery).ToList();
+
+            var result = new List<AvailableOrderDto>();
+
+            foreach (var o in readyOrders)
+            {
+                var dto = new AvailableOrderDto
+                {
+                    OrderId = o.OrderId,
+                    OrderNumber = $"ORD-{o.OrderId}",
+                    CreatedAt = o.CreatedAt,
+                    Status = o.Status.ToString(),
+                    DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
+                    DestinationAddress = o.DestinationAddress
+                };
+
+                var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
+                foreach (var pos in positions)
+                {
+                    var item = await _itemRepository.GetByIdAsync(pos.ItemId);
+                    dto.Items.Add(new OrderItemDetailDto
+                    {
+                        ItemId = pos.ItemId,
+                        Name = item?.Name ?? "Неизвестный товар",
+                        Quantity = pos.Quantity,
+                        WeightKg = item?.Weight.Kilograms ?? 0.0
+                    });
+                }
+
+                result.Add(dto);
+            }
+
+            return result;
+        }
 
         public async Task<CompleteInventoryDto> CreateInventoryTaskAsync(CreateInventoryTaskDto dto, int bossBranchId)
         {
@@ -140,13 +245,13 @@ namespace TaskControl.TaskModule.Application.Services
 
             return await _discrepancyManagementService.GetDiscrepanciesAsync(assignmentId);
         }
+
         public async Task<IEnumerable<string>> GetAvailableZonesAsync(int bossBranchId)
         {
             _logger.LogInformation("|   [Boss] запрос доступных зон (филиал {BossBranchId})", bossBranchId);
 
             var cells = await _positionCellRepository.GetByBranchAsync(bossBranchId);
 
-            // Возвращаем уникальные префиксы, например "1-ZA-RACK"
             var zones = cells
                 .Select(c => $"{c.Code.BranchId}-{c.Code.ZoneCode}-{c.Code.FirstLevelStorageType}")
                 .Distinct()
@@ -162,7 +267,6 @@ namespace TaskControl.TaskModule.Application.Services
 
             var cells = await _positionCellRepository.GetByBranchAsync(bossBranchId);
 
-            // Ищем все ячейки, которые начинаются с одного из префиксов
             var targetPositionIds = cells
                 .Where(c => dto.ZonePrefixes.Any(prefix => c.Code.ToString().StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 .Select(c => c.PositionId)
@@ -173,7 +277,6 @@ namespace TaskControl.TaskModule.Application.Services
                 throw new InvalidOperationException("Не найдено ни одной позиции по указанным зонам.");
             }
 
-            // Получаем ItemPositions для этих позиций
             var allItemPositions = await _itemPositionRepository.GetAllAsync();
             var targetItemPositionIds = allItemPositions
                 .Where(ip => targetPositionIds.Contains(ip.PositionId))
@@ -189,7 +292,6 @@ namespace TaskControl.TaskModule.Application.Services
             var workerIds = dto.WorkerIds;
             if (workerIds == null || !workerIds.Any())
             {
-                // Если работники не переданы, выбираем активных
                 var availableWorkers = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
                 workerIds = availableWorkers.Select(w => w.EmployeeId).Take(dto.WorkerCount).ToList();
 
@@ -206,7 +308,6 @@ namespace TaskControl.TaskModule.Application.Services
                 WorkerCount = workerIds.Count,
                 DivisionStrategy = DivisionStrategy.ByQuantity,
                 PriorityLevel = dto.PriorityLevel,
-                //TODO: Добавить время дедлайна
                 DeadlineDate = DateTime.Now.AddDays(3)
             };
 
@@ -222,22 +323,6 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                //// Подсчет активных назначений инвентаризации
-                //var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                //var invActiveCount = invAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
-                //// Подсчет активных назначений сборки заказов
-                //var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                //var oaActiveCount = oaAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
-                //result.Add(new WorkerStatusDto
-                //{
-                //    EmployeeId = emp.EmployeeId,
-                //    FullName = $"{emp.Surname} {emp.Name}",
-                //    Role = emp.Role,
-                //    IsWorking = true,
-                //    ActiveTaskCount = invActiveCount + oaActiveCount
-                //});
                 result.Add(new WorkerStatusDto
                 {
                     EmployeeId = emp.EmployeeId,
@@ -284,11 +369,9 @@ namespace TaskControl.TaskModule.Application.Services
 
         public async Task<IEnumerable<BossPanelTaskCardDto>> GetActiveTasksAsync(int bossBranchId)
         {
-            _logger.LogInformation("Получение активных задач для филиала {BossBranchId}", bossBranchId);
+            _logger.LogInformation("Получение активных задач для филиала {BossBranchId} через агрегатор", bossBranchId);
 
             var tasks = await _activeTaskRepository.GetByBranchAsync(bossBranchId);
-            var invAssignments = await _assignmentRepository.GetByBranchIdAsync(bossBranchId);
-
             var activeTasks = tasks.Where(t => t.Status != TaskStatus.Completed && t.Status != TaskStatus.Cancelled);
             var result = new List<BossPanelTaskCardDto>();
 
@@ -296,53 +379,66 @@ namespace TaskControl.TaskModule.Application.Services
             {
                 var dict = new Dictionary<int, TaskAssigneeProgressDto>();
 
-                if (t.Type == "OrderAssembly")
-                {
-                    // Для задач сборки заказов берём данные из репозитория сборки
-                    var oaAssignment = await _orderAssemblyRepository.GetByTaskIdAsync(t.TaskId);
-                    if (oaAssignment != null)
-                    {
-                        var emp = await _activeEmployeeService.GetEmployeeByIdAsync(oaAssignment.AssignedToUserId);
-                        int total = oaAssignment.TotalLines;
-                        int completed = oaAssignment.Lines.Count(l => l.Status == OrderAssemblyLineStatus.Placed);
+                // 1. Спрашиваем агрегатор: кто работает над этой задачей? (Поддерживает ВСЕ типы задач)
+                var assignedIds = await _aggregator.GetAssignedEmployeeIdsAsync(t.TaskId);
 
-                        dict[oaAssignment.AssignedToUserId] = new TaskAssigneeProgressDto
-                        {
-                            EmployeeId = oaAssignment.AssignedToUserId,
-                            FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {oaAssignment.AssignedToUserId}",
-                            AssignedVolume = total,
-                            CompletedVolume = completed,
-                            Status = oaAssignment.Status == AssignmentStatus.InProgress ? "В процессе"
-                                     : oaAssignment.Status == AssignmentStatus.Completed ? "Завершено" : "Назначено"
-                        };
-                    }
-                }
-                else
+                foreach (var empId in assignedIds)
                 {
-                    // Для инвентаризации оригинальная логика
-                    var taskAssignments = invAssignments.Where(a => a.TaskId == t.TaskId).ToList();
-                    foreach (var a in taskAssignments)
+                    // 2. Получаем детали конкретного назначения через агрегатор
+                    var details = await _aggregator.GetTaskDetailsAsync(t.TaskId, empId);
+                    var emp = await _activeEmployeeService.GetEmployeeByIdAsync(empId);
+
+                    int assignedVolume = 1;
+                    int completedVolume = 0;
+                    string statusStr = "Назначено";
+
+                    if (details != null)
                     {
-                        if (!dict.ContainsKey(a.AssignedToUserId))
+                        statusStr = details.AssignmentStatus switch
                         {
-                            var emp = await _activeEmployeeService.GetEmployeeByIdAsync(a.AssignedToUserId);
-                            dict[a.AssignedToUserId] = new TaskAssigneeProgressDto
+                            Domain.AssignmentStatus.InProgress => "В процессе",
+                            Domain.AssignmentStatus.Completed => "Завершено",
+                            Domain.AssignmentStatus.Paused => "На паузе",
+                            Domain.AssignmentStatus.Cancelled => "Отменена",
+                            _ => "Назначена"
+                        };
+
+                        // 3. Динамически вытягиваем прогресс из TaskDetails (так как структура зависит от типа задачи)
+                        if (details.TaskDetails != null)
+                        {
+                            try
                             {
-                                EmployeeId = a.AssignedToUserId,
-                                FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {a.AssignedToUserId}",
-                                AssignedVolume = 1,
-                                CompletedVolume = a.Status == AssignmentStatus.Completed ? 1 : 0,
-                                Status = a.Status == AssignmentStatus.InProgress ? "В процессе"
-                                         : a.Status == AssignmentStatus.Completed ? "Завершено" : "Ожидается"
-                            };
+                                var json = System.Text.Json.JsonSerializer.Serialize(details.TaskDetails);
+                                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+
+                                if (root.TryGetProperty("totalLines", out var tLines) || root.TryGetProperty("TotalLines", out tLines))
+                                    if (tLines.ValueKind == System.Text.Json.JsonValueKind.Number) assignedVolume = tLines.GetInt32();
+
+                                if (root.TryGetProperty("completedLinesCount", out var cLines) || root.TryGetProperty("CompletedLinesCount", out cLines))
+                                    if (cLines.ValueKind == System.Text.Json.JsonValueKind.Number) completedVolume = cLines.GetInt32();
+                            }
+                            catch
+                            {
+                                // Игнорируем ошибки парсинга, оставляем значения по умолчанию (1 и 0)
+                            }
                         }
-                        else
+
+                        // Защита: если статус завершен, прогресс 100%
+                        if (details.AssignmentStatus == Domain.AssignmentStatus.Completed)
                         {
-                            dict[a.AssignedToUserId].AssignedVolume += 1;
-                            if (a.Status == AssignmentStatus.Completed)
-                                dict[a.AssignedToUserId].CompletedVolume += 1;
+                            completedVolume = assignedVolume;
                         }
                     }
+
+                    dict[empId] = new TaskAssigneeProgressDto
+                    {
+                        EmployeeId = empId,
+                        FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {empId}",
+                        AssignedVolume = assignedVolume,
+                        CompletedVolume = completedVolume,
+                        Status = statusStr
+                    };
                 }
 
                 var assignees = dict.Values.ToList();
@@ -364,65 +460,47 @@ namespace TaskControl.TaskModule.Application.Services
 
             return result;
         }
-
         public async Task<IEnumerable<EmployeeWorkloadDto>> GetEmployeeWorkloadAsync(int bossBranchId)
         {
-            _logger.LogInformation("Получение загруженности сотрудников филиала {BossBranchId}", bossBranchId);
-            var employees = await _activeEmployeeService.GetWorkingEmployeesByBranchAsync(bossBranchId);
-            var result = new List<EmployeeWorkloadDto>();
+            _logger.LogInformation("Получение загруженности сотрудников филиала {BossBranchId} через агрегатор", bossBranchId);
 
-            foreach (var emp in employees)
-            {
-                var activeTaskDtos = new List<ActiveTaskBriefDto>();
-
-                // Задачи инвентаризации
-                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeInv = invAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach (var a in activeInv)
-                {
-                    var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if (task != null)
-                    {
-                        activeTaskDtos.Add(new ActiveTaskBriefDto
-                        {
-                            TaskId = task.TaskId,
-                            Title = task.Title,
-                            TaskType = task.Type,
-                            Status = a.Status.ToString()
-                        });
-                    }
-                }
-
-                // Задачи сборки заказов
-                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var activeOa = oaAssignments.Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled).ToList();
-                foreach (var a in activeOa)
-                {
-                    var task = await _activeTaskRepository.GetByIdAsync(a.TaskId);
-                    if (task != null)
-                    {
-                        activeTaskDtos.Add(new ActiveTaskBriefDto
-                        {
-                            TaskId = task.TaskId,
-                            Title = task.Title,
-                            TaskType = task.Type,
-                            Status = a.Status.ToString()
-                        });
-                    }
-                }
-
-                result.Add(new EmployeeWorkloadDto
-                {
-                    EmployeeId = emp.EmployeeId,
-                    FullName = $"{emp.Surname} {emp.Name}",
-                    IsAtWork = true,
-                    ActiveTasksCount = activeTaskDtos.Count,
-                    ActiveTasks = activeTaskDtos
-                });
-            }
-            return result;
+            // Агрегатор сам соберет все задачи (Инвентаризация, Выдача, Сборка, Возврат)
+            return await _aggregator.GetBranchWorkloadAsync(bossBranchId);
         }
 
+        public async Task<IEnumerable<AvailableEmployeeDto>> GetAllBranchEmployeesAsync(int bossBranchId)
+        {
+            _logger.LogInformation("Получение всех сотрудников филиала {BossBranchId} через фильтрацию последних чекинов", bossBranchId);
+
+            // 1. Получаем только те записи, которые являются последними для конкретного сотрудника
+            // и при этом относятся к вашему филиалу.
+            var lastChecks = await _db.GetTable<CheckIOEmployeeModel>()
+                .Where(c => c.CheckTimeStamp == _db.GetTable<CheckIOEmployeeModel>()
+                    .Where(sub => sub.EmployeeId == c.EmployeeId)
+                    .Max(sub => sub.CheckTimeStamp))
+                .Where(c => c.BranchId == bossBranchId)
+                .ToListAsync();
+
+            var result = new List<AvailableEmployeeDto>();
+
+            foreach (var check in lastChecks)
+            {
+                var emp = await _activeEmployeeService.GetEmployeeByIdAsync(check.EmployeeId);
+                if (emp == null) continue;
+
+                result.Add(new AvailableEmployeeDto
+                {
+                    EmployeeId = emp.EmployeesId,
+                    FullName = $"{emp.Surname} {emp.Name}",
+                    // Если последний тип записи не 'check-out' — значит он на месте или на маршруте
+                    IsAtWork = check.CheckType != "check-out",
+                    ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeesId),
+                    IsRecommended = false
+                });
+            }
+
+            return result.OrderBy(e => e.FullName);
+        }
         public async Task<IEnumerable<AvailableEmployeeDto>> GetAvailableEmployeesAsync(int bossBranchId)
         {
             _logger.LogInformation("Получение доступных сотрудников филиала {BossBranchId}", bossBranchId);
@@ -431,25 +509,16 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var emp in employees)
             {
-                // Инвентаризационные назначения
-                var invAssignments = await _assignmentRepository.GetByUserIdAsync(emp.EmployeeId);
-                var invActiveCount = invAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
-                // Назначения сборки заказов
-                var oaAssignments = await _orderAssemblyRepository.GetByUserIdAsync(emp.EmployeeId);
-                var oaActiveCount = oaAssignments.Count(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled);
-
                 result.Add(new AvailableEmployeeDto
                 {
                     EmployeeId = emp.EmployeeId,
                     FullName = $"{emp.Surname} {emp.Name}",
                     IsAtWork = true,
-                    ActiveTasksCount = invActiveCount + oaActiveCount,
+                    ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeeId),
                     IsRecommended = false
                 });
             }
 
-            // Помечаем до 3 сотрудников с минимальным кол-вом задач как "Рекомендовано"
             var recommended = result.OrderBy(x => x.ActiveTasksCount).Take(3).ToList();
             foreach (var r in recommended) r.IsRecommended = true;
 
@@ -467,13 +536,11 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("Получение доступных заказов для филиала {BossBranchId}", bossBranchId);
 
-            // Получаем все заказы в статусе Created для этого филиала
             var allOrders = (await _orderRepository.GetByBranchAsync(bossBranchId)).ToList();
             var newOrders = allOrders.Where(o => o.Status == OrderStatus.Created).ToList();
 
             _logger.LogInformation("Найдено заказов в филиале: {Total}, из них в статусе Created: {NewCount}", allOrders.Count, newOrders.Count);
 
-            // Исключаем те, для которых уже созданы активные задания сборки
             var assemblyAssignments = await _orderAssemblyRepository.GetByBranchIdAsync(bossBranchId);
             var assignedOrderIds = assemblyAssignments
                 .Where(a => a.Status != AssignmentStatus.Cancelled && a.Status != AssignmentStatus.Completed)
@@ -493,11 +560,11 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = o.CreatedAt,
                     Status = o.Status.ToString(),
                     DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
                     PaymentType = o.PaymentType.ToString(),
                     DestinationAddress = o.DestinationAddress
                 };
 
-                // 1. Обогащаем данными о постамате, если это доставка в постамат
                 if (o.PostamatId.HasValue)
                 {
                     var postamat = await _postamatRepository.GetByIdAsync(o.PostamatId.Value);
@@ -511,7 +578,6 @@ namespace TaskControl.TaskModule.Application.Services
                     }
                 }
 
-                // 2. Обогащаем составом заказа (списком товаров)
                 var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
                 foreach (var pos in positions)
                 {
@@ -527,8 +593,6 @@ namespace TaskControl.TaskModule.Application.Services
                 availableOrders.Add(dto);
             }
 
-            // 3. Сортировка (Оптимизация процессов сборки)
-            // Экспресс-заказы поднимаются наверх, остальные сортируются по времени ожидания (старые первыми)
             var sortedOrders = availableOrders
                 .OrderByDescending(o => o.IsHighPriority)
                 .ThenBy(o => o.CreatedAt)
@@ -539,12 +603,10 @@ namespace TaskControl.TaskModule.Application.Services
             return sortedOrders;
         }
 
-
         public async Task<IEnumerable<AvailableOrderDto>> GetAllOrdersAsync(int bossBranchId)
         {
             _logger.LogInformation("Получение всех заказов для филиала {BossBranchId}", bossBranchId);
 
-            // 1. Получаем все заказы филиала без исключений
             var allOrders = (await _orderRepository.GetByBranchAsync(bossBranchId)).ToList();
 
             _logger.LogInformation("Найдено заказов в филиале: {Total}", allOrders.Count);
@@ -560,11 +622,11 @@ namespace TaskControl.TaskModule.Application.Services
                     CreatedAt = o.CreatedAt,
                     Status = o.Status.ToString(),
                     DeliveryType = o.DeliveryType.ToString(),
+                    DeliveryDate = o.DeliveryDate,
                     PaymentType = o.PaymentType.ToString(),
                     DestinationAddress = o.DestinationAddress
                 };
 
-                // 2. Обогащаем данными о постамате (если применимо) 
                 if (o.PostamatId.HasValue)
                 {
                     var postamat = await _postamatRepository.GetByIdAsync(o.PostamatId.Value);
@@ -578,7 +640,6 @@ namespace TaskControl.TaskModule.Application.Services
                     }
                 }
 
-                // 3. Обогащаем составом заказа
                 var positions = await _orderPositionRepository.GetByOrderIdAsync(o.OrderId);
                 foreach (var pos in positions)
                 {
@@ -594,7 +655,6 @@ namespace TaskControl.TaskModule.Application.Services
                 availableOrders.Add(dto);
             }
 
-            // 4. Сортировка: приоритетные вперед, затем по дате создания
             var sortedOrders = availableOrders
                 .OrderByDescending(o => o.IsHighPriority)
                 .ThenBy(o => o.CreatedAt)
@@ -605,5 +665,4 @@ namespace TaskControl.TaskModule.Application.Services
             return sortedOrders;
         }
     }
-
 }

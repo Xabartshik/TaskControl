@@ -9,6 +9,7 @@ namespace TaskControl.Core.Shared.SharedInterfaces
         public double Length { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
+        public double Weight { get; set; }
         public int Quantity { get; set; }
     }
 
@@ -23,7 +24,7 @@ namespace TaskControl.Core.Shared.SharedInterfaces
     public class PackedItemResult
     {
         public int OrderPositionId { get; set; }
-        public int TargetPositionId { get; set; }
+        public int? TargetPositionId { get; set; }
         public int Quantity { get; set; }
     }
 

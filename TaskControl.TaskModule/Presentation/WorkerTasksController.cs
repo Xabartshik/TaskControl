@@ -1,9 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
 
 namespace TaskControl.TaskModule.Presentation.Controllers
 {
@@ -11,39 +14,158 @@ namespace TaskControl.TaskModule.Presentation.Controllers
     [Route("api/v1/[controller]")]
     public class WorkerTasksController : ControllerBase
     {
-        private readonly TaskWorkloadAggregator _aggregator;
+        private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly ITaskExecutionAggregator _taskExecutionAggregator;
+        private readonly IBaseTaskService _baseTaskService;
 
-        public WorkerTasksController(TaskWorkloadAggregator aggregator, ITaskExecutionAggregator taskExecutionAggregator)
+        public WorkerTasksController(
+            TaskWorkloadAggregator aggregator,
+            ITaskExecutionAggregator taskExecutionAggregator,
+            IBaseTaskService baseTaskService)
         {
-            _aggregator = aggregator;
+            _taskWorkloadAggregator = aggregator;
             _taskExecutionAggregator = taskExecutionAggregator;
+            _baseTaskService = baseTaskService;
+        }
+
+        // Получить все ничейные задачи для филиала
+        [HttpGet("{branchId}/pool")]
+        public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPoolTasks(int branchId)
+        {
+            var tasks = await _taskWorkloadAggregator.GetGlobalPoolTasksAsync(branchId);
+            return Ok(tasks);
+        }
+
+        // Забрать задачу из пула себе
+        [HttpPost("{taskId}/claim")]
+        public async Task<IActionResult> ClaimTask(int taskId, [FromQuery] int workerId)
+        {
+            bool success = await _taskExecutionAggregator.TryClaimTaskFromPoolAsync(taskId, workerId);
+            if (!success) return BadRequest(new { Message = "Не удалось взять задачу. Возможно, её уже забрали." });
+            return Ok();
         }
 
         [HttpGet("{workerId}/pending")]
         public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPendingTasks(int workerId)
         {
-            var tasks = await _aggregator.GetAllPendingTasksAsync(workerId);
+            var tasks = await _taskWorkloadAggregator.GetAllPendingTasksAsync(workerId);
             return Ok(tasks);
         }
 
-        /// <summary>
-        /// Начинает или продолжает выполнение задачи для указанного работника.
-        /// Остальные активные задачи работника ставятся на паузу.
-        /// </summary>
+        [HttpGet("{workerId}/{taskId}/details")]
+        public async Task<ActionResult<MobileBaseTaskDto>> GetDetails(int workerId, int taskId)
+        {
+            // Агрегатор сам найдет провайдера и вызовет его метод GetTaskDetailsAsync
+            var taskDto = await _taskWorkloadAggregator.GetTaskDetailsAsync(taskId, workerId);
+
+            if (taskDto == null)
+            {
+                return NotFound(new { Message = $"Задача с ID {taskId} не найдена или недоступна." });
+            }
+
+            return Ok(taskDto);
+        }
+
         [HttpPost("{taskId}/start")]
         public async Task<IActionResult> StartTask(int taskId, [FromQuery] int workerId)
         {
-            // Вызываем метод и получаем результат (успех/провал)
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null)
+            {
+                return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+            }
+
             bool isStarted = await _taskExecutionAggregator.StartOrResumeTaskAsync(taskId, workerId);
+
+            if (baseTask.Status == TaskStatus.New || baseTask.Status == TaskStatus.Assigned)
+            {
+                var updatedTask = baseTask with { Status = TaskStatus.InProgress };
+                await _baseTaskService.Update(updatedTask);
+            }
 
             if (!isStarted)
             {
-                // Возвращаем ошибку, если задача не найдена или не принадлежит работнику
-                return NotFound(new { message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
+                return NotFound(new { Message = $"Задача {taskId} не найдена или не может быть запущена данным работником." });
             }
 
             return Ok();
         }
+
+        [HttpPost("{taskId}/pause")]
+        public async Task<IActionResult> PauseTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+
+            var success = await _taskExecutionAggregator.PauseTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success) return BadRequest(new { Message = $"Не удалось поставить на паузу задачу {taskId} для работника {workerId}." });
+
+            return Ok();
+        }
+
+        [HttpPost("{taskId}/cancel")]
+        public async Task<IActionResult> CancelTask(int taskId, [FromQuery] int workerId)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+
+            var success = await _taskExecutionAggregator.CancelTaskAsync(taskId, baseTask.Type, workerId);
+            if (!success) return BadRequest(new { Message = $"Не удалось отменить задачу {taskId} для работника {workerId}." });
+
+            return Ok();
+        }
+
+        // DTO для приема данных об отмене
+        public record CompleteTaskRequest
+        {
+            public Dictionary<int, int>? CancelledLines { get; set; }
+
+            // НОВОЕ: Словарь { LineId задачи : Id ячейки, куда положили }
+            public Dictionary<int, int>? ScannedTargetCells { get; set; }
+        }
+
+        // Получить загруженность всех сотрудников филиала
+        [HttpGet("branch/{branchId}/workload")]
+        public async Task<ActionResult<IEnumerable<EmployeeWorkloadDto>>> GetBranchWorkload(int branchId)
+        {
+            try
+            {
+                var workload = await _taskWorkloadAggregator.GetBranchWorkloadAsync(branchId);
+                return Ok(workload);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { Message = "Ошибка при получении данных о нагрузке", Details = ex.Message });
+            }
+        }
+
+        [HttpPost("{taskId}/complete")]
+        // ДОБАВЛЕНО: [FromBody] CompleteTaskRequest? request = null
+        public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId, [FromBody] CompleteTaskRequest? request = null)
+        {
+            var baseTask = await _baseTaskService.GetById(taskId);
+            if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
+
+            // ПРОКИДЫВАЕМ request?.CancelledLines В АГРЕГАТОР
+            bool success = await _taskExecutionAggregator.CompleteAssignmentAsync(taskId, baseTask.Type, workerId, request?.CancelledLines);
+            if (!success) return BadRequest(new { Message = $"Не удалось завершить назначение для задачи {taskId} и работника {workerId}." });
+
+            bool isFullyCompleted = await _taskExecutionAggregator.IsTaskFullyCompletedAsync(taskId, baseTask.Type);
+
+            if (isFullyCompleted)
+            {
+                var updatedTask = baseTask with
+                {
+                    Status = TaskStatus.Completed,
+                    CompletedAt = DateTime.UtcNow
+                };
+                await _baseTaskService.Update(updatedTask);
+
+                await _taskExecutionAggregator.ExecutePostCompletionLogicAsync(taskId, baseTask.Type);
+            }
+
+            return Ok(new { IsFullyCompleted = isFullyCompleted });
+        }
+
     }
 }

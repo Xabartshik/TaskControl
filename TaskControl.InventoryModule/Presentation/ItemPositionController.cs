@@ -29,6 +29,14 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             return Ok(records);
         }
 
+        [HttpGet("available/{branchId}")]
+        public async Task<ActionResult<IEnumerable<AvailableItemDto>>> GetAvailableItems(int branchId, [FromQuery] string? search)
+        {
+            // Передаем параметр search в сервис
+            var items = await _service.GetAvailableItemsByBranchAsync(branchId, search);
+            return Ok(items);
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<ItemPositionDto>> GetById(int id)
         {
@@ -52,15 +60,6 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             var newId = await _service.Add(dto);
             _logger.LogInformation("Добавлена новая товарная позиция. ID: {PositionId}, Товар: {ItemId}", newId, dto.ItemId);
             return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
-        }
-
-
-
-        [HttpGet("available/{branchId}")]
-        public async Task<ActionResult<IEnumerable<AvailableItemDto>>> GetAvailableItems(int branchId)
-        {
-            var items = await _service.GetAvailableItemsByBranchAsync(branchId);
-            return Ok(items);
         }
 
         [HttpPut]

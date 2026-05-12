@@ -20,10 +20,11 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
 
                 ItemId = entity.ItemId,
                 Name = entity.Name,
-                Weight = entity.Weight.Kilograms,
+                Weight = entity.Weight.Grams,
                 Length = entity.Length.Millimeters,
                 Width = entity.Width.Millimeters,
                 Height = entity.Height.Millimeters,
+                Price = entity.Price,
                 CreatedAt = DateTime.UtcNow // Устанавливается при создании
             };
         }
@@ -39,7 +40,8 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
                 Weight = Mass.FromGrams(model.Weight),
                 Length = Length.FromMillimeters(model.Length),
                 Width = Length.FromMillimeters(model.Width),
-                Height = Length.FromMillimeters(model.Width)
+                Height = Length.FromMillimeters(model.Width),
+                Price = model.Price
             };
         }
     }

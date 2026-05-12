@@ -33,16 +33,18 @@ using TaskControl.ReportsModule.Application.Interface;
 using TaskControl.ReportsModule.Application.Services;
 using TaskControl.ReportsModule.DataAccess.Infrastructure;
 using TaskControl.ReportsModule.DataAccess.Interface;
-using TaskControl.ReportsModule.DataAccess.Providers;
 using TaskControl.ReportsModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Application.DTOs;
+using TaskControl.TaskModule.Application.Handlers;
 using TaskControl.TaskModule.Application.Interface;
+using TaskControl.TaskModule.Application.Observers;
 using TaskControl.TaskModule.Application.Providers;
 using TaskControl.TaskModule.Application.Services;
 using TaskControl.TaskModule.DAL.Repositories;
 using TaskControl.TaskModule.DataAccess.Infrastructure;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Repositories;
+using TaskControl.TaskModule.Domain;
 using TaskControl.TaskModule.Presentation.Controllers;
 
 namespace TaskControl.Core.Infrastructure
@@ -71,6 +73,7 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<ICheckIOEmployeeRepository, CheckIOEmployeeRepository>();
             services.AddScoped<IService<CheckIOEmployeeDto>, CheckIOEmployeeService>();
+            services.AddScoped<CheckIOEmployeeService>();
 
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<IService<EmployeeDto>, EmployeeService>();
@@ -79,6 +82,13 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IService<ItemDto>, ItemService>();
 
             services.AddScoped<ActiveEmployeeService>();
+
+            services.AddScoped<ICourierCapabilityRepository, CourierCapabilityRepository>();
+            services.AddScoped<ICustomerRepository, CustomerRepository>();
+            services.AddScoped<ICustomerService, CustomerService>();
+
+            services.AddSingleton<IQRTokenService, QRTokenService>();
+            services.AddScoped<CourierCapabilityService>();
 
             return services;
         }
@@ -103,10 +113,18 @@ namespace TaskControl.Core.Infrastructure
 
             services.AddScoped<IOrderReservationRepository, OrderReservationRepository>();
 
-            services.AddScoped<IAllocationService, AllocationService>();
+            services.AddScoped<IItemAllocationService, AllocationService >();
 
             services.AddScoped<IPostamatRepository, PostamatRepository>();
             services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
+
+            services.AddScoped<PostamatAllocationService>();
+
+            services.AddScoped<IPostamatRepository, PostamatRepository>();
+            services.AddScoped<IPostamatCellRepository, PostamatCellRepository>();
+            services.AddScoped<IBoxPackingService, BoxPackingService>();
+
+            services.AddScoped<ICourierCreatedEventHandler, CourierInventoryHandler>();
 
             return services;
         }
@@ -118,8 +136,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IService<RawEventDto>, RawEventService>();
 
             services.AddScoped<ITelemetryService, TelemetryService>();
-            services.AddScoped<IAnalyticsQueryProvider, AnalyticsQueryProvider>();
-
+            services.AddScoped<IOrderAnalyticsRepository, OrderAnalyticsRepository>();
+            services.AddScoped<IOrderAnalyticsService, OrderAnalyticsService>();
             services.AddScoped<ReportExportService>();
 
             QuestPDF.Settings.License = LicenseType.Community;
@@ -131,14 +149,14 @@ namespace TaskControl.Core.Infrastructure
         {
             services.AddScoped<IOrderDataConnection, OrderDataConnection>();
             services.AddScoped<IOrderRepository, OrderRepository>();
-            services.AddScoped<IService<OrderDto>, OrderService>();
+            services.AddScoped<IOrderService, OrderService>();
 
             services.AddScoped<IOrderPositionRepository, OrderPositionRepository>();
             services.AddScoped<IService<OrderPositionDto>, OrderPositionService>();
 
-            services.AddScoped<IOrderCreatedEventHandler, AllocationService>();
+            services.AddScoped<IPostamatAllocationService, PostamatAllocationService>();
 
-            services.AddScoped<IInventoryAllocationService, PostamatAllocationService>();
+
 
             return services;
         }
@@ -174,17 +192,31 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IOrderAssemblyLineRepository, OrderAssemblyLineRepository>();
             services.AddScoped<IBoxPackingService, BoxPackingService>();
             services.AddScoped<IOrderAssemblyExecutionService, OrderAssemblyExecutionService>();
+            services.AddScoped<ITaskDetailsBuilder, TaskDetailsBuilder>();
             services.AddScoped<OrderAssemblyPlannerJob>();
-
-            services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.InventoryWorkloadProvider>();
             services.AddScoped<ITaskWorkloadProvider, TaskControl.TaskModule.Application.Providers.OrderAssemblyWorkloadProvider>();
             services.AddScoped<TaskWorkloadAggregator>();
 
             services.AddScoped<WorkerTasksController>();
-
-            services.AddScoped<ITaskStateProvider, OrderAssemblyTaskStateProvider>();
-            services.AddScoped<ITaskStateProvider, InventoryTaskStateProvider>();
+            services.AddScoped<IOrderCreatedEventHandler, OrderCreatedHandler>();
+            services.AddScoped<OrderHandoverExecutionProvider>();
+            services.AddScoped<ITaskExecutionProvider, OrderAssemblyExecutionProvider>();
+            services.AddScoped<ITaskExecutionProvider, OrderHandoverExecutionProvider>();
+            services.AddScoped<ITaskWorkloadProvider, OrderHandoverWorkloadProvider>();
+            //services.AddScoped<ITaskExecutionProvider, InventoryExecutionProvider>();
             services.AddScoped<ITaskExecutionAggregator, TaskExecutionAggregator>();
+
+            services.AddScoped<INotificationService, NotificationService>();
+
+            services.AddScoped<IWorkerBreakService, WorkerBreakService>();
+            services.AddScoped<HandoverTaskGeneratorService>();
+            services.AddScoped<IEmployeeCheckInObserver, ReturnTaskGeneratorObserver>();
+            services.AddScoped<ITaskExecutionProvider, ReturnExecutionProvider>();
+            services.AddScoped<ITaskWorkloadProvider, ReturnWorkloadProvider>();
+
+            services.AddSingleton<ITaskComplexityCalculator, TaskComplexityCalculator>();
+            services.AddScoped<ReturnTaskGeneratorService>();
+            services.AddScoped<IOrderCancellationService, OrderCancellationService>();  
 
             return services;
         }

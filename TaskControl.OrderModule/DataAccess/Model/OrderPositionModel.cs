@@ -15,5 +15,6 @@ namespace TaskControl.InventoryModule.DataAccess.Model
         [Column("item_id")][NotNull] public int ItemId { get; set; }
         [Column("quantity")][NotNull] public int Quantity { get; set; }
         [Column("created_at")][NotNull] public DateTime CreatedAt { get; set; }
+        [Column("price")] public decimal Price { get; set; }
     }
 }

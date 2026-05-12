@@ -1,5 +1,9 @@
 
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Serilog;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Infrastructure;
@@ -9,10 +13,12 @@ using TaskControl.InformationModule.DataAccess.Infrastructure;
 using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.DataAccess.Repositories;
 using TaskControl.InformationModule.Services;
+using TaskControl.InformationModule.Services.BackgroundServices;
+using TaskControl.InformationModule.Services.Hubs;
 using TaskControl.InventoryModule.DataAccess.Infrastructure;
 using TaskControl.InventoryModule.DataAccess.Interface;
-using Hangfire;
-using Hangfire.PostgreSql;
+using TaskControl.TaskModule.Application.Jobs;
+using TaskControl.TaskModule.Application.Services.Hubs;
 
 namespace TaskControl.Web
 {
@@ -49,9 +55,13 @@ namespace TaskControl.Web
             builder.Services.AddHangfireServer();
 
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            builder.Services.AddSignalR();
+            builder.Services.AddHostedService<QRGeneratorService>();
             builder.Services.AddControllers()
             .AddJsonOptions(options =>
             {
+                options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
                 options.JsonSerializerOptions.Converters.Add(new Web.Infrastructure.UtcDateTimeConverter());
             });
 
@@ -65,6 +75,7 @@ namespace TaskControl.Web
                 app.UseSwagger();
                 app.UseSwaggerUI();
 
+                app.UseStaticFiles();
 
                 app.UseHttpsRedirection();
 
@@ -72,11 +83,22 @@ namespace TaskControl.Web
 
                 app.UseHangfireDashboard("/hangfire");
 
+
+
                 RecurringJob.AddOrUpdate<TaskControl.TaskModule.Application.Services.OrderAssemblyPlannerJob>(
                     "order-assembly-planner",
                     job => job.ExecuteAsync(),
                     "*/1 * * * *"); // Каждые 5 минут
-
+                RecurringJob.AddOrUpdate<AutoEndBreakJob>(
+                    "auto-end-expired-breaks",
+                    job => job.ExecuteAsync(),
+                    Cron.Minutely);
+                RecurringJob.AddOrUpdate<PriorityEscalationJob>(
+                    "priority-escalation-job",
+                    job => job.ExecuteAsync(),
+                    "*/1 * * * *");
+                app.MapHub<QRHub>("/qrhub");
+                app.MapHub<TaskNotificationHub>("/hubs/task-notifications");
                 app.MapControllers();
                 Log.Information("Приложение настроено и готово к работе на порту {Port}",
     builder.Configuration["urls"] ?? "default");

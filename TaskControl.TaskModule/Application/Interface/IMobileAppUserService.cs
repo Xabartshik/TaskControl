@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Services;
 
@@ -25,5 +26,6 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<MobileAppUserDto> ValidateCredentialsAsync(string username, string password);
         Task<bool> ResetPasswordAsync(int employeeId, string newPassword);
         Task<Dictionary<string, object>> GetStatisticsAsync();
+        Task<MobileAppUserDto> RegisterCustomerAsync(RegisterCustomerRequestDto request);
     }
 }

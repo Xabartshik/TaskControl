@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.Domain;
@@ -10,15 +11,45 @@ namespace TaskControl.TaskModule.Application.Services
 {
     public class TaskExecutionAggregator : ITaskExecutionAggregator
     {
-        private readonly IEnumerable<ITaskStateProvider> _stateProviders;
+        private readonly IEnumerable<ITaskExecutionProvider> _executionProviders;
         private readonly ILogger<TaskExecutionAggregator> _logger;
 
         public TaskExecutionAggregator(
-            IEnumerable<ITaskStateProvider> stateProviders,
+            IEnumerable<ITaskExecutionProvider> executionProviders,
             ILogger<TaskExecutionAggregator> logger)
         {
-            _stateProviders = stateProviders;
+            _executionProviders = executionProviders;
             _logger = logger;
+        }
+
+        public async Task<bool> TryClaimTaskFromPoolAsync(int taskId, int workerId)
+        {
+            _logger.LogInformation("Попытка агрегатора присвоить ничейную задачу {TaskId} работнику {WorkerId}", taskId, workerId);
+
+            foreach (var provider in _executionProviders)
+            {
+                // Если провайдер распознает задачу как свою и успешно ее назначает, прерываем цикл
+                if (await provider.AssignTaskToWorkerAsync(taskId, workerId))
+                {
+                    _logger.LogInformation("Задача {TaskId} успешно присвоена работнику {WorkerId} через провайдер {Provider}", taskId, workerId, provider.TaskType);
+                    return true;
+                }
+            }
+
+            _logger.LogWarning("Ни один провайдер не смог присвоить задачу {TaskId}. Возможно, она не существует, уже занята или тип задачи не поддерживается пулом.", taskId);
+            return false;
+        }
+
+        public async Task ExecutePostCompletionLogicAsync(int taskId, string taskType)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для выполнения пост-логики задачи типа {TaskType}", taskType);
+                return;
+            }
+
+            await provider.ExecutePostCompletionLogicAsync(taskId);
         }
 
         public async Task<bool> StartOrResumeTaskAsync(int taskId, int workerId)
@@ -26,7 +57,7 @@ namespace TaskControl.TaskModule.Application.Services
             _logger.LogInformation("Запуск процесса переключения задачи. Целевая задача: {TaskId}, Работник: {WorkerId}", taskId, workerId);
 
             // 1. Ставим на паузу все текущие активные назначения работника
-            foreach (var provider in _stateProviders)
+            foreach (var provider in _executionProviders)
             {
                 await provider.PauseActiveTasksAsync(workerId, taskId);
             }
@@ -34,7 +65,7 @@ namespace TaskControl.TaskModule.Application.Services
             bool activated = false;
 
             // 2. Ищем целевое назначение и активируем его
-            foreach (var provider in _stateProviders)
+            foreach (var provider in _executionProviders)
             {
                 if (await provider.TryActivateTaskAsync(taskId, workerId))
                 {
@@ -50,6 +81,72 @@ namespace TaskControl.TaskModule.Application.Services
             }
 
             return activated;
+        }
+
+        //public async Task<bool> StartTaskAsync(int taskId, string taskType, int workerId)
+        //{
+        //    var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+
+        //    if (provider == null)
+        //        throw new ArgumentException($"Провайдер для типа задачи '{taskType}' не зарегистрирован в системе.");
+
+        //    return await provider.TryStartTaskAsync(taskId, workerId);
+        //}
+
+        // ДОБАВЛЕН ПАРАМЕТР cancelledLines
+        public async Task<bool> CompleteAssignmentAsync(int taskId, string taskType, int workerId, Dictionary<int, int>? cancelledLines = null)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для типа задачи {TaskType}", taskType);
+                return false;
+            }
+            return await provider.TryCompleteAssignmentAsync(taskId, workerId, cancelledLines);
+        }
+
+        public async Task<bool> PauseTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для паузы задачи типа {TaskType}", taskType);
+                return false;
+            }
+
+            return await provider.TryPauseTaskAsync(taskId, workerId);
+        }
+
+        public async Task<bool> CancelTaskAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для отмены задачи типа {TaskType}", taskType);
+                return false;
+            }
+
+            return await provider.TryCancelTaskAsync(taskId, workerId);
+        }
+
+        public async Task<object?> GetTaskDetailsAsync(int taskId, string taskType, int workerId)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null)
+            {
+                _logger.LogWarning("Не найден execution-провайдер для получения деталей задачи типа {TaskType}", taskType);
+                return null;
+            }
+
+            return await provider.GetTaskDetailsAsync(taskId, workerId);
+        }
+
+        public async Task<bool> IsTaskFullyCompletedAsync(int taskId, string taskType)
+        {
+            var provider = _executionProviders.FirstOrDefault(p => p.TaskType == taskType);
+            if (provider == null) return false;
+
+            return await provider.IsTaskFullyCompletedAsync(taskId);
         }
     }
 }

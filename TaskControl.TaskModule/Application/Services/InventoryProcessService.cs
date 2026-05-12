@@ -262,8 +262,8 @@ namespace TaskControl.TaskModule.Application.Services
             var finalLines = await _lineRepository.GetByAssignmentIdAsync(a.Id);
             var discrepancies = await ProcessDiscrepanciesAsync(finalLines);
 
-            int queueSize = await _aggregator.GetTotalActiveWorkloadAsync(a.AssignedToUserId);
-            await _telemetryService.LogTaskEventAsync(a.AssignedToUserId, a.BranchId, "Inventory", finalLines.Count,
+            int queueSize = await _aggregator.GetTotalActiveWorkloadAsync(a.AssignedToUserId ?? 0);
+            await _telemetryService.LogTaskEventAsync(a.AssignedToUserId ?? 0, a.BranchId, "Inventory", finalLines.Count,
                 (int)(DateTime.UtcNow - a.AssignedAt).TotalSeconds, discrepancies.Count, queueSize);
 
             return new CompleteAssignmentResultDto { Success = true, Message = "Завершено." };

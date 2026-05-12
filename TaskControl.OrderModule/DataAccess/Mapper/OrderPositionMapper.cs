@@ -20,6 +20,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 OrderId = entity.OrderId,
                 ItemId = entity.ItemId,
                 Quantity = entity.Quantity,
+                Price = entity.Price,
                 CreatedAt = DateTime.UtcNow
             };
         }
@@ -33,7 +34,8 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 UniqueId = model.UniqueId,
                 OrderId = model.OrderId,
                 ItemId = model.ItemId,
-                Quantity = model.Quantity
+                Quantity = model.Quantity,
+                Price= model.Price
             };
         }
     }

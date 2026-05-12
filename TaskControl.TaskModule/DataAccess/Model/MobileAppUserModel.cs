@@ -9,14 +9,20 @@ public class MobileAppUserModel
     [Column("id")]
     public int Id { get; set; }
 
-    [Column("employee_id"), NotNull]
-    public int EmployeeId { get; set; }
+    [Column("login"), NotNull]
+    public string Login { get; set; } = null!;
+
+    [Column("employee_id")]
+    public int? EmployeeId { get; set; }
+
+    [Column("customer_id")]
+    public int? CustomerId { get; set; }
 
     [Column("password_hash"), NotNull]
     public string PasswordHash { get; set; } = null!;
 
     [Column("role"), NotNull]
-    public string Role { get; set; } = null!;
+    public int Role { get; set; } // Мапится на int в БД
 
     [Column("is_active"), NotNull]
     public bool IsActive { get; set; }
@@ -29,4 +35,12 @@ public class MobileAppUserModel
 
     [Column("branch_id")]
     public int? BranchId { get; set; }
+    [Column("is_on_break")]
+    public bool IsOnBreak { get; set; } = false;
+
+    [Column("last_break_end_at")]
+    public DateTime? LastBreakEndTime { get; set; }
+
+    [Column("current_break_start_at")]
+    public DateTime? CurrentBreakStartTime { get; set; }
 }

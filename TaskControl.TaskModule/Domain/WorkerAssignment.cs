@@ -6,9 +6,9 @@ namespace TaskControl.TaskModule.Domain
     {
         public int Id { get; internal set; }
         public int TaskId { get; internal set; }
-        public int AssignedToUserId { get; internal set; }
+        public int? AssignedToUserId { get; internal set; }
         public int BranchId { get; internal set; }
-
+        public double Complexity { get; internal set; }
         public AssignmentStatus Status { get; internal set; }
 
         public DateTime AssignedAt { get; internal set; }
@@ -23,8 +23,9 @@ namespace TaskControl.TaskModule.Domain
         public WorkerAssignment(
             int id,
             int taskId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
+            double complexity,
             AssignmentStatus status,
             DateTime assignedAtUtc)
         {
@@ -32,6 +33,7 @@ namespace TaskControl.TaskModule.Domain
             TaskId = taskId;
             AssignedToUserId = assignedToUserId;
             BranchId = branchId;
+            Complexity = complexity;
             Status = status;
             AssignedAt = assignedAtUtc;
         }
@@ -39,13 +41,15 @@ namespace TaskControl.TaskModule.Domain
         // 3. Конструктор для новых назначений (4 аргумента)
         public WorkerAssignment(
             int taskId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
+            double complexity, // Добавляем сюда
             DateTime assignedAtUtc = default)
         {
             TaskId = taskId;
             AssignedToUserId = assignedToUserId;
             BranchId = branchId;
+            Complexity = complexity; // Присваиваем значение свойству
             AssignedAt = assignedAtUtc == default ? DateTime.UtcNow : assignedAtUtc;
             Status = AssignmentStatus.Assigned;
         }

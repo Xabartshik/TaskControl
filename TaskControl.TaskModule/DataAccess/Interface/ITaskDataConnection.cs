@@ -21,5 +21,7 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         ITable<MobileAppUserModel> MobileAppUsers { get; }
         ITable<OrderAssemblyAssignmentModel> OrderAssemblyAssignments { get; }
         ITable<OrderAssemblyLineModel> OrderAssemblyLines { get; }
+        ITable<OrderHandoverAssignmentModel> OrderHandoverAssignments { get; }
+        ITable<OrderHandoverLineModel> OrderHandoverLines { get; }
     }
 }

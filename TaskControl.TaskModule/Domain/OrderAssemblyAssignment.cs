@@ -11,6 +11,7 @@ namespace TaskControl.TaskModule.Domain
     public class OrderAssemblyAssignment : WorkerAssignment
     {
         public int OrderId { get; internal set; }
+        public AssignmentRole Role { get; internal set; }
 
         internal readonly List<OrderAssemblyLine> _lines = new();
         public IReadOnlyCollection<OrderAssemblyLine> Lines => _lines.AsReadOnly();
@@ -26,18 +27,20 @@ namespace TaskControl.TaskModule.Domain
             int id,
             int taskId,
             int orderId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
+            double complexity,
+            AssignmentRole assignedToRole,
             AssignmentStatus status,
             DateTime assignedAtUtc,
             IEnumerable<OrderAssemblyLine> lines)
-            : base(id, taskId, assignedToUserId, branchId, status, assignedAtUtc)
+            : base(id, taskId, assignedToUserId, branchId, complexity, status, assignedAtUtc)
         {
             if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId));
             if (lines == null) throw new ArgumentNullException(nameof(lines));
-
+            //if (assignedToRole == null) throw new ArgumentNullException(nameof(assignedToRole));
             var lineList = lines.ToList();
-
+            Role = assignedToRole;
             OrderId = orderId;
             _lines.AddRange(lineList);
         }
@@ -48,14 +51,17 @@ namespace TaskControl.TaskModule.Domain
         public OrderAssemblyAssignment(
             int taskId,
             int orderId,
-            int assignedToUserId,
+            int? assignedToUserId,
             int branchId,
+            double complexity,
+            AssignmentRole role,
             DateTime assignedAtUtc = default)
-            : base(taskId, assignedToUserId, branchId, assignedAtUtc)
+            : base(taskId, assignedToUserId, branchId, complexity, assignedAtUtc) 
         {
             if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId));
 
             OrderId = orderId;
+            Role = role;
         }
 
         public void AddLine(OrderAssemblyLine line)

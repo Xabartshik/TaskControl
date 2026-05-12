@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
-using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.DataAccess.Interface
@@ -13,8 +11,9 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         Task<int> AddAsync(ItemMovement entity);
         Task<int> UpdateAsync(ItemMovement entity);
         Task<int> DeleteAsync(int id);
-        Task<IEnumerable<ItemMovement>> GetBySourcePositionAsync(int itemPositionId);
-        Task<IEnumerable<ItemMovement>> GetByDestinationPositionAsync(int itemPositionId);
+        Task<IEnumerable<ItemMovement>> GetBySourcePositionAsync(int positionId);
+        Task<IEnumerable<ItemMovement>> GetByDestinationPositionAsync(int positionId);
         Task<IEnumerable<ItemMovement>> GetByBranchAsync(int branchId);
+        Task<IEnumerable<ItemMovement>> GetByItemAsync(int itemId);
     }
 }

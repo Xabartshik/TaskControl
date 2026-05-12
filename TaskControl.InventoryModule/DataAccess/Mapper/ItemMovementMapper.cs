@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
 
@@ -17,11 +13,14 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             return new ItemMovementModel
             {
                 Id = entity.Id,
-                SourceItemPositionId = entity.SourceItemPositionId,
+                ItemId = entity.ItemId,
+                SourcePositionId = entity.SourcePositionId,
                 DestinationPositionId = entity.DestinationPositionId,
                 SourceBranchId = entity.SourceBranchId,
                 DestinationBranchId = entity.DestinationBranchId,
                 Quantity = entity.Quantity,
+                WorkerId = entity.WorkerId,
+                TaskId = entity.TaskId,
                 CreatedAt = DateTime.UtcNow
             };
         }
@@ -33,11 +32,14 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
             return new ItemMovement
             {
                 Id = model.Id,
-                SourceItemPositionId = model.SourceItemPositionId,
+                ItemId = model.ItemId,
+                SourcePositionId = model.SourcePositionId,
                 DestinationPositionId = model.DestinationPositionId,
                 SourceBranchId = model.SourceBranchId,
                 DestinationBranchId = model.DestinationBranchId,
-                Quantity = model.Quantity
+                Quantity = model.Quantity,
+                WorkerId = model.WorkerId,
+                TaskId = model.TaskId
             };
         }
     }

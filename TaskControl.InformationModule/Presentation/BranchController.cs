@@ -24,7 +24,11 @@ namespace TaskControl.InformationModule.Presentation.Controllers
         public async Task<ActionResult<IEnumerable<BranchDto>>> GetAll()
         {
             var records = await _service.GetAll();
-            return Ok(records);
+
+            // Фильтруем коллекцию: оставляем только те ID, которые > 0
+            var filteredRecords = records.Where(b => b.BranchId > 0);
+
+            return Ok(filteredRecords);
         }
 
         [HttpGet("{id}")]

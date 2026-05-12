@@ -48,5 +48,7 @@ namespace TaskControl.InformationModule.Domain
         [Required(ErrorMessage = "Высота товара обязательна для заполнения")]
         public Length Height { get; set; }
 
+        public decimal Price { get; set; }
+
     }
 }

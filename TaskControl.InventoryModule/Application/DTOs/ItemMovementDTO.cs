@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TaskControl.InventoryModule.Domain;
 
 namespace TaskControl.InventoryModule.Application.DTOs
@@ -12,7 +8,10 @@ namespace TaskControl.InventoryModule.Application.DTOs
     {
         public int Id { get; init; }
 
-        public int? SourceItemPositionId { get; init; }
+        [Required]
+        public int ItemId { get; init; }
+
+        public int? SourcePositionId { get; init; }
 
         public int? DestinationPositionId { get; init; }
 
@@ -23,26 +22,34 @@ namespace TaskControl.InventoryModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
+        public int? WorkerId { get; init; }
+
+        public int? TaskId { get; init; }
+
         public static ItemMovement FromDto(ItemMovementDto dto) => new()
         {
             Id = dto.Id,
-            SourceItemPositionId = dto.SourceItemPositionId,
+            ItemId = dto.ItemId,
+            SourcePositionId = dto.SourcePositionId,
             DestinationPositionId = dto.DestinationPositionId,
             SourceBranchId = dto.SourceBranchId,
             DestinationBranchId = dto.DestinationBranchId,
-            Quantity = dto.Quantity
+            Quantity = dto.Quantity,
+            WorkerId = dto.WorkerId,
+            TaskId = dto.TaskId
         };
 
         public static ItemMovementDto ToDto(ItemMovement entity) => new()
         {
             Id = entity.Id,
-            SourceItemPositionId = entity.SourceItemPositionId,
+            ItemId = entity.ItemId,
+            SourcePositionId = entity.SourcePositionId,
             DestinationPositionId = entity.DestinationPositionId,
             SourceBranchId = entity.SourceBranchId,
             DestinationBranchId = entity.DestinationBranchId,
-            Quantity = entity.Quantity
+            Quantity = entity.Quantity,
+            WorkerId = entity.WorkerId,
+            TaskId = entity.TaskId
         };
     }
-
-
 }

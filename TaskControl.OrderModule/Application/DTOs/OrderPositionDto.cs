@@ -21,12 +21,17 @@ namespace TaskControl.OrderModule.Application.DTOs
         [Required]
         public int Quantity { get; init; }
 
+        [Required]
+        public decimal Price { get; set; }
+        public string? ItemName { get; set; }
+
         public static OrderPosition FromDto(OrderPositionDto dto) => new()
         {
             UniqueId = dto.UniqueId,
             OrderId = dto.OrderId,
             ItemId = dto.ItemId,
-            Quantity = dto.Quantity
+            Quantity = dto.Quantity,
+            Price = dto.Price
         };
 
         public static OrderPositionDto ToDto(OrderPosition entity) => new()
@@ -34,7 +39,8 @@ namespace TaskControl.OrderModule.Application.DTOs
             UniqueId = entity.UniqueId,
             OrderId = entity.OrderId,
             ItemId = entity.ItemId,
-            Quantity = entity.Quantity
+            Quantity = entity.Quantity,
+            Price = entity.Price
         };
     }
 }

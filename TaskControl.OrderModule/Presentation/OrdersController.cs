@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.OrderModule.Application.DTOs;
+using TaskControl.OrderModule.Application.Interface;
 
 namespace TaskControl.OrderModule.Presentation.Controllers
 {
@@ -9,15 +11,56 @@ namespace TaskControl.OrderModule.Presentation.Controllers
     [Route("api/[controller]")]
     public class OrdersController : ControllerBase, ICrudController<OrderDto, int>
     {
-        private readonly IService<OrderDto> _service;
+        private readonly IOrderService _service;
         private readonly ILogger<OrdersController> _logger;
-
+        private readonly IQRTokenService _qrTokenService; 
         public OrdersController(
-            IService<OrderDto> service,
-            ILogger<OrdersController> logger)
+            IOrderService service,
+            ILogger<OrdersController> logger,
+            IQRTokenService qrTokenService)
         {
             _service = service;
             _logger = logger;
+            _qrTokenService = qrTokenService;
+        }
+
+        /// <summary>
+        /// Получить строку для генерации QR-кода выдачи
+        /// </summary>
+        [HttpGet("{id}/pickup-qr")]
+        public async Task<ActionResult> GetPickupQr(int id)
+        {
+            var order = await _service.GetById(id);
+            if (order == null)
+            {
+                return NotFound("Заказ не найден");
+            }
+
+            // Опционально: Проверка, что заказ вообще собран и готов к выдаче
+            // if (order.Status != OrderStatus.ReadyForPickup && order.DeliveryType != DeliveryType.Express)
+            // {
+            //      return BadRequest("Заказ еще не готов к выдаче");
+            // }
+
+            // Генерируем токен (до следующей полуночи МСК)
+            var token = _qrTokenService.GenerateOrderPickupToken(order.CustomerId, order.OrderId);
+
+            return Ok(new { qrToken = token });
+        }
+
+        [HttpGet("customer/{customerId}")]
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetByCustomer(int customerId)
+        {
+            var records = await _service.GetByCustomerAsync(customerId);
+
+            if (records == null || !records.Any())
+            {
+                // Для мобильного приложения пустой список — это нормально, но можно логировать
+                _logger.LogInformation("У клиента {CustomerId} пока нет заказов", customerId);
+                return Ok(new List<OrderDto>());
+            }
+
+            return Ok(records);
         }
 
         [HttpGet]
@@ -37,6 +80,54 @@ namespace TaskControl.OrderModule.Presentation.Controllers
                 return NotFound();
             }
             return Ok(record);
+        }
+
+        /// <summary>
+        /// Получить все заказы филиала с вложенными позициями (для панели руководителя)
+        /// </summary>
+        [HttpGet("branch/{branchId}")]
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetByBranch(int branchId)
+        {
+            try
+            {
+                var orders = await _service.GetByBranchAsync(branchId);
+
+                if (orders == null || !orders.Any())
+                {
+                    return Ok(new List<OrderDto>());
+                }
+
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении заказов филиала {BranchId}", branchId);
+                return StatusCode(500, "Внутренняя ошибка сервера");
+            }
+        }
+
+        /// <summary>
+        /// Отменить заказ покупателя
+        /// </summary>
+        [HttpPost("{id}/cancel")]
+        public async Task<IActionResult> CancelOrder(int id)
+        {
+            try
+            {
+                var result = await _service.CancelOrderAsync(id);
+
+                if (!result)
+                {
+                    return BadRequest(new { message = "Не удалось отменить заказ. Возможно, он не существует или уже завершен." });
+                }
+
+                return Ok(new { message = "Заказ успешно отменен" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при отмене заказа ID: {OrderId} через API", id);
+                return StatusCode(500, new { message = "Внутренняя ошибка сервера при отмене заказа" });
+            }
         }
 
         [HttpPost]

@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using TaskControl.TaskModule.DataAccess.Models;
+﻿using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.Domain;
 
 namespace TaskControl.TaskModule.DataAccess.Mapper
@@ -17,13 +12,18 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
             return new MobileAppUserModel
             {
                 Id = entity.Id,
+                Login = entity.Login,
                 EmployeeId = entity.EmployeeId,
+                CustomerId = entity.CustomerId,
                 PasswordHash = entity.PasswordHash,
-                Role = entity.Role.ToString(),
+                Role = (int)entity.Role,
                 IsActive = entity.IsActive,
                 CreatedAt = entity.CreatedAt,
                 UpdatedAt = entity.UpdatedAt,
-                BranchId = entity.BranchId
+                BranchId = entity.BranchId,
+                IsOnBreak = entity.IsOnBreak,
+                LastBreakEndTime = entity.LastBreakEndTime,
+                CurrentBreakStartTime = entity.CurrentBreakStartTime
             };
         }
 
@@ -31,23 +31,22 @@ namespace TaskControl.TaskModule.DataAccess.Mapper
         {
             if (model == null) return null;
 
-            var role = Enum.TryParse<MobileUserRole>(model.Role, ignoreCase: true, out var parsed)
-                ? parsed
-                : MobileUserRole.Worker;
-
-            var entity = new MobileAppUser
+            return new MobileAppUser
             {
                 Id = model.Id,
+                Login = model.Login,
                 EmployeeId = model.EmployeeId,
+                CustomerId = model.CustomerId,
                 PasswordHash = model.PasswordHash,
-                Role = role,
+                Role = (MobileUserRole)model.Role,
                 IsActive = model.IsActive,
                 CreatedAt = model.CreatedAt,
                 UpdatedAt = model.UpdatedAt,
-                BranchId = model.BranchId
+                BranchId = model.BranchId,
+                IsOnBreak = model.IsOnBreak,
+                LastBreakEndTime = model.LastBreakEndTime,
+                CurrentBreakStartTime = model.CurrentBreakStartTime
             };
-
-            return entity;
         }
     }
 }

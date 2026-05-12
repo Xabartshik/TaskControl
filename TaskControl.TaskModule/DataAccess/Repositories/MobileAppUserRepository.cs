@@ -17,6 +17,23 @@ namespace TaskControl.TaskModule.DAL.Repositories
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger;
         }
+        public async Task<IEnumerable<MobileAppUser>> GetUsersOnBreakAsync()
+        {
+            _logger.LogInformation("Получение всех пользователей мобильного приложения, находящихся на перерыве");
+            try
+            {
+                var users = await _db.MobileAppUsers
+                    .Where(u => u.IsOnBreak)
+                    .ToListAsync();
+
+                return users.Select(u => u.ToDomain());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении списка пользователей мобильного приложения на перерыве");
+                throw;
+            }
+        }
 
         public async Task<MobileAppUser?> GetByIdAsync(int id)
         {
@@ -33,6 +50,32 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
+        public async Task<List<int>> GetEmployeesOnBreakAsync(IEnumerable<int> employeeIds)
+        {
+            _logger.LogInformation("Получение списка сотрудников, находящихся на перерыве");
+            try
+            {
+                if (employeeIds == null || !employeeIds.Any())
+                {
+                    return new List<int>();
+                }
+
+                var onBreakIds = await _db.MobileAppUsers
+                    // Проверяем, что EmployeeId не null, входит в искомый список и сотрудник на перерыве
+                    .Where(u => u.EmployeeId.HasValue
+                             && employeeIds.Contains(u.EmployeeId.Value)
+                             && u.IsOnBreak)
+                    .Select(u => u.EmployeeId.Value)
+                    .ToListAsync();
+
+                return onBreakIds;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении списка сотрудников на перерыве");
+                throw;
+            }
+        }
         public async Task<IEnumerable<MobileAppUser>> GetAllAsync()
         {
             _logger.LogInformation("Получение всех пользователей мобильного приложения");
@@ -62,7 +105,7 @@ namespace TaskControl.TaskModule.DAL.Repositories
                     entity.CreatedAt = DateTime.UtcNow;
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {
@@ -127,22 +170,52 @@ namespace TaskControl.TaskModule.DAL.Repositories
             }
         }
 
-        public async Task<int> DeleteByEmployeeIdAsync(int employeeId)
+        public async Task<MobileAppUser?> GetByLoginAsync(string login)
         {
-            _logger.LogInformation("Удаление пользователя мобильного приложения по ID сотрудника: {employeeId}",
-                                 employeeId);
+            _logger.LogInformation("Поиск аккаунта по логину: {login}", login);
             try
             {
-                var user = await _db.MobileAppUsers.FirstOrDefaultAsync(u => u.EmployeeId == employeeId);
-                if (user is null)
-                    return 0;
+                // Ищем в колонке login (которую мы добавили в миграции)
+                var user = await _db.MobileAppUsers
+                    .FirstOrDefaultAsync(u => u.Login == login);
 
-                return await _db.DeleteAsync(user);
+                return user?.ToDomain();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при удалении пользователя мобильного приложения по ID сотрудника: {employeeId}",
-                              employeeId);
+                _logger.LogError(ex, "Ошибка при поиске аккаунта по логину: {login}", login);
+                throw;
+            }
+        }
+
+        public async Task<MobileAppUser?> GetByCustomerIdAsync(int customerId)
+        {
+            _logger.LogInformation("Поиск аккаунта по ID покупателя: {customerId}", customerId);
+            try
+            {
+                var user = await _db.MobileAppUsers
+                    .FirstOrDefaultAsync(u => u.CustomerId == customerId);
+                return user?.ToDomain();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при поиске по ID покупателя: {customerId}", customerId);
+                throw;
+            }
+        }
+
+        public async Task<int> DeleteByEmployeeIdAsync(int employeeId)
+        {
+            _logger.LogInformation("Удаление аккаунта сотрудника: {employeeId}", employeeId);
+            try
+            {
+                return await _db.MobileAppUsers
+                    .Where(u => u.EmployeeId == employeeId)
+                    .DeleteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при удалении аккаунта сотрудника: {employeeId}", employeeId);
                 throw;
             }
         }

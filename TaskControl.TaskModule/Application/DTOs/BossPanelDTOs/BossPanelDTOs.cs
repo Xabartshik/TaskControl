@@ -29,6 +29,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public string FullName { get; set; }
         public bool IsAtWork { get; set; }
         public int ActiveTasksCount { get; set; }
+        public double TotalComplexity { get; set; }
         public List<ActiveTaskBriefDto> ActiveTasks { get; set; } = new();
     }
 
@@ -47,6 +48,9 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public bool IsAtWork { get; set; }
         public int ActiveTasksCount { get; set; }
         public bool IsRecommended { get; set; }
+        public double MaxWeightKg { get; set; }
+        public string VehicleName { get; set; }
+        public bool IsOnRoute { get; set; }
     }
     public class AvailableOrderDto
     {
@@ -55,6 +59,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public DateTime CreatedAt { get; set; }
         public string Status { get; set; }
         public string DeliveryType { get; set; }
+        public DateTime? DeliveryDate { get; set; }
         public string PaymentType { get; set; }
 
         // Логистика: Адрес клиента (для Delivery) или Постамата
@@ -76,5 +81,6 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public int ItemId { get; set; }
         public string Name { get; set; }
         public int Quantity { get; set; }
+        public double WeightKg { get; set; }
     }
 }

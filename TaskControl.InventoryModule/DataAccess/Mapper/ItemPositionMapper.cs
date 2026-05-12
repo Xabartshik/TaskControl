@@ -20,7 +20,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 ItemId = entity.ItemId,
                 PositionId = entity.PositionId,
                 Quantity = entity.Quantity,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
             };
         }
 
@@ -34,6 +34,7 @@ namespace TaskControl.InventoryModule.DataAccess.Mapper
                 ItemId = model.ItemId,
                 PositionId = model.PositionId,
                 Quantity = model.Quantity
+
             };
         }
     }

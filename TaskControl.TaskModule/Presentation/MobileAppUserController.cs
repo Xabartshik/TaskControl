@@ -1,14 +1,19 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.Application.DTOs;
+using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Interface;
+using TaskControl.InformationModule.Domain;
 using TaskControl.TaskModule.Application.DTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.Application.Services;
+using TaskControl.TaskModule.Application.Services.Hubs;
 
 namespace TaskControl.TaskModule.Presentation
 {
@@ -25,19 +30,42 @@ namespace TaskControl.TaskModule.Presentation
         private readonly ILogger<MobileAppUserController> _logger;
         private readonly IEmployeeRepository _employeeRepository;
         private readonly TaskWorkloadAggregator _aggregator;
+        private readonly ICustomerService _customerService;
 
         public MobileAppUserController(
             IMobileAppUserService service,
             IJwtTokenService jwt,
             ILogger<MobileAppUserController> logger,
             IEmployeeRepository employeeRepository,
-            TaskWorkloadAggregator aggregator)
+            TaskWorkloadAggregator aggregator,
+            ICustomerService customerService)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _jwt = jwt ?? throw new ArgumentNullException(nameof(jwt));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _employeeRepository = employeeRepository ?? throw new ArgumentNullException(nameof(employeeRepository));
             _aggregator = aggregator ?? throw new ArgumentNullException(nameof(aggregator));
+            _customerService = customerService ?? throw new ArgumentNullException(nameof(customerService)); 
+        }
+
+        [HttpPost("test-push/{employeeId}")]
+        public async Task<IActionResult> SendTest(int employeeId, [FromServices] INotificationService notificationService)
+        {
+            await notificationService.SendNotificationAsync(employeeId, "ТЕСТ", "Работает!", "priority_escalated_2");
+            return Ok();
+        }
+
+        [HttpPost("test-all")]
+        public async Task<IActionResult> SendToAll([FromServices] IHubContext<TaskNotificationHub> hubContext)
+        {
+            // Отправляем пуш вообще всем, кто сейчас подключен к хабу
+            await hubContext.Clients.All.SendAsync("ReceiveNotification", new
+            {
+                title = "БРОАДКАСТ",
+                message = "Связь есть!",
+                type = "priority_escalated_2"
+            });
+            return Ok("Отправлено всем");
         }
 
         /// <summary>
@@ -413,41 +441,64 @@ namespace TaskControl.TaskModule.Presentation
 
             try
             {
-                _logger.LogInformation("Запрос входа для пользователя: {username}", dto.Username);
+                _logger.LogInformation("Запрос входа: {username}", dto.Username);
 
-                // 1) Валидируем учётные данные существующим сервисом
-                var user = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
+                // 1) Валидируем логин/пароль через универсальный поиск
+                var userDto = await _service.ValidateCredentialsAsync(dto.Username, dto.Password);
 
-                var employee = await _employeeRepository.GetByIdAsync(user.EmployeeId);
+                string? firstName = "User";
+                string? lastName = "";
+                WorkerRole? workerRole = null;
+                if (userDto == null)
+                {
+                    throw new Exception("Неверные учетные данные");
+                }
+                // 2) Если это сотрудник — обогащаем данными из EmployeeRepository
+                if (userDto != null && userDto.EmployeeId.HasValue)
+                {
+                    var employee = await _employeeRepository.GetByIdAsync(userDto.EmployeeId.Value);
+                    if (employee != null)
+                    {
+                        firstName = employee.Name;
+                        lastName = employee.Surname;
+                        workerRole = employee.Role;
+                    }
+                }
+                // 3) Если это покупатель — данные будут браться из CustomerRepository
+                else if (userDto.CustomerId.HasValue)
+                {
+                    var customer = await _customerService.GetByIdAsync(userDto.CustomerId.Value);
+                    if (customer != null)
+                    {
+                        firstName = customer.FirstName; 
+                        lastName = customer.LastName;
+                    }
+                }
 
-                // 2) Генерируем JWT
-                var token = _jwt.CreateToken(user.EmployeeId, user.Role, user.BranchId);
+                var token = _jwt.CreateToken(userDto.Id, userDto.Role, userDto.EmployeeId, userDto.CustomerId, userDto.BranchId);
 
-                // 3) Отдаём токен + user 
+                // 5) Формируем финальный DTO с ФИО
+                var finalUser = userDto with
+                {
+                    FirstName = firstName,
+                    LastName = lastName,
+                    WorkerRole = workerRole 
+                };
+
                 return Ok(new LoginResponseDto
                 {
                     AccessToken = token,
                     TokenType = "Bearer",
-                    User = new MobileAppUserDto
-                    {
-                        Id = user.Id,
-                        EmployeeId = user.EmployeeId,
-                        FirstName = employee.Name,        
-                        LastName = employee.Surname,      
-                        Role = employee.Role,
-                        IsActive = user.IsActive,
-                        CreatedAt = user.CreatedAt,
-                        UpdatedAt = user.UpdatedAt
-                    }
+                    User = finalUser
                 });
             }
             catch (InvalidOperationException)
             {
-                return Unauthorized();
+                return Unauthorized(new { error = "Неверный логин или пароль" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка входа для пользователя: {username}", dto.Username);
+                _logger.LogError(ex, "Ошибка при входе: {username}", dto.Username);
                 return BadRequest(new { error = ex.Message });
             }
         }
@@ -488,7 +539,70 @@ namespace TaskControl.TaskModule.Presentation
                 return BadRequest(new { error = ex.Message });
             }
         }
+        /// <summary>
+        /// Регистрация нового покупателя
+        /// POST /api/v1/mobileappuser/register
+        /// </summary>
+        [AllowAnonymous]
+        [HttpPost("register")]
+        [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> Register([FromBody] RegisterCustomerRequestDto request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
+            try
+            {
+                _logger.LogInformation("HTTP-запрос на регистрацию нового покупателя: {Login}", request.Login);
+
+                // 1. Делегируем всю бизнес-логику сервису
+                var userDto = await _service.RegisterCustomerAsync(request);
+
+                // 2. Генерируем токен для автоматического входа
+                var token = _jwt.CreateToken(
+                    userDto.Id,
+                    userDto.Role,
+                    userDto.EmployeeId,
+                    userDto.CustomerId,
+                    userDto.BranchId
+                );
+
+                // 3. Подготавливаем пользователя для ответа (добавляем ФИО из реквеста)
+                var finalUser = userDto with
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName
+                };
+
+                // 4. Возвращаем LoginResponseDto
+                return CreatedAtAction(nameof(GetById), new { id = userDto.Id }, new LoginResponseDto
+                {
+                    AccessToken = token,
+                    TokenType = "Bearer",
+                    User = finalUser
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Ошибка валидации при регистрации {Login}: {Message}", request.Login, ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Сюда теперь будут падать все дубликаты (логин, телефон, почта)
+                _logger.LogWarning("Конфликт регистрации {Login}: {Message}", request.Login, ex.Message);
+                return Conflict(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                // Логируем ВЕСЬ стек, чтобы не гадать, что упало
+                _logger.LogError(ex, "Критический сбой регистрации {Login}", request.Login);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { error = "Внутренняя ошибка сервера. Попробуйте позже." });
+            }
+        }
         /// <summary>
         /// Получить пользователей по роли
         /// </summary>
@@ -574,13 +688,13 @@ namespace TaskControl.TaskModule.Presentation
             return Ok(tasks);
         }
 
-        [HttpPost("start")]
-        public async Task<ActionResult> StartTask([FromBody] StartTaskRequest request)
-        {
-            bool success = await _aggregator.StartTaskAsync(request.TaskId, request.TaskType, request.WorkerId);
-            if (!success) return BadRequest("Не удалось запустить задачу");
-            return Ok();
-        }
+        //[HttpPost("start")]
+        //public async Task<ActionResult> StartTask([FromBody] StartTaskRequest request)
+        //{
+        //    bool success = await _taskExecutionAggregator.StartTaskAsync(request.TaskId, request.TaskType, request.WorkerId);
+        //    if (!success) return BadRequest("Не удалось запустить задачу");
+        //    return Ok();
+        //}
     }
 
     /// <summary>

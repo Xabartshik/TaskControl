@@ -1,6 +1,5 @@
 ﻿using TaskControl.OrderModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
-using UnitsNet;
 
 namespace TaskControl.OrderModule.DataAccess.Mapper
 {
@@ -16,6 +15,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = entity.CustomerId,
                 BranchId = entity.BranchId,
                 DeliveryDate = entity.DeliveryDate,
+                DeliverySlotId = entity.DeliverySlotId, // Маппинг слота
                 DestinationAddress = entity.DestinationAddress,
 
                 // Трансформация для БД
@@ -24,6 +24,8 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 PostamatId = entity.PostamatId,
                 PostamatCellId = entity.PostamatCellId,
                 Status = entity.Status.ToString(),
+
+                TotalPrice = entity.TotalPrice,
 
                 CreatedAt = entity.CreatedAt == default ? DateTime.UtcNow : entity.CreatedAt
             };
@@ -39,6 +41,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 CustomerId = model.CustomerId,
                 BranchId = model.BranchId,
                 DeliveryDate = model.DeliveryDate,
+                DeliverySlotId = model.DeliverySlotId, // Маппинг слота
                 DestinationAddress = model.DestinationAddress,
                 PostamatId = model.PostamatId,
                 PostamatCellId = model.PostamatCellId,
@@ -46,7 +49,7 @@ namespace TaskControl.OrderModule.DataAccess.Mapper
                 DeliveryType = Enum.TryParse<DeliveryType>(model.DeliveryType, out var dType) ? dType : DeliveryType.Pickup,
                 PaymentType = Enum.TryParse<PaymentType>(model.PaymentType, out var pType) ? pType : PaymentType.Postpaid,
                 Status = Enum.TryParse<OrderStatus>(model.Status, out var status) ? status : OrderStatus.Created,
-
+                TotalPrice = model.TotalPrice,
                 CreatedAt = model.CreatedAt
             };
         }

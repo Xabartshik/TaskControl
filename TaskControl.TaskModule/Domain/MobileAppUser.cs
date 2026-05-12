@@ -2,9 +2,11 @@
 
 public enum MobileUserRole
 {
-    Worker,
-    Supervisor,
-    Admin
+    Worker = 1,
+    Supervisor = 2,
+    Admin = 3,
+    Customer = 4,
+    Courier = 5
 }
 
 /// <summary>
@@ -16,17 +18,16 @@ public class MobileAppUser
     /// <summary>
     /// Идентификатор записи (из БД).
     /// </summary>
-    public int Id { get;  set; }
+    public int Id { get; set; }
 
-    /// <summary>
-    /// Идентификатор сотрудника (логин в приложении).
-    /// </summary>
-    public int EmployeeId { get;  set; }
+    public int? EmployeeId { get; set; }
+    public int? CustomerId { get; set; }
+    public string Login { get; set; }
 
     /// <summary>
     /// Хэш пароля.
     /// </summary>
-    public string PasswordHash { get;  set; }
+    public string PasswordHash { get; set; }
 
     /// <summary>
     /// Роль пользователя в мобильном приложении.
@@ -54,27 +55,38 @@ public class MobileAppUser
     /// </summary>
     public DateTime? UpdatedAt { get; set; }
 
+    // Новые поля для системы перерывов
+    public bool IsOnBreak { get; set; }
+    public DateTime? LastBreakEndTime { get; set; }
+    public DateTime? CurrentBreakStartTime { get; set; }
+
     internal MobileAppUser() { }
 
     public MobileAppUser(
-        int employeeId,
+        string login,
         string passwordHash,
         MobileUserRole role,
+        int? employeeId = null,
+        int? customerId = null,
         int? branchId = null,
-        DateTime? createdAtUtc = null)
+        bool isOnBreak = false,
+        DateTime? lastBreakEndTime = null,
+        DateTime? currentBreakStartTime = null)
     {
-        if (employeeId <= 0)
-            throw new ArgumentOutOfRangeException(nameof(employeeId));
-        if (string.IsNullOrWhiteSpace(passwordHash))
-            throw new ArgumentException("Password hash cannot be empty.", nameof(passwordHash));
+        if (string.IsNullOrWhiteSpace(login))
+            throw new ArgumentException("Login cannot be empty.", nameof(login));
 
-        EmployeeId = employeeId;
+        Login = login;
         PasswordHash = passwordHash;
         Role = role;
+        EmployeeId = employeeId;
+        CustomerId = customerId;
         BranchId = branchId;
         IsActive = true;
-        CreatedAt = createdAtUtc ?? DateTime.UtcNow;
-        UpdatedAt = null;
+        CreatedAt = DateTime.UtcNow;
+        IsOnBreak = isOnBreak;
+        LastBreakEndTime = lastBreakEndTime;
+        CurrentBreakStartTime = currentBreakStartTime;
     }
 
     public void SetPasswordHash(string passwordHash)

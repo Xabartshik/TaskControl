@@ -1,0 +1,97 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Экран проходной</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            background-color: #111; color: #fff; font-family: Arial, sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100vh; margin: 0; overflow: hidden;
+        }
+        #qr-box {
+            background: white; padding: 20px; border-radius: 10px; margin: 20px 0;
+            display: flex; justify-content: center; align-items: center;
+            width: 440px; height: 440px;
+        }
+        #qr-box img { image-rendering: crisp-edges; width: 400px; height: 400px; }
+        .timer { font-size: 2.5rem; font-weight: bold; color: #0f0; }
+        .warning { color: #ff0; }
+        .expired { color: #f00; }
+    </style>
+</head>
+<body>
+
+    <h1 style="font-size: 3rem; margin-bottom: 0;">Филиал №1</h1>
+    <h2 style="font-size: 1.5rem; color: #aaa;">Отсканируйте код для отметки</h2>
+
+    <div id="qr-box"></div>
+
+    <div style="font-size: 1.5rem;">
+        Обновление через: <span id="countdown" class="timer">--</span> сек
+    </div>
+
+    <script>
+        // ID филиала, в котором физически висит этот экран (можно менять через URL: kiosk.html?branch=2)
+        const branchId = new URLSearchParams(window.location.search).get("branch") || 1;
+
+        const qrContainer = document.getElementById("qr-box");
+        const qrCode = new QRCode(qrContainer, {
+            width: 400, height: 400,
+            colorDark : "#000000", colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.M
+        });
+
+        let countdownInterval;
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/qrhub")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("ReceiveNewQR", function (payload, expiresAtISO) {
+            // Формируем JSON, который будет вшит в QR код. 
+            // Он содержит крипто-токен от сервера и ID текущего филиала.
+            const qrData = JSON.stringify({
+                p: payload,
+                b: parseInt(branchId)
+            });
+
+            qrCode.clear();
+            qrCode.makeCode(qrData);
+
+            startCountdown(expiresAtISO);
+        });
+
+    connection.start()
+        .then(() => {
+            connection.invoke("RequestCurrentQR").catch(err => console.error("Ошибка вызова метода:", err));
+    })
+    .catch(err => console.error("Ошибка SignalR:", err));
+
+        function startCountdown(expiresAtISO) {
+            clearInterval(countdownInterval);
+            const expiry = new Date(expiresAtISO).getTime();
+            const timerEl = document.getElementById("countdown");
+
+            countdownInterval = setInterval(() => {
+                const seconds = Math.floor((expiry - new Date().getTime()) / 1000);
+                
+                if (seconds < 0) {
+                    clearInterval(countdownInterval);
+                    timerEl.textContent = "0"; timerEl.className = "timer expired";
+                    return;
+                }
+
+                timerEl.textContent = seconds;
+                timerEl.className = seconds <= 10 ? "timer warning" : "timer";
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

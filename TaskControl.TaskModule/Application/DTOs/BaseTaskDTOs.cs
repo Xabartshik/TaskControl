@@ -55,7 +55,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CompletedAt = dto.CompletedAt,
                 Status = dto.Status,
                 Deadline = dto.Deadline,
-                PriorityLevel = dto.PriorityLevel
+                PriorityLevel = (TaskPriority)dto.PriorityLevel
             };
         }
 
@@ -75,7 +75,7 @@ namespace TaskControl.TaskModule.Application.DTOs
                 CompletedAt = entity.CompletedAt,
                 Status = entity.Status,
                 Deadline = entity.Deadline,
-                PriorityLevel = entity.PriorityLevel
+                PriorityLevel = (int)entity.PriorityLevel
             };
         }
     }

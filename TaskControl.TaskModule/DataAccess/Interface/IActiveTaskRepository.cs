@@ -17,5 +17,6 @@ namespace TaskControl.TaskModule.DataAccess.Interface
         Task<IEnumerable<BaseTask>> GetByStatusAsync(TaskStatus status);
         Task<IEnumerable<BaseTask>> GetActiveTasksAsync();
         Task<IEnumerable<BaseTask>> GetByTypeAsync(string type);
+        Task<IEnumerable<BaseTask>> GetPendingTasksWithDeadlinesAsync();
     }
 }

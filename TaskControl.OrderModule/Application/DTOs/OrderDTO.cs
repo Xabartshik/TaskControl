@@ -1,7 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 using TaskControl.OrderModule.Domain;
 
-
 namespace TaskControl.OrderModule.Application.DTOs
 {
     public record OrderDto
@@ -13,6 +12,9 @@ namespace TaskControl.OrderModule.Application.DTOs
         public int BranchId { get; init; }
 
         public DateTime? DeliveryDate { get; init; }
+
+        // Поле для передачи выбранного окна
+        public int? DeliverySlotId { get; init; }
 
         public string? DestinationAddress { get; set; }
 
@@ -30,6 +32,9 @@ namespace TaskControl.OrderModule.Application.DTOs
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public OrderStatus Status { get; init; } = OrderStatus.Created;
 
+        public decimal TotalPrice { get; set; }
+        public DateTime CreatedAt { get; set; }
+
         public List<OrderPositionDto> Positions { get; set; } = new();
 
         public static Order FromDto(OrderDto dto) => new()
@@ -38,6 +43,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = dto.CustomerId,
             BranchId = dto.BranchId,
             DeliveryDate = dto.DeliveryDate,
+            DeliverySlotId = dto.DeliverySlotId, // Маппинг
             DestinationAddress = dto.DestinationAddress,
 
             // Маппинг постаматов
@@ -46,7 +52,9 @@ namespace TaskControl.OrderModule.Application.DTOs
 
             DeliveryType = dto.DeliveryType,
             PaymentType = dto.PaymentType,
-            Status = dto.Status
+            Status = dto.Status,
+            TotalPrice = dto.TotalPrice,
+            CreatedAt = dto.CreatedAt,
         };
 
         public static OrderDto ToDto(Order entity) => new()
@@ -55,6 +63,7 @@ namespace TaskControl.OrderModule.Application.DTOs
             CustomerId = entity.CustomerId,
             BranchId = entity.BranchId,
             DeliveryDate = entity.DeliveryDate,
+            DeliverySlotId = entity.DeliverySlotId, // Маппинг
             DestinationAddress = entity.DestinationAddress,
 
             // Маппинг постаматов
@@ -63,7 +72,9 @@ namespace TaskControl.OrderModule.Application.DTOs
 
             DeliveryType = entity.DeliveryType,
             PaymentType = entity.PaymentType,
-            Status = entity.Status
+            Status = entity.Status,
+            CreatedAt = entity.CreatedAt,
+            TotalPrice = entity.TotalPrice // Восстановлен вывод суммы
         };
     }
 }

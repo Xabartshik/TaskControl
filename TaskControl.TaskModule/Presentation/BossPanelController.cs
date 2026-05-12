@@ -38,6 +38,50 @@ namespace TaskControl.TaskModule.Presentation
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        /// <summary>
+        /// Получить список доступных курьеров для филиала
+        /// </summary>
+        [HttpGet("couriers/available")]
+        [ProducesResponseType(typeof(IEnumerable<AvailableEmployeeDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAvailableCouriers()
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue) return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var couriers = await _bossPanelService.GetAvailableCouriersAsync(branchId.Value);
+                return Ok(couriers);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении доступных курьеров");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получить заказы, готовые к отгрузке курьеру (Status = Ready)
+        /// </summary>
+        [HttpGet("orders/ready-for-dispatch")]
+        [ProducesResponseType(typeof(IEnumerable<AvailableOrderDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetReadyForDispatchOrders()
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue) return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var orders = await _bossPanelService.GetReadyForDispatchOrdersAsync(branchId.Value);
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении заказов для отгрузки");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         private int? GetBranchIdFromToken()
         {
             var claim = User.FindFirst("BranchId")?.Value;
@@ -108,6 +152,29 @@ namespace TaskControl.TaskModule.Presentation
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при получении доступных сотрудников");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получить всех сотрудников, чей последний чекин был в данном филиале
+        /// </summary>
+        [HttpGet("employees/all")]
+        [ProducesResponseType(typeof(IEnumerable<AvailableEmployeeDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllBranchEmployees()
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue)
+                return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var employees = await _bossPanelService.GetAllBranchEmployeesAsync(branchId.Value);
+                return Ok(employees);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении полного списка сотрудников филиала {BranchId}", branchId);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
