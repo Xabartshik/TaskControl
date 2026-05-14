@@ -261,7 +261,7 @@ namespace TaskControl.TaskModule.Application.Providers
                 var itemData = await (from ip in itemPositions
                                       join i in items on ip.ItemId equals i.ItemId
                                       where ip.Id == line.ItemPositionId
-                                      select new { Item = i, ip.PositionId, ip.ItemId }).FirstOrDefaultAsync();
+                                      select new { Item = i, ip.PositionId, i.Barcode, ip.ItemId }).FirstOrDefaultAsync();
 
                 string sourceCellCode = "Неизвестная ячейка";
                 if (itemData != null)
@@ -292,7 +292,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     LineId = line.Id,
                     ItemId = itemData?.Item.ItemId ?? 0,
                     ItemName = itemData?.Item.Name ?? "Неизвестный товар",
-                    Barcode = (itemData?.Item.ItemId ?? 0).ToString(),
+                    Barcode = itemData?.Item.Barcode ?? "Неизвестный штрих-код",
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity,
                     SourceCellCode = sourceCellCode,

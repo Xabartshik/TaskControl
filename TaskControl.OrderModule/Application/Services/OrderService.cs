@@ -21,6 +21,7 @@ namespace TaskControl.OrderModule.Application.Services
         private readonly ILogger<OrderService> _logger;
         private readonly IOrderPositionRepository _positionRepository;
         private readonly IEnumerable<IOrderCreatedEventHandler> _orderCreatedHandlers;
+        private readonly IEnumerable<IOrderCancelledEventHandler> _orderCancelledHandlers;
         private readonly IPostamatAllocationService _postamatAllocationService;
         private readonly IItemAllocationService _itemAllocationService;
         private readonly IItemRepository _itemRepository;
@@ -36,7 +37,8 @@ namespace TaskControl.OrderModule.Application.Services
             IItemRepository itemRepository,
             IBranchRepository branchRepository,
             IItemAllocationService itemAllocationService,
-            IEnumerable<IOrderCreatedEventHandler> orderCreatedHandlers)
+            IEnumerable<IOrderCreatedEventHandler> orderCreatedHandlers,
+            IEnumerable<IOrderCancelledEventHandler> orderCancelledHandlers)
         {
             _repository = repository;
             _logger = logger;
@@ -47,6 +49,7 @@ namespace TaskControl.OrderModule.Application.Services
             _itemRepository = itemRepository;
             _branchRepository = branchRepository;
             _itemAllocationService = itemAllocationService;
+            _orderCancelledHandlers = orderCancelledHandlers;
         }
 
         public async Task<IEnumerable<OrderDto>> GetByCustomerAsync(int customerId)
@@ -95,7 +98,8 @@ namespace TaskControl.OrderModule.Application.Services
                     _logger.LogWarning("Отказ: заказ ID: {OrderId} уже находится в финальном статусе {Status}", id, order.Status);
                     return false; // Нельзя отменить то, что уже завершено или отменено
                 }
-
+                var previousStatus = order.Status;
+                var branchId = order.BranchId;
                 // 3. Меняем статус
                 order.Status = OrderStatus.Cancelled;
                 var result = await _repository.UpdateAsync(order) == 1;
@@ -104,12 +108,15 @@ namespace TaskControl.OrderModule.Application.Services
                 {
                     _logger.LogInformation("Заказ ID: {OrderId} успешно отменен", id);
 
-                    // ========================================================================
-                    // ВАЖНО ДЛЯ WMS: Здесь в будущем нужно добавить вызов снятия резервов!
-                    // Если статус был "Created", нужно просто освободить товар на полках:
-                    // await _itemAllocationService.ReleaseOrderItemsAsync(id);
-                    // Если статус "Assembly" или "Ready" - нужно сгенерировать задачу ReturnToStock
-                    // ========================================================================
+                    // Уведомляем TaskModule (и любые другие модули) об отмене
+                    if (_orderCancelledHandlers != null)
+                    {
+                        foreach (var handler in _orderCancelledHandlers)
+                        {
+                            // 2. Передаем данные подписчикам (TaskModule)
+                            await handler.HandleOrderCancelledAsync(id, branchId, previousStatus);
+                        }
+                    }
                 }
 
                 return result;

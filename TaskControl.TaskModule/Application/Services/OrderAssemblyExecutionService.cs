@@ -752,7 +752,7 @@ namespace TaskControl.TaskModule.Application.Services
                     var itemInfo = await (from ip in itemPositions
                                           join i in items on ip.ItemId equals i.ItemId
                                           where ip.Id == l.ItemPositionId
-                                          select new { i.ItemId, i.Name, ip.PositionId }).FirstOrDefaultAsync();
+                                          select new { i.ItemId, i.Name, i.Barcode, ip.PositionId }).FirstOrDefaultAsync();
 
                     string sourceCellCode = "Неизвестная ячейка";
                     if (itemInfo != null)
@@ -767,11 +767,11 @@ namespace TaskControl.TaskModule.Application.Services
                         ItemPositionId = l.ItemPositionId,
                         ItemId = itemInfo?.ItemId ?? 0,
                         ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                        Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+                        Barcode = itemInfo?.Barcode ?? "Неизвестный штрих-код",
                         SourceCellCode = sourceCellCode,
                         Quantity = l.Quantity,
                         PickedQuantity = l.PickedQuantity,
-                        Status = l.Status
+                        Status = l.Status// Явный перевод в строку
                     });
                 }
                 dto.CellPlacements.Add(cellDto);

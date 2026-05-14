@@ -1,10 +1,5 @@
 ﻿using LinqToDB;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.OrderModule.Application.DTOs;
@@ -76,7 +71,7 @@ namespace TaskControl.TaskModule.Presentation.Controllers
                     OrderId = o.OrderId,
                     CustomerId = o.CustomerId,
                     DestinationAddress = o.DestinationAddress,
-                    Status = Enum.Parse<OrderModule.Domain.OrderStatus>(o.Status),
+                    Status = Enum.Parse<OrderStatus>(o.Status),
                     TotalPrice = o.TotalPrice,
                     DeliveryType = Enum.Parse<OrderModule.Domain.DeliveryType>(o.DeliveryType),
                     PaymentType = Enum.Parse<OrderModule.Domain.PaymentType>(o.PaymentType),
