@@ -20,6 +20,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
 
                 ItemId = entity.ItemId,
                 Name = entity.Name,
+                Barcode = entity.Barcode,
                 Weight = entity.Weight.Grams,
                 Length = entity.Length.Millimeters,
                 Width = entity.Width.Millimeters,
@@ -37,6 +38,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
             {
                 ItemId = model.ItemId,
                 Name = model.Name,
+                Barcode= model.Barcode,
                 Weight = Mass.FromGrams(model.Weight),
                 Length = Length.FromMillimeters(model.Length),
                 Width = Length.FromMillimeters(model.Width),

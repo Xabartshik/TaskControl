@@ -40,6 +40,75 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             return Ok(record);
         }
 
+        [HttpPost("bulk")]
+        public async Task<ActionResult<IEnumerable<PositionCellDto>>> BulkCreate([FromBody] BulkCreatePositionDto dto)
+        {
+            var positionsToCreate = new List<PositionCellDto>();
+
+            // Генерируем список DTO на основе параметров
+            for (int s = 0; s < dto.StorageCount; s++)
+            {
+                // Добавляем ведущий ноль для красоты (например, 01, 02), если нужно
+                string flsNum = (dto.StartFLSNumber + s).ToString().PadLeft(2, '0');
+
+                if (dto.ShelvesCount == null)
+                {
+                    // Режим: Паллет / Одиночное место
+                    positionsToCreate.Add(new PositionCellDto
+                    {
+                        BranchId = dto.BranchId,
+                        ZoneCode = dto.ZoneCode,
+                        FirstLevelStorageType = dto.StorageType,
+                        FLSNumber = flsNum,
+                        Status = "Active",
+                        Length = dto.DefaultLength ?? 0,
+                        Width = dto.DefaultWidth ?? 0,
+                        Height = dto.DefaultHeight ?? 0
+                    });
+                }
+                else
+                {
+                    // Режим: Стеллаж с полками и ячейками
+                    for (int shelf = 1; shelf <= dto.ShelvesCount; shelf++)
+                    {
+                        int cellsCount = dto.CellsPerShelf ?? 1;
+                        for (int cell = 1; cell <= cellsCount; cell++)
+                        {
+                            positionsToCreate.Add(new PositionCellDto
+                            {
+                                BranchId = dto.BranchId,
+                                ZoneCode = dto.ZoneCode,
+                                FirstLevelStorageType = dto.StorageType,
+                                FLSNumber = flsNum,
+                                SecondLevelStorage = shelf.ToString(),
+                                ThirdLevelStorage = cell.ToString(),
+                                Status = "Active",
+                                Length = dto.DefaultLength ?? 0,
+                                Width = dto.DefaultWidth ?? 0,
+                                Height = dto.DefaultHeight ?? 0
+                            });
+                        }
+                    }
+                }
+            }
+
+            var resultList = new List<PositionCellDto>();
+
+            // Сохраняем в БД и собираем итоговый список с ID
+            foreach (var pos in positionsToCreate)
+            {
+                // Предполагаем, что _service.Add возвращает ID новой записи (int)
+                var newId = await _service.Add(pos);
+
+                // Используем синтаксис 'with' для создания копии с установленным ID
+                resultList.Add(pos with { PositionId = newId });
+            }
+
+            _logger.LogInformation("Массовое создание завершено. Создано {Count} позиций для зоны {Zone}",
+                resultList.Count, dto.ZoneCode);
+
+            return Ok(resultList);
+        }   
         [HttpPost]
         public async Task<ActionResult<int>> Add(PositionCellDto dto)
         {

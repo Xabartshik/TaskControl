@@ -45,6 +45,8 @@ namespace TaskControl.InformationModule.Application.DTOs
         [Required(ErrorMessage = "Укажите высоту товара")]
         public double Height { get; init; }
 
+        public string Barcode { get; set; }
+
         public decimal Price { get; set; }
 
         /// <summary>
@@ -54,6 +56,7 @@ namespace TaskControl.InformationModule.Application.DTOs
         {
             ItemId = entity.ItemId,
             Name = entity.Name,
+            Barcode = entity.Barcode,
             Weight = entity.Weight.Grams,
             Length = entity.Length.Millimeters,
             Width = entity.Width.Millimeters,
@@ -68,6 +71,7 @@ namespace TaskControl.InformationModule.Application.DTOs
         {
             ItemId = dto.ItemId,
             Name = dto.Name,
+            Barcode = dto.Barcode,
             Weight = Mass.FromGrams(dto.Weight),
             Length = UnitsNet.Length.FromMillimeters(dto.Length),
             Width = UnitsNet.Length.FromMillimeters(dto.Width),

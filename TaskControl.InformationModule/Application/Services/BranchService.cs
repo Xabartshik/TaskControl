@@ -14,26 +14,24 @@ namespace TaskControl.InformationModule.Services
     public class BranchService : IService<BranchDto>
     {
         private readonly IBranchRepository _repository;
-        private readonly ILogger<BranchService> _logger;
         private readonly AppSettings _appSettings;
+        private readonly ILogger<BranchService> _logger;
+        private readonly IEnumerable<IBranchCreatedHandler> _createdHandlers; // Добавляем список обработчиков
 
         public BranchService(
             IBranchRepository repository,
             ILogger<BranchService> logger,
-            IOptions<AppSettings> options)
+            IOptions<AppSettings> options,
+            IEnumerable<IBranchCreatedHandler> createdHandlers) // Инжектим
         {
             _repository = repository;
             _logger = logger;
+            _createdHandlers = createdHandlers;
             _appSettings = options.Value;
         }
 
         public async Task<int> Add(BranchDto dto)
         {
-            if (_appSettings.EnableDetailedLogging)
-            {
-                _logger.LogTrace("Вызов процедуры Add для филиала");
-                _logger.LogDebug("Добавление нового филиала: {BranchName}", dto.BranchName);
-            }
             _logger.LogInformation("Добавление филиала '{BranchName}'", dto.BranchName);
 
             try
@@ -41,13 +39,37 @@ namespace TaskControl.InformationModule.Services
                 var entity = BranchDto.FromDto(dto);
                 var newId = await _repository.AddAsync(entity);
 
-                _logger.LogInformation("Филиал успешно добавлен. ID: {BranchId}", newId);
+                if (newId > 0)
+                {
+                    // Вызываем все сторонние действия (например, создание ячеек в модуле Inventory)
+                    await NotifyBranchCreated(newId);
+                }
+
                 return newId;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при добавлении филиала '{BranchName}'", dto.BranchName);
+                _logger.LogError(ex, "Ошибка добавления филиала");
                 throw;
+            }
+        }
+
+        private async Task NotifyBranchCreated(int branchId)
+        {
+            _logger.LogInformation("Запуск обработчиков после создания филиала ID: {BranchId}", branchId);
+
+            foreach (var handler in _createdHandlers)
+            {
+                try
+                {
+                    await handler.OnBranchCreatedAsync(branchId);
+                }
+                catch (Exception ex)
+                {
+                    // Логируем ошибку конкретного обработчика, чтобы создание филиала не откатилось из-за ячеек
+                    _logger.LogError(ex, "Ошибка в обработчике {HandlerName} для филиала {BranchId}",
+                        handler.GetType().Name, branchId);
+                }
             }
         }
 

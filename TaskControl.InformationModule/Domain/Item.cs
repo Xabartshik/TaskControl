@@ -49,6 +49,8 @@ namespace TaskControl.InformationModule.Domain
         public Length Height { get; set; }
 
         public decimal Price { get; set; }
+        [StringLength(50, ErrorMessage = "Штрих-код не может превышать 50 символов")]
+        public string Barcode { get; set; }
 
     }
 }

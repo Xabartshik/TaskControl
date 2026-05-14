@@ -148,10 +148,13 @@ namespace TaskControl.TaskModule.Application.Services
                 await _db.InsertAsync(new ReturnLineModel
                 {
                     ReturnAssignmentId = returnAssignmentId,
-                    ItemPositionId = data.SourcePosId ?? data.ItemPositionId,
+
+                    // ИСПРАВЛЕНИЕ: Пишем настоящий ID позиции товара, а не номер полки
+                    ItemPositionId = data.ItemPositionId,
+
                     Quantity = data.Qty,
                     ScannedQuantity = 0,
-                    TargetPositionId = suggestedTargetPosId // Куда его нужно вернуть (напр. Стеллаж A-1)
+                    TargetPositionId = suggestedTargetPosId
                 });
             }
 

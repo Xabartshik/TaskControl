@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.TaskModule.DataAccess.Interface;
 using TaskControl.TaskModule.DataAccess.Models;
@@ -42,9 +43,13 @@ namespace TaskControl.TaskModule.Presentation.Controllers
 
             // Ищем исходный товар для проверки штрих-кода
             var itemPos = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
-
+            var isBarcodeValid = await _db.GetTable<ItemPositionModel>()
+            .InnerJoin(_db.GetTable<ItemModel>(),
+                (ip, i) => ip.ItemId == i.ItemId,
+                (ip, i) => new { ip.Id, i.Barcode })
+            .AnyAsync(x => x.Id == line.ItemPositionId && x.Barcode == req.Barcode.Trim());
             // В реальной системе тут может быть Join с таблицей Items, но если Barcode == ItemId:
-            if (itemPos != null && itemPos.ItemId.ToString() == req.Barcode.Trim())
+            if (isBarcodeValid)
             {
                 await _db.GetTable<ReturnLineModel>()
                     .Where(l => l.Id == req.LineId)

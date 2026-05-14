@@ -259,6 +259,25 @@ namespace TaskControl.TaskModule.Application.Services
             var line = await _lineRepo.GetByIdAsync(lineId);
             if (line == null) throw new ArgumentException("Line not found");
 
+            // --- НОВАЯ ВАЛИДАЦИЯ ШТРИХ-КОДА ---
+            // Находим складскую позицию, из которой мы берем товар
+            var itemPos = await _db.GetTable<ItemPositionModel>()
+                .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
+
+            if (itemPos != null)
+            {
+                // Находим информацию о самом товаре, чтобы проверить его штрих-код
+                var item = await _db.GetTable<ItemModel>()
+                    .FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
+
+                // Сравниваем отсканированную строку с реальным штрих-кодом в БД
+                if (item == null || item.Barcode != scannedBarcode.Trim())
+                {
+                    throw new ArgumentException($"Отсканированный штрих-код '{scannedBarcode}' не совпадает с ожидаемым товаром.");
+                }
+            }
+            // -----------------------------------
+
             line.MarkAsPicked();
             await _lineRepo.UpdateAsync(line);
         }

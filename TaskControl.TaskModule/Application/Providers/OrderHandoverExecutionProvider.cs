@@ -590,8 +590,16 @@ namespace TaskControl.TaskModule.Application.Providers
             if (!workerAssignments.Any())
                 return (false, "Активная задача выдачи не найдена или не в статусе InProgress.");
 
-            if (!int.TryParse(barcode, out int itemId))
-                return (false, "Неверный формат штрих-кода.");
+            // --- ИСПРАВЛЕНИЕ ШТРИХ-КОДА ---
+            // Убрали int.TryParse. Теперь ищем товар по строке Barcode
+            var scannedItem = await _db.GetTable<ItemModel>()
+                .FirstOrDefaultAsync(i => i.Barcode == barcode.Trim());
+
+            if (scannedItem == null)
+                return (false, $"Товар со штрих-кодом '{barcode}' не найден в справочнике системы.");
+
+            int scannedItemId = scannedItem.ItemId; // Запоминаем ID найденного товара
+            // -----------------------------
 
             var assignmentIds = workerAssignments.Select(a => a.Id).ToList();
 
@@ -609,7 +617,9 @@ namespace TaskControl.TaskModule.Application.Providers
                 if (line.ScannedQuantity >= line.Quantity) continue; // Этот уже собран
 
                 var ip = await itemPositions.FirstOrDefaultAsync(x => x.Id == line.ItemPositionId);
-                if (ip != null && ip.ItemId == itemId)
+
+                // Сравниваем ItemId ячейки с ItemId, который мы получили из штрих-кода
+                if (ip != null && ip.ItemId == scannedItemId)
                 {
                     targetLine = line;
                     break;
@@ -636,7 +646,6 @@ namespace TaskControl.TaskModule.Application.Providers
 
             return (true, "Товар успешно отсканирован.");
         }
-
         public async Task<bool> TryActivateTaskAsync(int taskId, int workerId)
         {
             _logger.LogInformation("Попытка активации задачи выдачи {TaskId} сотрудником {WorkerId}", taskId, workerId);

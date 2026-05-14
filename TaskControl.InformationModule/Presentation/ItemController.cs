@@ -33,6 +33,17 @@ namespace TaskControl.InformationModule.Presentation.Controllers
             return Ok(item);
         }
 
+        [HttpGet("barcode/{barcode}")]
+        public async Task<ActionResult<ItemDto>> GetByBarcode(string barcode, [FromServices] TaskControl.InformationModule.Services.ItemService itemService)
+        {
+            var item = await itemService.GetByBarcode(barcode);
+            if (item == null)
+            {
+                return NotFound();
+            }
+            return Ok(item);
+        }
+
         [HttpPost]
         public async Task<ActionResult<int>> Add(ItemDto dto)
         {

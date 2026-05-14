@@ -254,37 +254,31 @@ namespace TaskControl.TaskModule.Application.Providers
                 .ToListAsync();
 
             // 4. Обработка товарных позиций возврата
+            // 4. Обработка товарных позиций возврата
             foreach (var line in lines)
             {
+                // 1. Возвращаем правильный запрос (ищем по ip.Id)
                 var itemData = await (from ip in itemPositions
                                       join i in items on ip.ItemId equals i.ItemId
                                       where ip.Id == line.ItemPositionId
-                                      select new { Item = i, ip.PositionId }).FirstOrDefaultAsync();
+                                      select new { Item = i, ip.PositionId, ip.ItemId }).FirstOrDefaultAsync();
 
                 string sourceCellCode = "Неизвестная ячейка";
                 if (itemData != null)
                 {
-                    var sourcePosModel = branchPositions.FirstOrDefault(p => p.PositionId == itemData.PositionId);
-                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemData.PositionId.ToString();
+                    // 2. ДИНАМИЧЕСКИ ВЫЧИСЛЯЕМ ИСХОДНУЮ ЯЧЕЙКУ ЗДЕСЬ
+                    // Проверяем последние перемещения, чтобы указать кладовщику точное место (например, зону выдачи)
+                    var lastMovement = await _db.GetTable<ItemMovementModel>()
+                        .Where(m => m.ItemId == itemData.ItemId && m.Quantity >= line.Quantity)
+                        .OrderByDescending(m => m.CreatedAt)
+                        .FirstOrDefaultAsync();
+
+                    // Берем последнюю известную ячейку из истории перемещений, либо текущую
+                    int actualSourcePosId = lastMovement?.DestinationPositionId ?? itemData.PositionId;
+
+                    var sourcePosModel = branchPositions.FirstOrDefault(p => p.PositionId == actualSourcePosId);
+                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? actualSourcePosId.ToString();
                 }
-
-                // === ИНТЕЛЛЕКТУАЛЬНЫЙ ПОДБОР ЦЕЛЕВОЙ ЯЧЕЙКИ ===
-                //if (!line.TargetPositionId.HasValue && itemData != null)
-                //{
-                //    // Вызываем логику автоподбора с учетом габаритов и доступных зон
-                //    int? suggestedPosId = await SuggestTargetPositionAsync(itemData.Item, workerAssignment.BranchId);
-
-                //    if (suggestedPosId.HasValue)
-                //    {
-                //        // Фиксируем выбор в базе данных
-                //        await _db.GetTable<ReturnLineModel>()
-                //            .Where(l => l.Id == line.Id)
-                //            .Set(l => l.TargetPositionId, suggestedPosId.Value)
-                //            .UpdateAsync();
-
-                //        line.TargetPositionId = suggestedPosId.Value;
-                //    }
-                //}
 
                 string targetCellCode = null;
                 if (line.TargetPositionId.HasValue)

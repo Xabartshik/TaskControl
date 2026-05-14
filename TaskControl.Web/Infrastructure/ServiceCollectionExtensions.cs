@@ -16,6 +16,7 @@ using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.InformationModule.DataAccess.Repositories;
 using TaskControl.InformationModule.Services;
 using TaskControl.InventoryModule.Application.DTOs;
+using TaskControl.InventoryModule.Application.Handlers;
 using TaskControl.InventoryModule.Application.Services;
 using TaskControl.InventoryModule.DAL.Repositories;
 using TaskControl.InventoryModule.DataAccess.Infrastructure;
@@ -98,6 +99,9 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IInventoryDataConnection, InventoryDataConnection>();
             services.AddScoped<IItemMovementRepository, ItemMovementRepository>();
             services.AddScoped<IService<ItemMovementDto>, ItemMovementService>();
+            // Регистрация сервиса для работы с ячейками
+            services.AddScoped<IService<PositionCellDto>, PositionCellService>();
+            services.AddScoped<IPositionCellRepository, PositionCellRepository>();
 
             services.AddScoped<IItemPositionRepository, ItemPositionRepository>();
             services.AddScoped<ItemPositionService, ItemPositionService>();
@@ -125,6 +129,7 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IBoxPackingService, BoxPackingService>();
 
             services.AddScoped<ICourierCreatedEventHandler, CourierInventoryHandler>();
+            services.AddScoped<IBranchCreatedHandler, BranchCreatedPositionHandler>();
 
             return services;
         }

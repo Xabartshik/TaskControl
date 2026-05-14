@@ -82,11 +82,29 @@ namespace TaskControl.InformationModule.DAL.Repositories
                     throw new ArgumentNullException(nameof(entity));
 
                 var model = entity.ToModel();
-                return await _db.InsertAsync(model);
+                return await _db.InsertWithInt32IdentityAsync(model);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при добавлении товара: {name}", entity?.Name);
+                throw;
+            }
+        }
+
+        public async Task<Item> GetByBarcodeAsync(string barcode)
+        {
+            _logger.LogInformation("Поиск товара по штрих-коду: {barcode}", barcode);
+            try
+            {
+                if (string.IsNullOrWhiteSpace(barcode))
+                    return null;
+
+                var item = await _db.Items.FirstOrDefaultAsync(i => i.Barcode == barcode);
+                return item?.ToDomain();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении товара по штрих-коду: {barcode}", barcode);
                 throw;
             }
         }

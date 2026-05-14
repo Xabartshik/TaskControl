@@ -13,5 +13,6 @@ namespace TaskControl.InformationModule.DataAccess.Interface
         Task<int> AddAsync(Item entity);
         Task<int> UpdateAsync(Item entity);
         Task<int> DeleteAsync(int id);
+        Task<Item> GetByBarcodeAsync(string barcode);
     }
 }

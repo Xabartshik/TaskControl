@@ -52,6 +52,34 @@ namespace TaskControl.InformationModule.Services
             }
         }
 
+        public async Task<ItemDto?> GetByBarcode(string barcode)
+        {
+            if (_appSettings.EnableDetailedLogging)
+            {
+                _logger.LogTrace("Вызов процедуры GetByBarcode для товара");
+                _logger.LogDebug("Получение товара по штрих-коду: {Barcode}", barcode);
+            }
+            _logger.LogInformation("Запрос товара по штрих-коду: {Barcode}", barcode);
+
+            try
+            {
+                var item = await _repository.GetByBarcodeAsync(barcode);
+                if (item == null)
+                {
+                    _logger.LogWarning("Товар со штрих-кодом: {Barcode} не найден", barcode);
+                    return null;
+                }
+
+                _logger.LogInformation("Товар со штрих-кодом: {Barcode} успешно получен", barcode);
+                return ItemDto.ToDto(item);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения товара по штрих-коду: {Barcode}", barcode);
+                throw;
+            }
+        }
+
         public async Task<bool> Delete(int id)
         {
             if (_appSettings.EnableDetailedLogging)
