@@ -531,7 +531,7 @@ namespace TaskControl.TaskModule.Application.Providers
                 var itemInfoQuery = from ip in itemPositions
                                     join i in items on ip.ItemId equals i.ItemId
                                     where ip.Id == line.ItemPositionId
-                                    select new { i.ItemId, i.Name, ip.PositionId };
+                                    select new { i.ItemId, i.Name, i.Barcode, ip.PositionId };
 
                 var itemInfo = await itemInfoQuery.FirstOrDefaultAsync();
 
@@ -550,7 +550,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     LineId = line.Id,
                     ItemId = itemInfo?.ItemId ?? 0,
                     ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                    Barcode = (itemInfo?.ItemId ?? 0).ToString(),
+                    Barcode = itemInfo?.Barcode ?? "Неизвестный штрих-код",
                     SourceCellCode = sourceCellCode,
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity,
