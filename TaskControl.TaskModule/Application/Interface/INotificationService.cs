@@ -8,5 +8,6 @@ namespace TaskControl.TaskModule.Application.Interface
         Task NotifyNewTaskAsync(int userId, int taskId, string taskTitle);
         Task NotifyHelperRequiredAsync(int userId, int orderId);
         Task NotifyHighPriorityTaskAsync(int userId, int taskId, string taskTitle);
+        Task NotifyTaskCancelledAsync(int userId, int taskId, string taskTitle);
     }
 }

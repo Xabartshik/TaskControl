@@ -13,6 +13,16 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _hubContext = hubContext;
         }
+        public async Task NotifyTaskCancelledAsync(int userId, int taskId, string taskTitle)
+        {
+            // type = "task_cancelled" - это ключевой триггер для мобилки
+            await SendNotificationAsync(
+                userId,
+                "Задача отменена",
+                $"Заказ для задачи #{taskId} ({taskTitle}) был отменен клиентом.",
+                "task_cancelled"
+            );
+        }
 
         public async Task SendNotificationAsync(int userId, string title, string message, string type = "info")
         {
