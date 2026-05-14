@@ -93,7 +93,7 @@ namespace TaskControl.OrderModule.Application.Services
                 }
 
                 // 2. Защита от некорректной смены статуса
-                if (order.Status == OrderStatus.Completed || order.Status == OrderStatus.Cancelled)
+                if (order.Status == OrderStatus.Completed || order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.PartiallyCompleted || order.Status == OrderStatus.Rejected)
                 {
                     _logger.LogWarning("Отказ: заказ ID: {OrderId} уже находится в финальном статусе {Status}", id, order.Status);
                     return false; // Нельзя отменить то, что уже завершено или отменено

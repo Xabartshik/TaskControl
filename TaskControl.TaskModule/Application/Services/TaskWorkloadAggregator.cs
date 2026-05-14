@@ -210,7 +210,8 @@ namespace TaskControl.TaskModule.Application.Services
                 workload.ActiveTasks = activeTasks.Select(t => new ActiveTaskBriefDto
                 {
                     TaskId = t.TaskId,
-                    TaskType = t.Type,
+                    Title = t.Title,
+                    TaskType = t.TaskType,
                     Status = t.Status.ToString()
                 }).ToList();
 
