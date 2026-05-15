@@ -90,7 +90,6 @@ namespace TaskControl.TaskModule.Application.Providers
                 var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
 
                 //  3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС 
-                //  3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС 
                 if (cancelledLines != null && cancelledLines.Any())
                 {
                     var positionsToCancel = new Dictionary<int, int>();
@@ -136,7 +135,6 @@ namespace TaskControl.TaskModule.Application.Providers
 
                     // Определяем, полная это отмена или частичная
                     bool isFullCancellation = totalPicked > 0 && totalPicked == totalCancelled;
-
                     // ВЫЗОВ ЕДИНОГО СЕРВИСА: он сам снимет резервы, поправит чек и сменит статус заказа
                     itemsToReturn = await _cancellationService.ProcessCancellationAsync(orderId, positionsToCancel, isFullCancellation);
                 }
@@ -148,11 +146,21 @@ namespace TaskControl.TaskModule.Application.Providers
                         .Set(o => o.Status, "Completed")
                         .UpdateAsync();
                 }
-
+                var order = await _db.GetTable<OrderModel>()
+                    .FirstOrDefaultAsync(o => o.OrderId == orderId);
+                bool isCourierDelivery = order?.DeliveryType == "Delivery";
                 // 4. Генерация задач на возврат
                 if (itemsToReturn.Any())
                 {
-                    await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, baseTask.BranchId, itemsToReturn);
+                    if (!isCourierDelivery)
+                    {
+                        await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, baseTask.BranchId, itemsToReturn);
+                    }
+                    else
+                    {
+                        // логируем, что задачу не создали
+                        _logger.LogInformation("Генерация задачи на возврат пропущена для заказа {OrderId}, так как это курьерская доставка.", orderId);
+                    }
                 }
 
                 var completionTime = DateTime.UtcNow;

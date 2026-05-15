@@ -79,7 +79,7 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             // 0 = Assigned, 1 = InProgress
             return await _db.GetTable<OrderHandoverAssignmentModel>()
-                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1));
+                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1 || a.Status == 2));
         }
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)

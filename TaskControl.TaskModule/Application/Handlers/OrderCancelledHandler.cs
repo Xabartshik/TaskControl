@@ -60,9 +60,9 @@ namespace TaskControl.TaskModule.Application.Handlers
                     );
                 }
             }
-            // Статусы: 2 = Completed, 3 = Cancelled
+            // Статусы: 3 = Completed, 4 = Cancelled
             var handoverAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.OrderId == orderId && a.Status != 2 && a.Status != 3)
+                .Where(a => a.OrderId == orderId && a.Status != 3 && a.Status != 4)
                 .ToListAsync();
 
             foreach (var assignment in handoverAssignments)
@@ -70,12 +70,12 @@ namespace TaskControl.TaskModule.Application.Handlers
                 // Отменяем конкретное назначение (только этот заказ)
                 await _db.GetTable<OrderHandoverAssignmentModel>()
                     .Where(a => a.Id == assignment.Id)
-                    .Set(a => a.Status, 3)
+                    .Set(a => a.Status, 4)
                     .UpdateAsync();
 
                 // Проверяем пакетную задачу: остались ли в ней другие активные заказы?
                 var hasActiveOrdersInTask = await _db.GetTable<OrderHandoverAssignmentModel>()
-                    .AnyAsync(a => a.TaskId == assignment.TaskId && a.Status != 2 && a.Status != 3);
+                    .AnyAsync(a => a.TaskId == assignment.TaskId && a.Status != 3 && a.Status != 4);
 
                 if (!hasActiveOrdersInTask)
                 {

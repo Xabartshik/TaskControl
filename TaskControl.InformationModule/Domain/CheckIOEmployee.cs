@@ -44,9 +44,13 @@ namespace TaskControl.InformationModule.Domain
         public DateTime CheckTimeStamp { get; set; } = DateTime.UtcNow;
 
         /// <summary>
-        /// Проверяет, является ли отметка входом
+        /// Проверяет, является ли отметка входом (in, dispatch или dock)
         /// </summary>
-        public bool IsCheckIn() => CheckType?.ToLower() == "in";
+        public bool IsCheckIn()
+        {
+            var type = CheckType?.ToLower();
+            return type == "in" || type == "dispatch" || type == "dock";
+        }
 
         /// <summary>
         /// Проверяет, является ли отметка выходом
