@@ -216,9 +216,9 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
-        // ==
+
         // РЕФАКТОРИНГ: ОСНОВНОЙ МЕТОД ОРКЕСТРАЦИИ 
-        // ==
+
         private async Task<bool> ProcessOrderInternal(OrderModel order, DateTime calculatedDeadline, int? manualWorkerId, bool throwOnWorkerShortage)
         {
             // 1. Получение товаров
@@ -275,9 +275,9 @@ namespace TaskControl.TaskModule.Application.Services
         }
 
 
-        // ==
+
         // ПРИВАТНЫЕ МЕТОДЫ (ПОДЗАДАЧИ)
-        // ==
+
 
         private async Task<List<RawItemToPack>> GetOrderItemsAsync(int orderId)
         {

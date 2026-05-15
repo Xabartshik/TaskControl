@@ -14,6 +14,7 @@ using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventorizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
 using TaskControl.TaskModule.DataAccess.Interface;
+using TaskControl.TaskModule.DataAccess.Models;
 using TaskControl.TaskModule.DataAccess.Repositories;
 using TaskControl.TaskModule.Domain;
 using TaskStatus = TaskControl.TaskModule.Domain.TaskStatus;
@@ -153,6 +154,17 @@ namespace TaskControl.TaskModule.Application.Services
 
             foreach (var o in readyOrders)
             {
+                var activeAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
+                    .Where(a => a.OrderId == o.OrderId && a.Status != 3)
+                    .ToListAsync();
+
+                // Если есть хотя бы одна активная задача на передачу, заказ курьеру уже назначен
+                if (activeAssignments.Any())
+                {
+                    continue; // Пропускаем этот заказ, он не должен висеть в свободных
+                }
+                // --------------------------------
+
                 var dto = new AvailableOrderDto
                 {
                     OrderId = o.OrderId,

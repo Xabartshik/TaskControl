@@ -111,7 +111,7 @@ namespace TaskControl.TaskModule.Application.Handlers
 
             var itemsToReturn = await _cancellationService.ProcessCancellationAsync(orderId, cancelledPositions, true);
 
-            if ((previousStatus != OrderStatus.Created || previousStatus != OrderStatus.AwaitingPayment) && itemsToReturn.Any())
+            if (previousStatus != OrderStatus.Created && previousStatus != OrderStatus.AwaitingPayment && itemsToReturn.Any())
             {
                 await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, branchId, itemsToReturn);
             }
