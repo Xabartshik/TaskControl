@@ -609,9 +609,9 @@ namespace TaskControl.Web.Controllers
             }
         }
 
-        // ==========================================
+        // 
         // ИЗМЕНЕННЫЙ ЭНДПОИНТ (ИСПОЛЬЗУЕТ СЕРВИС)
-        // ==========================================
+        // 
         [HttpPost("tasks/generate-return")]
         public async Task<IActionResult> GenerateReturnTask([FromQuery] int branchId = 1)
         {
@@ -667,7 +667,7 @@ namespace TaskControl.Web.Controllers
                 Weight = item?.Weight
             });
         }
-        // ==========================================
+        // 
 
 
         [HttpGet("cell/{positionId}/inspect")]

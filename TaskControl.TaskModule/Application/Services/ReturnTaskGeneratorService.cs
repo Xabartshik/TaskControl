@@ -72,7 +72,7 @@ namespace TaskControl.TaskModule.Application.Services
                 var itemModel = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemPos.ItemId);
                 if (itemModel == null) continue;
 
-                // === ЛОГИКА ОПРЕДЕЛЕНИЯ ТОЧКИ ЗАБОРА (Source) ===
+                //  ЛОГИКА ОПРЕДЕЛЕНИЯ ТОЧКИ ЗАБОРА (Source) 
                 // Проверяем, было ли движение этого товара недавно (например, в зону EXPRESS при сборке).
                 // Это позволит кладовщику точно знать, что товар нужно забрать из зоны выдачи, а не искать его на основной полке.
                 var lastMovement = await _db.GetTable<ItemMovementModel>()

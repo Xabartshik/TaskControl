@@ -11,6 +11,7 @@ using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.Application.Interface;
 using TaskControl.OrderModule.DataAccess.Interface;
 using TaskControl.OrderModule.Domain;
+using Hangfire;
 
 
 namespace TaskControl.OrderModule.Application.Services
@@ -204,9 +205,9 @@ namespace TaskControl.OrderModule.Application.Services
                 }
 
 
-                // ====================================================================
+
                 // 1. ВАЛИДАЦИЯ ТОВАРОВ И РАСЧЕТ СТОИМОСТИ (ФИКСАЦИЯ ЦЕНЫ)
-                // ====================================================================
+
                 decimal totalOrderPrice = 0;
                 var validPositions = new List<(OrderPositionDto dto, Item item)>();
 
@@ -227,13 +228,16 @@ namespace TaskControl.OrderModule.Application.Services
                 }
 
                 var entity = OrderDto.FromDto(dto);
-                entity.Status = OrderStatus.Created;
+                //entity.Status = OrderStatus.Created;
+                entity.Status = dto.PaymentType == PaymentType.Prepaid
+                    ? OrderStatus.AwaitingPayment
+                    : OrderStatus.Created;
                 entity.CreatedAt = DateTime.UtcNow;
                 entity.TotalPrice = totalOrderPrice; // <-- ФИКСИРУЕМ ОБЩУЮ СТОИМОСТЬ ЗАКАЗА
 
-                // ====================================================================
+
                 // 2. УМНОЕ РАСПРЕДЕЛЕНИЕ ДЛЯ ПОСТАМАТОВ
-                // ====================================================================
+
                 if (dto.DeliveryType == DeliveryType.Postamat)
                 {
                     if (!dto.PostamatId.HasValue)
@@ -268,9 +272,7 @@ namespace TaskControl.OrderModule.Application.Services
                     entity.PostamatCellId = cellId;
                 }
 
-                // ====================================================================
                 // 3. СОХРАНЕНИЕ ЗАКАЗА И ПОЗИЦИЙ
-                // ====================================================================
                 int orderId = await _repository.AddAsync(entity);
 
                 foreach (var vp in validPositions)
@@ -298,14 +300,25 @@ namespace TaskControl.OrderModule.Application.Services
                     }
                 }
 
-                // ====================================================================
                 // 4. ВЫЗОВ СОБЫТИЙ
-                // ====================================================================
                 if (_orderCreatedHandlers != null)
                 {
-                    foreach (var handler in _orderCreatedHandlers)
+                    if (entity.Status == OrderStatus.AwaitingPayment)
                     {
-                        await handler.HandleOrderCreatedAsync(orderId, dto.BranchId);
+                        _logger.LogInformation("Заказ {OrderId} ожидает оплаты. Резерв удержан на 15 минут.", orderId);
+
+                        // Планируем удаление резерва и отмену заказа, если оплата не поступит
+                        BackgroundJob.Schedule<IOrderService>(
+                            s => s.CancelUnpaidOrderAsync(orderId),
+                            TimeSpan.FromMinutes(15));
+                    }
+                    else if (_orderCreatedHandlers != null)
+                    {
+                        // Сразу пускаем в сборку, если это Postpaid
+                        foreach (var handler in _orderCreatedHandlers)
+                        {
+                            await handler.HandleOrderCreatedAsync(orderId, dto.BranchId);
+                        }
                     }
                 }
 
@@ -318,6 +331,41 @@ namespace TaskControl.OrderModule.Application.Services
             {
                 _logger.LogError(ex, "Критическая ошибка при создании заказа для клиента {CustomerId}", dto.CustomerId);
                 throw;
+            }
+        }
+
+        public async Task<bool> ConfirmPaymentAsync(int id)
+        {
+            var order = await _repository.GetByIdAsync(id);
+            if (order == null || order.Status != OrderStatus.AwaitingPayment)
+            {
+                return false;
+            }
+
+            order.Status = OrderStatus.Created;
+            var updated = await _repository.UpdateAsync(order) == 1;
+
+            if (updated && _orderCreatedHandlers != null)
+            {
+                _logger.LogInformation("Оплата заказа {OrderId} подтверждена. Запуск генерации задач.", id);
+
+                // Вот теперь TaskModule получит сигнал и создаст задачу на сборку
+                foreach (var handler in _orderCreatedHandlers)
+                {
+                    await handler.HandleOrderCreatedAsync(order.OrderId, order.BranchId);
+                }
+            }
+
+            return updated;
+        }
+
+        public async Task CancelUnpaidOrderAsync(int id)
+        {
+            var order = await _repository.GetByIdAsync(id);
+            if (order != null && order.Status == OrderStatus.AwaitingPayment)
+            {
+                _logger.LogInformation("Таймаут оплаты заказа {OrderId}. Выполняется отмена.", id);
+                await CancelOrderAsync(id);
             }
         }
 

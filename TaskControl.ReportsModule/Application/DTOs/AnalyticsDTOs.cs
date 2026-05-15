@@ -145,9 +145,9 @@ namespace TaskControl.ReportsModule.Application.DTOs
         public double WeightKg => Math.Round(WeightGrams / 1000.0, 2);
     }
 
-    // ==========================================
+    // 
     // БЛОК 2: УПРАВЛЕНЧЕСКИЙ ДАШБОРД ЗАКАЗОВ
-    // ==========================================
+    // 
 
     public class OrderRegistryFlatDto
     {

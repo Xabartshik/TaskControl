@@ -303,9 +303,9 @@ namespace TaskControl.TaskModule.Application.Providers
             return dto;
         }
 
-        // =====================================================================
+        // 
         // Логика подбора оптимальной ячейки с фильтрацией зарезервированных зон
-        // =====================================================================
+        // 
         private async Task<int?> SuggestTargetPositionAsync(ItemModel item, int branchId)
         {
             var positions = _db.GetTable<PositionModel>();

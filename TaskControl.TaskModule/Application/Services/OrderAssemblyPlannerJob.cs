@@ -130,7 +130,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("=== Итог планирования: успешно спланировано {Planned}, пропущено {Skipped} из {Total} заказов ===",
+                _logger.LogInformation(" Итог планирования: успешно спланировано {Planned}, пропущено {Skipped} из {Total} заказов ",
                     plannedCount, skippedCount, targetOrders.Count);
             }
             catch (Exception ex)
@@ -216,9 +216,9 @@ namespace TaskControl.TaskModule.Application.Services
             }
         }
 
-        // =========================================================================================
+        // ==
         // РЕФАКТОРИНГ: ОСНОВНОЙ МЕТОД ОРКЕСТРАЦИИ 
-        // =========================================================================================
+        // ==
         private async Task<bool> ProcessOrderInternal(OrderModel order, DateTime calculatedDeadline, int? manualWorkerId, bool throwOnWorkerShortage)
         {
             // 1. Получение товаров
@@ -275,9 +275,9 @@ namespace TaskControl.TaskModule.Application.Services
         }
 
 
-        // =========================================================================================
+        // ==
         // ПРИВАТНЫЕ МЕТОДЫ (ПОДЗАДАЧИ)
-        // =========================================================================================
+        // ==
 
         private async Task<List<RawItemToPack>> GetOrderItemsAsync(int orderId)
         {

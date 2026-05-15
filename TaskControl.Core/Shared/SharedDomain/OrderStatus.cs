@@ -2,6 +2,8 @@
 
 public enum OrderStatus
 {
+    [Description("Ожидает оплаты")]
+    AwaitingPayment,
     [Description("Создан")]
     Created,
     [Description("В процессе сборки")]

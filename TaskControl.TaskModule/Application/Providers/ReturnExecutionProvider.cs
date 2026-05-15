@@ -69,7 +69,7 @@ namespace TaskControl.TaskModule.Application.Providers
 
             if (assignment == null) return (false, "Активная задача возврата не найдена.");
 
-            // === НОВАЯ ЛОГИКА: ПЕРЕХВАТ СКАНИРОВАНИЯ ЯЧЕЙКИ ИЗ FLUTTER ===
+            //  НОВАЯ ЛОГИКА: ПЕРЕХВАТ СКАНИРОВАНИЯ ЯЧЕЙКИ ИЗ FLUTTER 
             // Если мобилка прислала команду изменения ячейки (например: "CELL|45|STORAGE-RACK-01")
             if (barcode.StartsWith("CELL|"))
             {
@@ -98,7 +98,7 @@ namespace TaskControl.TaskModule.Application.Providers
                 }
             }
 
-            // === СТАРАЯ ЛОГИКА: СКАНИРОВАНИЕ ШТРИХ-КОДА ТОВАРА ===
+            //  СТАРАЯ ЛОГИКА: СКАНИРОВАНИЕ ШТРИХ-КОДА ТОВАРА 
             var lines = await _db.GetTable<ReturnLineModel>()
                 .Where(l => l.ReturnAssignmentId == assignment.Id)
                 .ToListAsync();
@@ -325,9 +325,9 @@ namespace TaskControl.TaskModule.Application.Providers
             }
         }
 
-        // =========================================================================
+        // =
         // МЕТОДЫ, КОТОРЫЕ НАМ НЕ НУЖНЫ, НО ИХ ТРЕБУЕТ ИНТЕРФЕЙС
-        // =========================================================================
+        // =
 
         public async Task<object?> GetTaskDetailsAsync(int taskId, int workerId)
         {

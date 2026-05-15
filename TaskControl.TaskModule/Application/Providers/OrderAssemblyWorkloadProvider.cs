@@ -113,9 +113,9 @@ namespace TaskControl.TaskModule.Application.Providers
             return tasks.Any(t => (int)t.Status == 0);
         }
 
-        // ==========================================
+        // 
         // МЕТОДЫ СПИСКА (ВОЗВРАЩАЮТ ТОЛЬКО ЗАГОЛОВКИ)
-        // ==========================================
+        // 
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetAvailableTasksAsync(int workerId)
         {
@@ -199,9 +199,9 @@ namespace TaskControl.TaskModule.Application.Providers
                 .ToList();
         }
 
-        // ==========================================
+        // 
         // НОВЫЙ МЕТОД: ПОЛНЫЕ ДЕТАЛИ ЗАДАЧИ
-        // ==========================================
+        // 
 
         public async Task<MobileBaseTaskDto?> GetTaskDetailsAsync(int taskId, int workerId)
         {
@@ -227,9 +227,9 @@ namespace TaskControl.TaskModule.Application.Providers
             };
         }
 
-        // ==========================================
+        // 
         // ПРИВАТНЫЕ МЕТОДЫ (ГЕНЕРАЦИЯ БОГАТОГО DTO)
-        // ==========================================
+        // 
 
         private async Task<WorkerAssemblyTaskDto> BuildTaskDetailsAsync(OrderAssemblyAssignment assignment, BaseTaskDto baseTaskModel)
         {

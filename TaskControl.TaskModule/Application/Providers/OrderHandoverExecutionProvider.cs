@@ -89,8 +89,8 @@ namespace TaskControl.TaskModule.Application.Providers
 
                 var itemsToReturn = new List<(int ItemPositionId, int Qty)>();
 
-                // === 3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС ===
-                // === 3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС ===
+                //  3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС 
+                //  3. ЛОГИКА ОТМЕНЫ ЧЕРЕЗ ЕДИНЫЙ СЕРВИС 
                 if (cancelledLines != null && cancelledLines.Any())
                 {
                     var positionsToCancel = new Dictionary<int, int>();
@@ -403,9 +403,9 @@ namespace TaskControl.TaskModule.Application.Providers
             await _db.GetTable<OrderModel>().Where(o => o.OrderId == orderId).Set(o => o.Status, newStatus).UpdateAsync();
         }
 
-        // ==========================================
+        // 
         // 1. ИНФОРМАЦИЯ ДЛЯ МОБИЛЬНОГО ПРИЛОЖЕНИЯ
-        // ==========================================
+        // 
         public async Task<(bool Success, string Message)> TryCompleteWithCourierQrAsync(int taskId, int workerId, string qrToken)
         {
             _logger.LogInformation("Попытка закрытия пакетной отгрузки {TaskId} по QR-коду", taskId);
@@ -575,9 +575,9 @@ namespace TaskControl.TaskModule.Application.Providers
             return string.Join("-", parts);
         }
 
-        // ==========================================
+        // 
         // 1. МЕТОДЫ УПРАВЛЕНИЯ СТАТУСОМ ЗАДАЧИ
-        // ==========================================
+        // 
         public async Task<(bool Success, string Message)> ProcessScanAsync(int taskId, int workerId, string barcode)
         {
             _logger.LogInformation("Сканирование при выдаче. TaskId: {TaskId}, Barcode: {Barcode}", taskId, barcode);
@@ -781,9 +781,9 @@ namespace TaskControl.TaskModule.Application.Providers
                 _logger.LogInformation("Поставлено на паузу фоновых задач выдачи: {Count} для сотрудника {WorkerId}", pausedCount, workerId);
             }
         }
-        // ==========================================
+        // 
         // 3. БИЗНЕС-ЛОГИКА И ПОСТ-ОБРАБОТКА (ЭТАП 3)
-        // ==========================================
+        // 
 
         //public async Task ExecutePostCompletionLogicAsync(int taskId)
         //{

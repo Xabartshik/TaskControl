@@ -107,7 +107,7 @@ namespace TaskControl.TaskModule.Application.Services
             if (order.CustomerId != tokenCustomerId || order.OrderId != tokenOrderId)
                 return (false, "QR-код не принадлежит этому заказу!");
 
-            // === ИСПРАВЛЕНИЕ 1: Грузим линии напрямую из БД, обходя ленивую загрузку ===
+            //  ИСПРАВЛЕНИЕ 1: Грузим линии напрямую из БД, обходя ленивую загрузку 
             var linesToPlace = await _db.GetTable<OrderAssemblyLineModel>()
                 .Where(l => l.OrderAssemblyAssignmentId == assignmentId && l.Status == (int)OrderAssemblyLineStatus.Picked)
                 .ToListAsync();
@@ -139,7 +139,7 @@ namespace TaskControl.TaskModule.Application.Services
                 itemsToReturn = await _cancellationService.ProcessCancellationAsync(order.OrderId, positionsToCancel, isFullCancellation);
             }
 
-            // === ИСПРАВЛЕНИЕ 2: Находим служебную ячейку Express для фиксации в истории ===
+            //  ИСПРАВЛЕНИЕ 2: Находим служебную ячейку Express для фиксации в истории 
             var expressCell = await _db.GetTable<PositionModel>()
                 .FirstOrDefaultAsync(p => p.BranchId == assignment.BranchId && p.ZoneCode == "EXPRESS");
 
@@ -443,7 +443,7 @@ namespace TaskControl.TaskModule.Application.Services
                 );
 
                 await transaction.CommitAsync();
-                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА и пост-обработана ===", taskId);
+                _logger.LogInformation("|    Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА и пост-обработана ", taskId);
             }
             catch (Exception ex)
             {
@@ -633,7 +633,7 @@ namespace TaskControl.TaskModule.Application.Services
                 }
 
                 await transaction.CommitAsync();
-                _logger.LogInformation("|   === Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА ===", assignment.TaskId);
+                _logger.LogInformation("|    Задача сборки TaskId={TaskId} успешно ЗАВЕРШЕНА ", assignment.TaskId);
             }
             catch (Exception ex)
             {

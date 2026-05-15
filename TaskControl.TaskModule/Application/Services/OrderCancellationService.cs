@@ -64,7 +64,7 @@ namespace TaskControl.TaskModule.Application.Services
 
                     if (orderPosition != null)
                     {
-                        // === 3. СНИМАЕМ РЕЗЕРВЫ (Исправлено условие удаления) ===
+                        //  3. СНИМАЕМ РЕЗЕРВЫ (Исправлено условие удаления) 
                         var reservation = await _db.GetTable<OrderReservationModel>()
                             .FirstOrDefaultAsync(r => r.OrderPositionId == orderPosition.UniqueId);
 
@@ -82,7 +82,7 @@ namespace TaskControl.TaskModule.Application.Services
                             }
                         }
 
-                        // === 4. ОБНОВЛЯЕМ ЧЕК (Только при частичной отмене) ===
+                        //  4. ОБНОВЛЯЕМ ЧЕК (Только при частичной отмене) 
                         if (!isFullCancellation)
                         {
                             if (orderPosition.Quantity <= cancelQty)
@@ -109,7 +109,7 @@ namespace TaskControl.TaskModule.Application.Services
                     itemsToReturn.Add((itemPositionId, cancelQty));
                 }
 
-                // === 5. ОБНОВЛЯЕМ СТАТУС ЗАКАЗА ПРИ ПОЛНОЙ ОТМЕНЕ ===
+                //  5. ОБНОВЛЯЕМ СТАТУС ЗАКАЗА ПРИ ПОЛНОЙ ОТМЕНЕ 
                 if (isFullCancellation)
                 {
                     await _db.GetTable<OrderModel>()

@@ -64,10 +64,10 @@ namespace TaskControl.InformationModule.Presentation
 
             await _checkIoService.Add(checkDto);
 
-            // =========================================================
+            // 
             // Рассылаем событие всем заинтересованным модулям
             // InformationModule понятия не имеет, кто они и что они делают!
-            // =========================================================
+            // 
             foreach (var observer in _checkInObservers)
             {
                 try
