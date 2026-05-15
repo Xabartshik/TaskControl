@@ -119,9 +119,8 @@ namespace TaskControl.TaskModule.Application.Services
 
             return selectedIds;
         }
-        /// <summary>
-        /// Поиск наименее загруженного помощника на филиале
-        /// </summary>
+
+
         /// <summary>
         /// Поиск наименее загруженного помощника на филиале
         /// </summary>

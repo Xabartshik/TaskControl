@@ -81,7 +81,30 @@ namespace TaskControl.OrderModule.Presentation.Controllers
             }
             return Ok(record);
         }
+        [HttpPost("{id}/confirm-payment")]
+        public async Task<IActionResult> ConfirmPayment(int id)
+        {
+            _logger.LogInformation("Запрос на подтверждение оплаты заказа ID: {OrderId}", id);
 
+            try
+            {
+                // Вызываем метод сервиса, который мы обсуждали ранее
+                var result = await _service.ConfirmPaymentAsync(id);
+
+                if (!result)
+                {
+                    _logger.LogWarning("Не удалось подтвердить оплату заказа {OrderId}. Возможно, он не в статусе ожидания или не существует.", id);
+                    return NotFound(new { message = $"Заказ {id} не найден или не ожидает оплаты." });
+                }
+
+                return Ok(new { message = "Оплата успешно подтверждена, заказ передан в сборку." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при подтверждении оплаты заказа {OrderId}", id);
+                return StatusCode(500, "Внутренняя ошибка при обработке платежа");
+            }
+        }
         /// <summary>
         /// Получить все заказы филиала с вложенными позициями (для панели руководителя)
         /// </summary>
