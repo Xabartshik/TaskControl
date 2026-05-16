@@ -16,59 +16,112 @@ namespace TaskControl.ReportsModule.DataAccess.Repositories
             _db = db;
         }
 
-        // 1. Получение глубокой аналитики по сотрудникам (Группировка с задачами)
         public async Task<List<EmployeeFullReportDto>> GetEmployeeFullReportsAsync(AnalyticsFilterDto filter)
         {
             var sql = @"
-        WITH AllAssignments AS (
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, assigned_at, started_at, completed_at, complexity, id as source_id, 'Assembly' as type 
-            FROM order_assembly_assignments WHERE status = 3
-            UNION ALL
-            SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.assigned_at, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type 
-            FROM order_handover_assignments oha JOIN base_tasks bt ON oha.task_id = bt.task_id WHERE oha.status = 3
-            UNION ALL
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, assigned_at, started_at, completed_at, complexity, id as source_id, 'Return' as type 
-            FROM return_assignments WHERE status = 3
-            UNION ALL
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, assigned_at, started_at, completed_at, 1.0 as complexity, id as source_id, 'Inventory' as type 
-            FROM inventory_assignments WHERE status = 3
-        )
-        SELECT 
-            e.employees_id AS ""EmployeeId"", 
-            e.surname || ' ' || e.name AS ""FullName"", 
-            b.branch_name AS ""BranchName"",
-            bt.task_id AS ""TaskId"",
-            bt.type AS ""TaskTypeRaw"",
-            bt.created_at AS ""CreatedAt"",
-            aa.assigned_at AS ""AssignedAt"",
-            aa.started_at AS ""StartedAt"",
-            aa.completed_at AS ""CompletedAt"",
-            CAST(aa.complexity AS INT) AS ""Complexity"",
-            CAST(COALESCE(EXTRACT(EPOCH FROM (aa.started_at - aa.assigned_at)), 0) AS INT) AS ""ReactionTimeSeconds"",
-            CAST(COALESCE(EXTRACT(EPOCH FROM (aa.completed_at - aa.started_at)), 0) AS INT) AS ""ExecutionTimeSeconds"",
-            CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * i.weight ELSE 0 END), 0) AS FLOAT) AS ""WeightGrams"",
-            CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * (i.length * i.width * i.height) ELSE 0 END), 0) AS FLOAT) AS ""VolumeCubicMm""
-        FROM AllAssignments aa
-        JOIN employees e ON aa.user_id = e.employees_id
-        JOIN branches b ON aa.branch_id = b.branch_id
-        JOIN base_tasks bt ON aa.task_id = bt.task_id
-        LEFT JOIN order_assembly_lines oal ON aa.type = 'Assembly' AND aa.source_id = oal.order_assembly_assignment_id
-        LEFT JOIN item_positions ip ON oal.item_position_id = ip.id
-        LEFT JOIN items i ON ip.item_id = i.item_id
-        WHERE aa.completed_at >= @StartDate 
-          AND aa.completed_at <= @EndDate
-          AND (@BranchId IS NULL OR aa.branch_id = @BranchId)
-          AND (@EmployeeId IS NULL OR aa.user_id = @EmployeeId)
-        GROUP BY e.employees_id, e.surname, e.name, b.branch_name, bt.task_id, bt.type, bt.created_at, aa.assigned_at, aa.started_at, aa.completed_at, aa.complexity";
+WITH AssemblyTaskStats AS (
+    -- Считаем общий вес и объем для всей задачи Сборки
+    SELECT oaa.task_id,
+           COALESCE(SUM(oal.quantity * i.weight), 0) as task_weight,
+           COALESCE(SUM(oal.quantity * (i.length * i.width * i.height)), 0) as task_volume
+    FROM order_assembly_assignments oaa
+    JOIN order_assembly_lines oal ON oaa.id = oal.order_assembly_assignment_id
+    JOIN item_positions ip ON oal.item_position_id = ip.id
+    JOIN items i ON ip.item_id = i.item_id
+    GROUP BY oaa.task_id
+),
+HandoverTaskStats AS (
+    -- Считаем общий вес и объем для всей задачи Выдачи
+    SELECT oha.task_id,
+           COALESCE(SUM(ohl.quantity * i.weight), 0) as task_weight,
+           COALESCE(SUM(ohl.quantity * (i.length * i.width * i.height)), 0) as task_volume
+    FROM order_handover_assignments oha
+    JOIN order_handover_lines ohl ON oha.id = ohl.order_handover_assignment_id
+    JOIN order_positions op ON ohl.order_position_id = op.unique_id
+    JOIN items i ON op.item_id = i.item_id
+    GROUP BY oha.task_id
+),
+ReturnTaskStats AS (
+    -- Считаем общий вес и объем для всей задачи Возврата
+    SELECT ra.task_id,
+           COALESCE(SUM(rl.quantity * i.weight), 0) as task_weight,
+           COALESCE(SUM(rl.quantity * (i.length * i.width * i.height)), 0) as task_volume
+    FROM return_assignments ra
+    JOIN return_lines rl ON ra.id = rl.return_assignment_id
+    JOIN item_positions ip ON rl.item_position_id = ip.id
+    JOIN items i ON ip.item_id = i.item_id
+    GROUP BY ra.task_id
+),
+AllAssignments AS (
+    -- 1. Сборка (раздаем вес задачи всем участникам)
+    SELECT oaa.task_id, oaa.assigned_to_user_id AS user_id, oaa.branch_id, oaa.assigned_at, oaa.started_at, oaa.completed_at, oaa.complexity, oaa.id as source_id, 'Assembly' as type,
+           COALESCE(ats.task_weight, 0) as total_weight,
+           COALESCE(ats.task_volume, 0) as total_volume
+    FROM order_assembly_assignments oaa
+    LEFT JOIN AssemblyTaskStats ats ON oaa.task_id = ats.task_id
+    WHERE oaa.status = 3
 
-            // Получаем плоский список всех задач со всеми данными
+    UNION ALL
+
+    -- 2. Выдача (раздаем вес задачи всем участникам)
+    SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.assigned_at, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type,
+           COALESCE(hts.task_weight, 0) as total_weight,
+           COALESCE(hts.task_volume, 0) as total_volume
+    FROM order_handover_assignments oha 
+    JOIN base_tasks bt ON oha.task_id = bt.task_id 
+    LEFT JOIN HandoverTaskStats hts ON oha.task_id = hts.task_id
+    WHERE oha.status = 3
+
+    UNION ALL
+
+    -- 3. Возвраты (раздаем вес задачи всем участникам)
+    SELECT ra.task_id, ra.assigned_to_user_id AS user_id, ra.branch_id, ra.assigned_at, ra.started_at, ra.completed_at, ra.complexity, ra.id as source_id, 'Return' as type,
+           COALESCE(rts.task_weight, 0) as total_weight,
+           COALESCE(rts.task_volume, 0) as total_volume
+    FROM return_assignments ra 
+    LEFT JOIN ReturnTaskStats rts ON ra.task_id = rts.task_id
+    WHERE ra.status = 3
+
+    UNION ALL
+
+    -- 4. Инвентаризация (вес 0)
+    SELECT ia.task_id, ia.assigned_to_user_id AS user_id, ia.branch_id, ia.assigned_at, ia.started_at, ia.completed_at, 1.0 as complexity, ia.id as source_id, 'Inventory' as type,
+           0.0 as total_weight,
+           0.0 as total_volume
+    FROM inventory_assignments ia 
+    WHERE ia.status = 3
+)
+-- Финальная сборка плоской модели
+SELECT 
+    e.employees_id AS ""EmployeeId"", 
+    e.surname || ' ' || e.name AS ""FullName"", 
+    b.branch_name AS ""BranchName"",
+    bt.task_id AS ""TaskId"",
+    bt.type AS ""TaskTypeRaw"",
+    bt.created_at AS ""CreatedAt"",
+    aa.assigned_at AS ""AssignedAt"",
+    aa.started_at AS ""StartedAt"",
+    aa.completed_at AS ""CompletedAt"",
+    CAST(aa.complexity AS INT) AS ""Complexity"",
+    CAST(COALESCE(EXTRACT(EPOCH FROM (aa.started_at - aa.assigned_at)), 0) AS INT) AS ""ReactionTimeSeconds"",
+    CAST(COALESCE(EXTRACT(EPOCH FROM (aa.completed_at - aa.started_at)), 0) AS INT) AS ""ExecutionTimeSeconds"",
+    CAST(aa.total_weight AS FLOAT) AS ""WeightGrams"",
+    CAST(aa.total_volume AS FLOAT) AS ""VolumeCubicMm""
+FROM AllAssignments aa
+JOIN employees e ON aa.user_id = e.employees_id
+JOIN branches b ON aa.branch_id = b.branch_id
+JOIN base_tasks bt ON aa.task_id = bt.task_id
+WHERE aa.completed_at >= @StartDate 
+  AND aa.completed_at <= @EndDate
+  AND (@BranchId IS NULL OR aa.branch_id = @BranchId)
+  AND (@EmployeeId IS NULL OR aa.user_id = @EmployeeId)";
+
             var flatData = await ((DataConnection)_db).QueryToListAsync<EmployeeTaskFlatDto>(sql,
                 new DataParameter("StartDate", filter.StartDate, DataType.DateTime),
                 new DataParameter("EndDate", filter.EndDate, DataType.DateTime),
                 new DataParameter("BranchId", filter.BranchId, DataType.Int32),
                 new DataParameter("EmployeeId", filter.EmployeeId, DataType.Int32));
 
-            // Группируем в C# для создания иерархии Карточка Сотрудника -> Список его задач
             return flatData.GroupBy(x => new { x.EmployeeId, x.FullName, x.BranchName })
                 .Select(g => new EmployeeFullReportDto
                 {
@@ -92,6 +145,83 @@ namespace TaskControl.ReportsModule.DataAccess.Repositories
                 }).ToList();
         }
 
+        // ИСПРАВЛЕННЫЙ МЕТОД: Подсчет KPI
+        public async Task<List<EmployeeKpiDto>> GetEmployeeKpiAsync(AnalyticsFilterDto filter)
+        {
+            var sql = @"
+WITH AllAssignments AS (
+    -- 1. Сборка заказов
+    SELECT oaa.task_id, oaa.assigned_to_user_id AS user_id, oaa.branch_id, oaa.started_at, oaa.completed_at, oaa.complexity, oaa.id as source_id, 'Assembly' as type,
+           COALESCE(SUM(oal.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(oal.quantity * (i.length * i.width * i.height)), 0) as total_volume
+    FROM order_assembly_assignments oaa
+    LEFT JOIN order_assembly_lines oal ON oaa.id = oal.order_assembly_assignment_id
+    LEFT JOIN item_positions ip ON oal.item_position_id = ip.id
+    LEFT JOIN items i ON ip.item_id = i.item_id
+    WHERE oaa.status = 3
+    GROUP BY oaa.task_id, oaa.assigned_to_user_id, oaa.branch_id, oaa.started_at, oaa.completed_at, oaa.complexity, oaa.id
+
+    UNION ALL
+
+    -- 2. Выдача заказов
+    SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type,
+           COALESCE(SUM(ohl.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(ohl.quantity * (i.length * i.width * i.height)), 0) as total_volume
+    FROM order_handover_assignments oha 
+    JOIN base_tasks bt ON oha.task_id = bt.task_id 
+    LEFT JOIN order_handover_lines ohl ON oha.id = ohl.order_handover_assignment_id
+    LEFT JOIN order_positions op ON ohl.order_position_id = op.unique_id
+    LEFT JOIN items i ON op.item_id = i.item_id
+    WHERE oha.status = 3
+    GROUP BY oha.task_id, oha.assigned_to_user_id, bt.branch_id, oha.started_at, oha.completed_at, oha.complexity, oha.id
+
+    UNION ALL
+
+    -- 3. Возвраты
+    SELECT ra.task_id, ra.assigned_to_user_id AS user_id, ra.branch_id, ra.started_at, ra.completed_at, ra.complexity, ra.id as source_id, 'Return' as type,
+           COALESCE(SUM(rl.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(rl.quantity * (i.length * i.width * i.height)), 0) as total_volume
+    FROM return_assignments ra 
+    LEFT JOIN return_lines rl ON ra.id = rl.return_assignment_id
+    LEFT JOIN item_positions ip ON rl.item_position_id = ip.id
+    LEFT JOIN items i ON ip.item_id = i.item_id
+    WHERE ra.status = 3
+    GROUP BY ra.task_id, ra.assigned_to_user_id, ra.branch_id, ra.started_at, ra.completed_at, ra.complexity, ra.id
+
+    UNION ALL
+
+    -- 4. Инвентаризация
+    SELECT ia.task_id, ia.assigned_to_user_id AS user_id, ia.branch_id, ia.started_at, ia.completed_at, 1.0 as complexity, ia.id as source_id, 'Inventory' as type,
+           0.0 as total_weight,
+           0.0 as total_volume
+    FROM inventory_assignments ia 
+    WHERE ia.status = 3
+)
+SELECT 
+    e.employees_id AS ""EmployeeId"", 
+    e.surname || ' ' || e.name AS ""FullName"", 
+    b.branch_name AS ""BranchName"",
+    COUNT(aa.task_id) AS ""TasksCompleted"",
+    CAST(COALESCE(SUM(aa.complexity), 0) AS INT) AS ""TotalComplexity"",
+    CAST(COALESCE(SUM(EXTRACT(EPOCH FROM (aa.completed_at - aa.started_at))), 0) AS INT) AS ""TotalDurationSeconds"",
+    CAST(COALESCE(SUM(aa.total_weight), 0) AS FLOAT) AS ""TotalWeightMovedGrams"",
+    CAST(COALESCE(SUM(aa.total_volume), 0) AS FLOAT) AS ""TotalVolumeMovedCubicMm""
+FROM AllAssignments aa
+JOIN employees e ON aa.user_id = e.employees_id
+JOIN branches b ON aa.branch_id = b.branch_id
+WHERE aa.completed_at >= @StartDate 
+  AND aa.completed_at <= @EndDate
+  AND (@BranchId IS NULL OR aa.branch_id = @BranchId)
+  AND (@EmployeeId IS NULL OR aa.user_id = @EmployeeId)
+GROUP BY e.employees_id, e.surname, e.name, b.branch_name
+ORDER BY ""TotalComplexity"" DESC";
+
+            return await ((DataConnection)_db).QueryToListAsync<EmployeeKpiDto>(sql,
+                new DataParameter("StartDate", filter.StartDate, DataType.DateTime),
+                new DataParameter("EndDate", filter.EndDate, DataType.DateTime),
+                new DataParameter("BranchId", filter.BranchId, DataType.Int32),
+                new DataParameter("EmployeeId", filter.EmployeeId, DataType.Int32));
+        }
         // 2. Управленческий Дашборд по Заказам
         public async Task<OrderDashboardReportDto> GetOrderDashboardAsync(AnalyticsFilterDto filter)
         {
@@ -280,55 +410,55 @@ namespace TaskControl.ReportsModule.DataAccess.Repositories
         }
 
         // ИСПРАВЛЕННЫЙ МЕТОД: Подсчет KPI с объединением всех таблиц назначений
-        public async Task<List<EmployeeKpiDto>> GetEmployeeKpiAsync(AnalyticsFilterDto filter)
-        {
-            var sql = @"
-        WITH AllAssignments AS (
-            -- Сборка заказов
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, complexity, id as source_id, 'Assembly' as type 
-            FROM order_assembly_assignments WHERE status = 3
-            UNION ALL
-            -- Выдача заказов (берем branch_id из base_tasks, так как в handover его нет)
-            SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type 
-            FROM order_handover_assignments oha JOIN base_tasks bt ON oha.task_id = bt.task_id WHERE oha.status = 3
-            UNION ALL
-            -- Возвраты
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, complexity, id as source_id, 'Return' as type 
-            FROM return_assignments WHERE status = 3
-            UNION ALL
-            -- Инвентаризация (здесь нет поля complexity, поэтому считаем за 1.0)
-            SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, 1.0 as complexity, id as source_id, 'Inventory' as type 
-            FROM inventory_assignments WHERE status = 3
-        )
-        SELECT 
-            e.employees_id AS ""EmployeeId"", 
-            e.surname || ' ' || e.name AS ""FullName"", 
-            b.branch_name AS ""BranchName"",
-            COUNT(aa.task_id) AS ""TasksCompleted"",
-            CAST(COALESCE(SUM(aa.complexity), 0) AS INT) AS ""TotalComplexity"",
-            CAST(COALESCE(SUM(EXTRACT(EPOCH FROM (aa.completed_at - aa.started_at))), 0) AS INT) AS ""TotalDurationSeconds"",
-            -- Считаем вес и объем только для задач сборки, присоединяя товары
-            CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * i.weight ELSE 0 END), 0) AS FLOAT) AS ""TotalWeightMovedGrams"",
-            CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * (i.length * i.width * i.height) ELSE 0 END), 0) AS FLOAT) AS ""TotalVolumeMovedCubicMm""
-        FROM AllAssignments aa
-        JOIN employees e ON aa.user_id = e.employees_id
-        JOIN branches b ON aa.branch_id = b.branch_id
-        LEFT JOIN order_assembly_lines oal ON aa.type = 'Assembly' AND aa.source_id = oal.order_assembly_assignment_id
-        LEFT JOIN item_positions ip ON oal.item_position_id = ip.id
-        LEFT JOIN items i ON ip.item_id = i.item_id
-        WHERE aa.completed_at >= @StartDate 
-          AND aa.completed_at <= @EndDate
-          AND (@BranchId IS NULL OR aa.branch_id = @BranchId)
-          AND (@EmployeeId IS NULL OR aa.user_id = @EmployeeId)
-        GROUP BY e.employees_id, e.surname, e.name, b.branch_name
-        ORDER BY ""TotalComplexity"" DESC";
+        //public async Task<List<EmployeeKpiDto>> GetEmployeeKpiAsync(AnalyticsFilterDto filter)
+        //{
+        //    var sql = @"
+        //WITH AllAssignments AS (
+        //    -- Сборка заказов
+        //    SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, complexity, id as source_id, 'Assembly' as type 
+        //    FROM order_assembly_assignments WHERE status = 3
+        //    UNION ALL
+        //    -- Выдача заказов (берем branch_id из base_tasks, так как в handover его нет)
+        //    SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type 
+        //    FROM order_handover_assignments oha JOIN base_tasks bt ON oha.task_id = bt.task_id WHERE oha.status = 3
+        //    UNION ALL
+        //    -- Возвраты
+        //    SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, complexity, id as source_id, 'Return' as type 
+        //    FROM return_assignments WHERE status = 3
+        //    UNION ALL
+        //    -- Инвентаризация (здесь нет поля complexity, поэтому считаем за 1.0)
+        //    SELECT task_id, assigned_to_user_id AS user_id, branch_id, started_at, completed_at, 1.0 as complexity, id as source_id, 'Inventory' as type 
+        //    FROM inventory_assignments WHERE status = 3
+        //)
+        //SELECT 
+        //    e.employees_id AS ""EmployeeId"", 
+        //    e.surname || ' ' || e.name AS ""FullName"", 
+        //    b.branch_name AS ""BranchName"",
+        //    COUNT(aa.task_id) AS ""TasksCompleted"",
+        //    CAST(COALESCE(SUM(aa.complexity), 0) AS INT) AS ""TotalComplexity"",
+        //    CAST(COALESCE(SUM(EXTRACT(EPOCH FROM (aa.completed_at - aa.started_at))), 0) AS INT) AS ""TotalDurationSeconds"",
+        //    -- Считаем вес и объем только для задач сборки, присоединяя товары
+        //    CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * i.weight ELSE 0 END), 0) AS FLOAT) AS ""TotalWeightMovedGrams"",
+        //    CAST(COALESCE(SUM(CASE WHEN aa.type = 'Assembly' THEN oal.quantity * (i.length * i.width * i.height) ELSE 0 END), 0) AS FLOAT) AS ""TotalVolumeMovedCubicMm""
+        //FROM AllAssignments aa
+        //JOIN employees e ON aa.user_id = e.employees_id
+        //JOIN branches b ON aa.branch_id = b.branch_id
+        //LEFT JOIN order_assembly_lines oal ON aa.type = 'Assembly' AND aa.source_id = oal.order_assembly_assignment_id
+        //LEFT JOIN item_positions ip ON oal.item_position_id = ip.id
+        //LEFT JOIN items i ON ip.item_id = i.item_id
+        //WHERE aa.completed_at >= @StartDate 
+        //  AND aa.completed_at <= @EndDate
+        //  AND (@BranchId IS NULL OR aa.branch_id = @BranchId)
+        //  AND (@EmployeeId IS NULL OR aa.user_id = @EmployeeId)
+        //GROUP BY e.employees_id, e.surname, e.name, b.branch_name
+        //ORDER BY ""TotalComplexity"" DESC";
 
-            return await ((DataConnection)_db).QueryToListAsync<EmployeeKpiDto>(sql,
-                new DataParameter("StartDate", filter.StartDate, DataType.DateTime),
-                new DataParameter("EndDate", filter.EndDate, DataType.DateTime),
-                new DataParameter("BranchId", filter.BranchId, DataType.Int32),
-                new DataParameter("EmployeeId", filter.EmployeeId, DataType.Int32));
-        }
+        //    return await ((DataConnection)_db).QueryToListAsync<EmployeeKpiDto>(sql,
+        //        new DataParameter("StartDate", filter.StartDate, DataType.DateTime),
+        //        new DataParameter("EndDate", filter.EndDate, DataType.DateTime),
+        //        new DataParameter("BranchId", filter.BranchId, DataType.Int32),
+        //        new DataParameter("EmployeeId", filter.EmployeeId, DataType.Int32));
+        //}
 
         // ИСПРАВЛЕННЫЙ МЕТОД: Детализация задач сотрудника с тем же механизмом UNION ALL
         public async Task<List<EmployeeTaskDetailDto>> GetEmployeeTasksDetailAsync(int employeeId, AnalyticsFilterDto filter)
