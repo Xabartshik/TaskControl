@@ -122,7 +122,8 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
         {
             var activeAssignments = await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.AssignedToUserId == workerId && a.Status == 1)
+                .Where(a => a.AssignedToUserId == workerId
+                         && (a.Status == 0 || a.Status == 1 || a.Status == 2))
                 .ToListAsync();
 
             return await BuildHeaderListAsync(activeAssignments);

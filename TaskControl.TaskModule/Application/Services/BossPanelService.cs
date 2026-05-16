@@ -390,7 +390,8 @@ namespace TaskControl.TaskModule.Application.Services
             foreach (var t in activeTasks)
             {
                 var dict = new Dictionary<int, TaskAssigneeProgressDto>();
-
+                if (t.Status == TaskStatus.Completed)
+                    continue;
                 // 1. Спрашиваем агрегатор: кто работает над этой задачей? (Поддерживает ВСЕ типы задач)
                 var assignedIds = await _aggregator.GetAssignedEmployeeIdsAsync(t.TaskId);
 

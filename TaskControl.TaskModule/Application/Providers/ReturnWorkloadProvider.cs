@@ -79,7 +79,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
         {
             // Только InProgress (1)
-            return await GetMobileTasksByStatusesAsync(workerId, 1);
+            return await GetMobileTasksByStatusesAsync(workerId, 0, 1, 2);
         }
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId)
@@ -254,7 +254,6 @@ namespace TaskControl.TaskModule.Application.Providers
                 .ToListAsync();
 
             // 4. Обработка товарных позиций возврата
-            // 4. Обработка товарных позиций возврата
             foreach (var line in lines)
             {
                 // 1. Возвращаем правильный запрос (ищем по ip.Id)
@@ -267,7 +266,6 @@ namespace TaskControl.TaskModule.Application.Providers
                 if (itemData != null)
                 {
                     // 2. ДИНАМИЧЕСКИ ВЫЧИСЛЯЕМ ИСХОДНУЮ ЯЧЕЙКУ ЗДЕСЬ
-                    // Проверяем последние перемещения, чтобы указать кладовщику точное место (например, зону выдачи)
                     var lastMovement = await _db.GetTable<ItemMovementModel>()
                         .Where(m => m.ItemId == itemData.ItemId && m.Quantity >= line.Quantity)
                         .OrderByDescending(m => m.CreatedAt)
@@ -277,6 +275,13 @@ namespace TaskControl.TaskModule.Application.Providers
                     int actualSourcePosId = lastMovement?.DestinationPositionId ?? itemData.PositionId;
 
                     var sourcePosModel = branchPositions.FirstOrDefault(p => p.PositionId == actualSourcePosId);
+
+                    // ИСПРАВЛЕНИЕ: Если ячейки нет в кэше текущего филиала (например, это ячейка курьера из другого филиала)
+                    if (sourcePosModel == null)
+                    {
+                        sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == actualSourcePosId);
+                    }
+
                     sourceCellCode = GetFullPositionCode(sourcePosModel) ?? actualSourcePosId.ToString();
                 }
 
@@ -284,6 +289,13 @@ namespace TaskControl.TaskModule.Application.Providers
                 if (line.TargetPositionId.HasValue)
                 {
                     var targetPosInfo = branchPositions.FirstOrDefault(p => p.PositionId == line.TargetPositionId.Value);
+
+                    // На всякий случай добавляем такую же проверку для целевой ячейки
+                    if (targetPosInfo == null)
+                    {
+                        targetPosInfo = await positions.FirstOrDefaultAsync(p => p.PositionId == line.TargetPositionId.Value);
+                    }
+
                     targetCellCode = GetFullPositionCode(targetPosInfo);
                 }
 
@@ -299,7 +311,6 @@ namespace TaskControl.TaskModule.Application.Providers
                     TargetCellCode = targetCellCode ?? "Определить на месте"
                 });
             }
-
             return dto;
         }
 

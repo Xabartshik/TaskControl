@@ -155,7 +155,11 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
         {
             var assignments = await _assemblyRepo.GetByUserIdAsync(workerId);
-            var activeAssignments = assignments.Where(t => t.Status == AssignmentStatus.InProgress).ToList();
+            var activeAssignments = assignments
+                .Where(t => t.Status == AssignmentStatus.InProgress
+                         || t.Status == AssignmentStatus.Paused
+                         || t.Status == AssignmentStatus.Assigned)
+                .ToList();
 
             var result = new List<MobileBaseTaskDto>();
             foreach (var a in activeAssignments)
