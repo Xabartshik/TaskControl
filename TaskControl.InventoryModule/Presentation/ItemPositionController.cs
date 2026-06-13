@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.Application.DTOs;
@@ -91,6 +91,38 @@ namespace TaskControl.InventoryModule.Presentation.Controllers
             }
             _logger.LogInformation("Товарная позиция ID: {PositionId} удалена", id);
             return NoContent();
+        }
+
+        /// <summary>
+        /// Возвращает доступность товаров корзины по всем филиалам.
+        /// </summary>
+        [HttpPost("check-cart-branches")]
+        public async Task<ActionResult<BranchAvailabilityResponseDto>> CheckCartBranches([FromBody] CartCheckRequestDto request)
+        {
+            if (request == null || request.Items == null)
+            {
+                return BadRequest("Неверный запрос.");
+            }
+
+            var availability = await _service.CheckCartAvailabilityAsync(request.Items);
+            return Ok(availability);
+        }
+
+        [HttpGet("branch-counts")]
+        public async Task<ActionResult<Dictionary<int, ItemStockDto>>> GetItemBranchCounts()
+        {
+            var counts = await _service.GetItemBranchCountsAsync();
+            return Ok(counts);
+        }
+
+        /// <summary>
+        /// Возвращает распределение остатков конкретного товара по всем филиалам.
+        /// </summary>
+        [HttpGet("item-stock-distribution/{itemId}")]
+        public async Task<ActionResult<IEnumerable<BranchStockDto>>> GetItemStockDistribution(int itemId)
+        {
+            var distribution = await _service.GetItemStockDistributionAsync(itemId);
+            return Ok(distribution);
         }
     }
 }

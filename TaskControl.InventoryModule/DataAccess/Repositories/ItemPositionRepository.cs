@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using LinqToDB.DataProvider.PostgreSQL;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
@@ -8,8 +8,7 @@ using TaskControl.InventoryModule.DataAccess.Interface;
 using TaskControl.InventoryModule.DataAccess.Mapper;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.InventoryModule.Domain;
-
-
+using TaskControl.InformationModule.Application.DTOs;
 
 namespace TaskControl.InventoryModule.DAL.Repositories
 {
@@ -229,6 +228,126 @@ namespace TaskControl.InventoryModule.DAL.Repositories
             }
         }
 
+        public async Task<Dictionary<int, ItemStockDto>> GetItemBranchCountsAsync()
+        {
+            try
+            {
+                var physicalStocks = await (
+                    from ip in _db.GetTable<ItemPositionModel>()
+                    join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                    group ip.Quantity by new { ip.ItemId, p.BranchId } into g
+                    select new
+                    {
+                        ItemId = g.Key.ItemId,
+                        BranchId = g.Key.BranchId,
+                        PhysicalQty = g.Sum()
+                    }
+                ).ToListAsync();
+
+                var reservedStocks = await (
+                    from res in _db.GetTable<OrderReservationModel>()
+                    join ip in _db.GetTable<ItemPositionModel>() on res.ItemPositionId equals ip.Id
+                    join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                    group res.Quantity by new { ip.ItemId, p.BranchId } into g
+                    select new
+                    {
+                        ItemId = g.Key.ItemId,
+                        BranchId = g.Key.BranchId,
+                        ReservedQty = g.Sum()
+                    }
+                ).ToListAsync();
+
+                var itemStocks = new Dictionary<int, ItemStockDto>();
+
+                var allKeys = physicalStocks.Select(p => new { p.ItemId, p.BranchId })
+                    .Union(reservedStocks.Select(r => new { r.ItemId, r.BranchId }))
+                    .Distinct();
+
+                var stockDetails = allKeys.Select(k =>
+                {
+                    var phys = physicalStocks.FirstOrDefault(p => p.ItemId == k.ItemId && p.BranchId == k.BranchId)?.PhysicalQty ?? 0;
+                    var res = reservedStocks.FirstOrDefault(r => r.ItemId == k.ItemId && r.BranchId == k.BranchId)?.ReservedQty ?? 0;
+                    var available = Math.Max(0, phys - res);
+                    return new { k.ItemId, k.BranchId, Available = available };
+                }).Where(x => x.Available > 0).ToList();
+
+                var grouped = stockDetails.GroupBy(x => x.ItemId);
+                foreach (var g in grouped)
+                {
+                    itemStocks[g.Key] = new ItemStockDto
+                    {
+                        BranchCount = g.Select(x => x.BranchId).Distinct().Count(),
+                        TotalAvailableQuantity = g.Sum(x => x.Available)
+                    };
+                }
+
+                return itemStocks;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении количества филиалов и доступного количества для товаров");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<BranchStockDto>> GetItemStockDistributionAsync(int itemId)
+        {
+            try
+            {
+                var physicalStocks = await (
+                    from ip in _db.GetTable<ItemPositionModel>()
+                    join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                    join b in _db.GetTable<BranchModel>() on p.BranchId equals b.BranchId
+                    where ip.ItemId == itemId
+                    group ip.Quantity by new { b.BranchId, b.BranchName, b.Address } into g
+                    select new
+                    {
+                        BranchId = g.Key.BranchId,
+                        BranchName = g.Key.BranchName,
+                        Address = g.Key.Address,
+                        PhysicalQty = g.Sum()
+                    }
+                ).ToListAsync();
+
+                var reservedStocks = await (
+                    from res in _db.GetTable<OrderReservationModel>()
+                    join ip in _db.GetTable<ItemPositionModel>() on res.ItemPositionId equals ip.Id
+                    join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                    where ip.ItemId == itemId
+                    group res.Quantity by p.BranchId into g
+                    select new
+                    {
+                        BranchId = g.Key,
+                        ReservedQty = g.Sum()
+                    }
+                ).ToListAsync();
+
+                var result = new List<BranchStockDto>();
+                foreach (var phys in physicalStocks)
+                {
+                    var reserved = reservedStocks.FirstOrDefault(r => r.BranchId == phys.BranchId)?.ReservedQty ?? 0;
+                    var available = Math.Max(0, phys.PhysicalQty - reserved);
+                    if (available > 0)
+                    {
+                        result.Add(new BranchStockDto
+                        {
+                            BranchId = phys.BranchId,
+                            BranchName = phys.BranchName,
+                            Address = phys.Address,
+                            AvailableQuantity = available
+                        });
+                    }
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении распределения остатков товара {ItemId}", itemId);
+                throw;
+            }
+        }
+
         public async Task<int> AddAsync(ItemPosition entity)
         {
             _logger.LogInformation("Добавление новой связи товар-позиция");
@@ -317,6 +436,105 @@ namespace TaskControl.InventoryModule.DAL.Repositories
                 _logger.LogError(ex, "Ошибка при получении товаров для позиции ID: {positionId}", positionId);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Проверяет доступность товаров из корзины во всех филиалах.
+        /// </summary>
+        public async Task<BranchAvailabilityResponseDto> CheckCartAvailabilityAsync(List<CartItemDto> cartItems)
+        {
+            var response = new BranchAvailabilityResponseDto();
+            if (cartItems == null || !cartItems.Any())
+            {
+                var allBranches = await _db.GetTable<BranchModel>().ToListAsync();
+                response.AvailableBranches = allBranches.Select(b => new BranchDto
+                {
+                    BranchId = b.BranchId,
+                    BranchName = b.BranchName,
+                    BranchType = b.BranchType,
+                    Address = b.Address
+                }).ToList();
+                return response;
+            }
+
+            var itemIds = cartItems.Select(i => i.ItemId).Distinct().ToList();
+
+            var physicalQuery = from ip in _db.GetTable<ItemPositionModel>()
+                                 join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                                 where itemIds.Contains(ip.ItemId)
+                                 group ip.Quantity by new { p.BranchId, ip.ItemId } into g
+                                 select new
+                                 {
+                                     BranchId = g.Key.BranchId,
+                                     ItemId = g.Key.ItemId,
+                                     PhysicalQty = g.Sum()
+                                 };
+
+            var reservedQuery = from res in _db.GetTable<OrderReservationModel>()
+                                 join ip in _db.GetTable<ItemPositionModel>() on res.ItemPositionId equals ip.Id
+                                 join p in _db.GetTable<PositionModel>() on ip.PositionId equals p.PositionId
+                                 where itemIds.Contains(ip.ItemId)
+                                 group res.Quantity by new { p.BranchId, ip.ItemId } into g
+                                 select new
+                                 {
+                                     BranchId = g.Key.BranchId,
+                                     ItemId = g.Key.ItemId,
+                                     ReservedQty = g.Sum()
+                                 };
+
+            var physicalStocks = await physicalQuery.ToListAsync();
+            var reservedStocks = await reservedQuery.ToListAsync();
+            var branches = await _db.GetTable<BranchModel>().ToListAsync();
+
+            foreach (var b in branches)
+            {
+                var missingItems = new List<MissingItemDto>();
+                bool isFullyAvailable = true;
+
+                foreach (var cartItem in cartItems)
+                {
+                    var physQty = physicalStocks
+                        .FirstOrDefault(s => s.BranchId == b.BranchId && s.ItemId == cartItem.ItemId)?.PhysicalQty ?? 0;
+                    var resQty = reservedStocks
+                        .FirstOrDefault(s => s.BranchId == b.BranchId && s.ItemId == cartItem.ItemId)?.ReservedQty ?? 0;
+
+                    var availableQty = Math.Max(0, physQty - resQty);
+
+                    if (availableQty < cartItem.RequiredQuantity)
+                    {
+                        isFullyAvailable = false;
+                        missingItems.Add(new MissingItemDto
+                        {
+                            ItemId = cartItem.ItemId,
+                            RequiredQuantity = cartItem.RequiredQuantity,
+                            AvailableQuantity = availableQty
+                        });
+                    }
+                }
+
+                var branchDto = new BranchDto
+                {
+                    BranchId = b.BranchId,
+                    BranchName = b.BranchName,
+                    BranchType = b.BranchType,
+                    Address = b.Address
+                };
+
+                if (isFullyAvailable)
+                {
+                    response.AvailableBranches.Add(branchDto);
+                }
+                else
+                {
+                    response.PartiallyAvailableBranches.Add(new BranchAvailabilityDto
+                    {
+                        Branch = branchDto,
+                        MissingItems = missingItems
+                    });
+                }
+            }
+
+            return response;
         }
     }
 }

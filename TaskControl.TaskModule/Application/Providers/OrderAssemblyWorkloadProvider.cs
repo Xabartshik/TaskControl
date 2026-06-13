@@ -156,9 +156,7 @@ namespace TaskControl.TaskModule.Application.Providers
         {
             var assignments = await _assemblyRepo.GetByUserIdAsync(workerId);
             var activeAssignments = assignments
-                .Where(t => t.Status == AssignmentStatus.InProgress
-                         || t.Status == AssignmentStatus.Paused
-                         || t.Status == AssignmentStatus.Assigned)
+                .Where(t => t.Status == AssignmentStatus.InProgress)
                 .ToList();
 
             var result = new List<MobileBaseTaskDto>();

@@ -1,9 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.InformationModule.Domain;
 using TaskControl.InventoryModule.Application.DTOs;
 using TaskControl.InventoryModule.Domain;
+
+using TaskControl.InventoryModule.Application.DTOs;
 
 namespace TaskControl.InventoryModule.DataAccess.Interface
 {
@@ -20,6 +22,9 @@ namespace TaskControl.InventoryModule.DataAccess.Interface
         Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId);
         Task<IEnumerable<AvailableItemDto>> GetAvailableItemsByBranchAsync(int branchId, string search);
         Task<IEnumerable<ItemPosition>> GetByItemAndBranchAsync(int itemId, int branchId);
+        Task<BranchAvailabilityResponseDto> CheckCartAvailabilityAsync(List<CartItemDto> cartItems);
+        Task<Dictionary<int, ItemStockDto>> GetItemBranchCountsAsync();
+        Task<IEnumerable<BranchStockDto>> GetItemStockDistributionAsync(int itemId);
 
     }
 }

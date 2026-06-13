@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using LinqToDB.Mapping; // Оставляем только LinqToDB
 
 namespace TaskControl.InformationModule.DataAccess.Model
@@ -20,6 +20,9 @@ namespace TaskControl.InformationModule.DataAccess.Model
 
         [Column("role_id"), NotNull]
         public int RoleId { get; set; }
+
+        [Column("is_blocked"), NotNull]
+        public bool IsBlocked { get; set; } = false;
 
         [Column("created_at"), NotNull]
         public DateTime CreatedAt { get; set; }

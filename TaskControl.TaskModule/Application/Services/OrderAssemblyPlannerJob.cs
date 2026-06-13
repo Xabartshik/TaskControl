@@ -206,7 +206,8 @@ namespace TaskControl.TaskModule.Application.Services
                 else
                 {
                     await transaction.RollbackAsync();
-                    _logger.LogWarning(">>> Срочное планирование заказа #{OrderId} пропущено", orderId);
+                    _logger.LogError("Нет доступных сотрудников в филиале для срочной сборки заказа #{OrderId}. Повторная проверка через 5 минут.", orderId);
+                    BackgroundJob.Schedule<OrderAssemblyPlannerJob>(job => job.PlanSingleOrderAsync(orderId), TimeSpan.FromMinutes(5));
                 }
             }
             catch (Exception ex)

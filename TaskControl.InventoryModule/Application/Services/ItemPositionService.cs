@@ -139,6 +139,32 @@ namespace TaskControl.OrderModule.Application.Services
             }
         }
 
+        public async Task<Dictionary<int, ItemStockDto>> GetItemBranchCountsAsync()
+        {
+            try
+            {
+                return await _repository.GetItemBranchCountsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения количества филиалов для товаров");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<BranchStockDto>> GetItemStockDistributionAsync(int itemId)
+        {
+            try
+            {
+                return await _repository.GetItemStockDistributionAsync(itemId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка получения распределения остатков товара по филиалам. Товар: {ItemId}", itemId);
+                throw;
+            }
+        }
+
         public async Task<ItemPositionDto?> GetById(int id)
         {
             if (_appSettings.EnableDetailedLogging)
@@ -196,6 +222,14 @@ namespace TaskControl.OrderModule.Application.Services
                 _logger.LogError(ex, "Ошибка обновления товарной позиции ID: {PositionId}", dto.Id);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Возвращает доступность корзины по всем филиалам.
+        /// </summary>
+        public async Task<BranchAvailabilityResponseDto> CheckCartAvailabilityAsync(List<CartItemDto> cartItems)
+        {
+            return await _repository.CheckCartAvailabilityAsync(cartItems);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel.DataAnnotations;
 using TaskControl.InformationModule.Domain;
 
@@ -43,6 +43,11 @@ namespace TaskControl.InformationModule.Application.DTOs
         public DateTime CreatedAt { get; init; }
 
         /// <summary>
+        /// Флаг блокировки сотрудника
+        /// </summary>
+        public bool IsBlocked { get; init; }
+
+        /// <summary>
         /// Преобразует сущность Employee в EmployeeDto
         /// </summary>
         public static EmployeeDto ToDto(Employee entity)
@@ -55,7 +60,8 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Surname = entity.Surname,
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
-                Role = entity.Role // Теперь передаем Enum напрямую
+                Role = entity.Role,
+                IsBlocked = entity.IsBlocked
             };
         }
 
@@ -72,7 +78,8 @@ namespace TaskControl.InformationModule.Application.DTOs
                 Surname = dto.Surname,
                 Name = dto.Name,
                 MiddleName = dto.MiddleName,
-                Role = dto.Role // Принимаем Enum обратно
+                Role = dto.Role,
+                IsBlocked = dto.IsBlocked
             };
         }
     }

@@ -79,7 +79,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<MobileBaseTaskDto>> GetActiveTasksAsync(int workerId)
         {
             // Только InProgress (1)
-            return await GetMobileTasksByStatusesAsync(workerId, 0, 1, 2);
+            return await GetMobileTasksByStatusesAsync(workerId, 1);
         }
 
         public async Task<IEnumerable<MobileBaseTaskDto>> GetUnassignedPoolTasksAsync(int branchId)

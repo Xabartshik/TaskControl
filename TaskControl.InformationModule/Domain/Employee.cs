@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -49,6 +49,11 @@ namespace TaskControl.InformationModule.Domain
         /// Должность/роль сотрудника в компании TODO: заменить на тип, убрав строку
         /// </summary>
         public WorkerRole Role { get; set; }
+
+        /// <summary>
+        /// Флаг блокировки сотрудника
+        /// </summary>
+        public bool IsBlocked { get; set; }
 
     }
 

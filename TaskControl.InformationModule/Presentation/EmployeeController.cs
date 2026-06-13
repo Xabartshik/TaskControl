@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
@@ -7,17 +7,19 @@ using TaskControl.InformationModule.Application.Services;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InformationModule.Domain;
 
+using TaskControl.InformationModule.Services;
+
 namespace TaskControl.InformationModule.Presentation.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
     public class EmployeeController : ControllerBase, ICrudController<EmployeeDto, int>
     {
-        private readonly IService<EmployeeDto> _service;
+        private readonly IEmployeeService _service;
         private readonly CourierCapabilityService _courierCapabilityService;
 
         public EmployeeController(
-            IService<EmployeeDto> service,
+            IEmployeeService service,
             CourierCapabilityService courierCapabilityService) 
         {
             _service = service;
@@ -104,6 +106,28 @@ namespace TaskControl.InformationModule.Presentation.Controllers
                 return NotFound();
             }
             return NoContent();
+        }
+
+        [HttpPost("{id}/block")]
+        public async Task<IActionResult> Block(int id)
+        {
+            var result = await _service.BlockEmployeeAsync(id);
+            if (!result)
+            {
+                return NotFound();
+            }
+            return Ok();
+        }
+
+        [HttpPost("{id}/unblock")]
+        public async Task<IActionResult> Unblock(int id)
+        {
+            var result = await _service.UnblockEmployeeAsync(id);
+            if (!result)
+            {
+                return NotFound();
+            }
+            return Ok();
         }
     }
 }

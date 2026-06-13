@@ -31,6 +31,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public int ActiveTasksCount { get; set; }
         public double TotalComplexity { get; set; }
         public List<ActiveTaskBriefDto> ActiveTasks { get; set; } = new();
+        public bool IsBlocked { get; set; }
     }
 
     public class ActiveTaskBriefDto
@@ -51,6 +52,7 @@ namespace TaskControl.TaskModule.Application.DTOs.BossPanelDTOs
         public double MaxWeightKg { get; set; }
         public string VehicleName { get; set; }
         public bool IsOnRoute { get; set; }
+        public bool IsBlocked { get; set; }
     }
     public class AvailableOrderDto
     {

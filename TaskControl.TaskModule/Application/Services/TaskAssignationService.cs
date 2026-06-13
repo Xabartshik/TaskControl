@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaskControl.Core.AppSettings;
 using TaskControl.Core.Shared.SharedInterfaces;
@@ -10,15 +10,18 @@ namespace TaskControl.TaskModule.Application.Services
     public class TaskAssignationService : IService<TaskAssignationDto>
     {
         private readonly ITaskAssignationRepository _repository;
+        private readonly IMobileAppUserRepository _userRepository;
         private readonly ILogger<TaskAssignationService> _logger;
         private readonly AppSettings _appSettings;
 
         public TaskAssignationService(
             ITaskAssignationRepository repository,
+            IMobileAppUserRepository userRepository,
             ILogger<TaskAssignationService> logger,
             IOptions<AppSettings> options)
         {
             _repository = repository;
+            _userRepository = userRepository;
             _logger = logger;
             _appSettings = options.Value;
         }
@@ -36,6 +39,13 @@ namespace TaskControl.TaskModule.Application.Services
 
             try
             {
+                // Проверка активности пользователя перед назначением задачи
+                var user = await _userRepository.GetByIdAsync(dto.UserId);
+                if (user == null || !user.IsActive)
+                {
+                    throw new InvalidOperationException("Нельзя назначить задачу неактивному или заблокированному пользователю.");
+                }
+
                 var entity = TaskAssignationDto.FromDto(dto);
                 var newId = await _repository.AddAsync(entity);
 

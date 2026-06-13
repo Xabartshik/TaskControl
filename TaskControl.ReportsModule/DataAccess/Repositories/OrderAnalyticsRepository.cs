@@ -16,82 +16,59 @@ namespace TaskControl.ReportsModule.DataAccess.Repositories
             _db = db;
         }
 
+        // 1. Получение глубокой аналитики по сотрудникам (Группировка с задачами)
+        // 1. Получение глубокой аналитики по сотрудникам (Группировка с задачами)
         public async Task<List<EmployeeFullReportDto>> GetEmployeeFullReportsAsync(AnalyticsFilterDto filter)
         {
             var sql = @"
-WITH AssemblyTaskStats AS (
-    -- Считаем общий вес и объем для всей задачи Сборки
-    SELECT oaa.task_id,
-           COALESCE(SUM(oal.quantity * i.weight), 0) as task_weight,
-           COALESCE(SUM(oal.quantity * (i.length * i.width * i.height)), 0) as task_volume
-    FROM order_assembly_assignments oaa
-    JOIN order_assembly_lines oal ON oaa.id = oal.order_assembly_assignment_id
-    JOIN item_positions ip ON oal.item_position_id = ip.id
-    JOIN items i ON ip.item_id = i.item_id
-    GROUP BY oaa.task_id
-),
-HandoverTaskStats AS (
-    -- Считаем общий вес и объем для всей задачи Выдачи
-    SELECT oha.task_id,
-           COALESCE(SUM(ohl.quantity * i.weight), 0) as task_weight,
-           COALESCE(SUM(ohl.quantity * (i.length * i.width * i.height)), 0) as task_volume
-    FROM order_handover_assignments oha
-    JOIN order_handover_lines ohl ON oha.id = ohl.order_handover_assignment_id
-    JOIN order_positions op ON ohl.order_position_id = op.unique_id
-    JOIN items i ON op.item_id = i.item_id
-    GROUP BY oha.task_id
-),
-ReturnTaskStats AS (
-    -- Считаем общий вес и объем для всей задачи Возврата
-    SELECT ra.task_id,
-           COALESCE(SUM(rl.quantity * i.weight), 0) as task_weight,
-           COALESCE(SUM(rl.quantity * (i.length * i.width * i.height)), 0) as task_volume
-    FROM return_assignments ra
-    JOIN return_lines rl ON ra.id = rl.return_assignment_id
-    JOIN item_positions ip ON rl.item_position_id = ip.id
-    JOIN items i ON ip.item_id = i.item_id
-    GROUP BY ra.task_id
-),
-AllAssignments AS (
-    -- 1. Сборка (раздаем вес задачи всем участникам)
+WITH AllAssignments AS (
+    -- 1. Сборка заказов
     SELECT oaa.task_id, oaa.assigned_to_user_id AS user_id, oaa.branch_id, oaa.assigned_at, oaa.started_at, oaa.completed_at, oaa.complexity, oaa.id as source_id, 'Assembly' as type,
-           COALESCE(ats.task_weight, 0) as total_weight,
-           COALESCE(ats.task_volume, 0) as total_volume
+           COALESCE(SUM(oal.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(oal.quantity * (i.length * i.width * i.height)), 0) as total_volume
     FROM order_assembly_assignments oaa
-    LEFT JOIN AssemblyTaskStats ats ON oaa.task_id = ats.task_id
+    LEFT JOIN order_assembly_lines oal ON oaa.id = oal.order_assembly_assignment_id
+    LEFT JOIN item_positions ip ON oal.item_position_id = ip.id
+    LEFT JOIN items i ON ip.item_id = i.item_id
     WHERE oaa.status = 3
+    GROUP BY oaa.task_id, oaa.assigned_to_user_id, oaa.branch_id, oaa.assigned_at, oaa.started_at, oaa.completed_at, oaa.complexity, oaa.id
 
     UNION ALL
 
-    -- 2. Выдача (раздаем вес задачи всем участникам)
+    -- 2. Выдача заказов (связь через order_positions)
     SELECT oha.task_id, oha.assigned_to_user_id AS user_id, bt.branch_id, oha.assigned_at, oha.started_at, oha.completed_at, oha.complexity, oha.id as source_id, 'Handover' as type,
-           COALESCE(hts.task_weight, 0) as total_weight,
-           COALESCE(hts.task_volume, 0) as total_volume
+           COALESCE(SUM(ohl.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(ohl.quantity * (i.length * i.width * i.height)), 0) as total_volume
     FROM order_handover_assignments oha 
     JOIN base_tasks bt ON oha.task_id = bt.task_id 
-    LEFT JOIN HandoverTaskStats hts ON oha.task_id = hts.task_id
+    LEFT JOIN order_handover_lines ohl ON oha.id = ohl.order_handover_assignment_id
+    LEFT JOIN order_positions op ON ohl.order_position_id = op.unique_id
+    LEFT JOIN items i ON op.item_id = i.item_id
     WHERE oha.status = 3
+    GROUP BY oha.task_id, oha.assigned_to_user_id, bt.branch_id, oha.assigned_at, oha.started_at, oha.completed_at, oha.complexity, oha.id
 
     UNION ALL
 
-    -- 3. Возвраты (раздаем вес задачи всем участникам)
+    -- 3. Возвраты (связь через item_positions)
     SELECT ra.task_id, ra.assigned_to_user_id AS user_id, ra.branch_id, ra.assigned_at, ra.started_at, ra.completed_at, ra.complexity, ra.id as source_id, 'Return' as type,
-           COALESCE(rts.task_weight, 0) as total_weight,
-           COALESCE(rts.task_volume, 0) as total_volume
+           COALESCE(SUM(rl.quantity * i.weight), 0) as total_weight,
+           COALESCE(SUM(rl.quantity * (i.length * i.width * i.height)), 0) as total_volume
     FROM return_assignments ra 
-    LEFT JOIN ReturnTaskStats rts ON ra.task_id = rts.task_id
+    LEFT JOIN return_lines rl ON ra.id = rl.return_assignment_id
+    LEFT JOIN item_positions ip ON rl.item_position_id = ip.id
+    LEFT JOIN items i ON ip.item_id = i.item_id
     WHERE ra.status = 3
+    GROUP BY ra.task_id, ra.assigned_to_user_id, ra.branch_id, ra.assigned_at, ra.started_at, ra.completed_at, ra.complexity, ra.id
 
     UNION ALL
 
-    -- 4. Инвентаризация (вес 0)
+    -- 4. Инвентаризация (без веса и объема)
     SELECT ia.task_id, ia.assigned_to_user_id AS user_id, ia.branch_id, ia.assigned_at, ia.started_at, ia.completed_at, 1.0 as complexity, ia.id as source_id, 'Inventory' as type,
            0.0 as total_weight,
            0.0 as total_volume
     FROM inventory_assignments ia 
     WHERE ia.status = 3
 )
--- Финальная сборка плоской модели
 SELECT 
     e.employees_id AS ""EmployeeId"", 
     e.surname || ' ' || e.name AS ""FullName"", 
@@ -144,6 +121,7 @@ WHERE aa.completed_at >= @StartDate
                     }).OrderByDescending(t => t.CompletedAt).ToList()
                 }).ToList();
         }
+
 
         // ИСПРАВЛЕННЫЙ МЕТОД: Подсчет KPI
         public async Task<List<EmployeeKpiDto>> GetEmployeeKpiAsync(AnalyticsFilterDto filter)

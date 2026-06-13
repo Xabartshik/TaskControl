@@ -130,7 +130,29 @@ namespace TaskControl.TaskModule.Presentation
             try
             {
                 _logger.LogInformation("Запрос на получение всех пользователей");
-                var users = await _service.GetAllAsync();
+                var users = (await _service.GetAllAsync()).ToList();
+                foreach (var user in users)
+                {
+                    if (user.EmployeeId.HasValue)
+                    {
+                        var employee = await _employeeRepository.GetByIdAsync(user.EmployeeId.Value);
+                        if (employee != null)
+                        {
+                            user.FirstName = employee.Name;
+                            user.LastName = employee.Surname;
+                            user.WorkerRole = employee.Role;
+                        }
+                    }
+                    else if (user.CustomerId.HasValue)
+                    {
+                        var customer = await _customerService.GetByIdAsync(user.CustomerId.Value);
+                        if (customer != null)
+                        {
+                            user.FirstName = customer.FirstName;
+                            user.LastName = customer.LastName;
+                        }
+                    }
+                }
                 return Ok(users);
             }
             catch (Exception ex)

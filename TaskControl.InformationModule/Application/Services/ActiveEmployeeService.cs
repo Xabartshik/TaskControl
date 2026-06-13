@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -58,7 +58,7 @@ namespace TaskControl.InformationModule.Application.Services
 
             var allEmployees = await _employeeRepository.GetAllAsync();
             var workingEmployees = allEmployees
-                .Where(e => workingEmployeeIds.Contains(e.EmployeesId))
+                .Where(e => workingEmployeeIds.Contains(e.EmployeesId) && !e.IsBlocked)
                 .ToList();
 
             return workingEmployees.Select(e => new ActiveEmployeeDto

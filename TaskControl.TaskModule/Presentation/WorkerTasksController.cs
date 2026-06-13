@@ -1,7 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskControl.InformationModule.DataAccess.Interface;
 using TaskControl.TaskModule.Application.DTOs.BossPanelDTOs;
 using TaskControl.TaskModule.Application.DTOs.InventarizationDTOs;
 using TaskControl.TaskModule.Application.Interface;
@@ -17,15 +18,25 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         private readonly TaskWorkloadAggregator _taskWorkloadAggregator;
         private readonly ITaskExecutionAggregator _taskExecutionAggregator;
         private readonly IBaseTaskService _baseTaskService;
+        private readonly IEmployeeRepository _employeeRepository;
 
         public WorkerTasksController(
             TaskWorkloadAggregator aggregator,
             ITaskExecutionAggregator taskExecutionAggregator,
-            IBaseTaskService baseTaskService)
+            IBaseTaskService baseTaskService,
+            IEmployeeRepository employeeRepository)
         {
             _taskWorkloadAggregator = aggregator;
             _taskExecutionAggregator = taskExecutionAggregator;
             _baseTaskService = baseTaskService;
+            _employeeRepository = employeeRepository;
+        }
+
+        // Проверка блокировки сотрудника
+        private async Task<bool> IsEmployeeBlockedAsync(int employeeId)
+        {
+            var emp = await _employeeRepository.GetByIdAsync(employeeId);
+            return emp != null && emp.IsBlocked;
         }
 
         // Получить все ничейные задачи для филиала
@@ -40,6 +51,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpPost("{taskId}/claim")]
         public async Task<IActionResult> ClaimTask(int taskId, [FromQuery] int workerId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             bool success = await _taskExecutionAggregator.TryClaimTaskFromPoolAsync(taskId, workerId);
             if (!success) return BadRequest(new { Message = "Не удалось взять задачу. Возможно, её уже забрали." });
             return Ok();
@@ -48,6 +62,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpGet("{workerId}/pending")]
         public async Task<ActionResult<IEnumerable<MobileBaseTaskDto>>> GetPendingTasks(int workerId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             var tasks = await _taskWorkloadAggregator.GetAllPendingTasksAsync(workerId);
             return Ok(tasks);
         }
@@ -55,6 +72,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpGet("{workerId}/{taskId}/details")]
         public async Task<ActionResult<MobileBaseTaskDto>> GetDetails(int workerId, int taskId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             // Агрегатор сам найдет провайдера и вызовет его метод GetTaskDetailsAsync
             var taskDto = await _taskWorkloadAggregator.GetTaskDetailsAsync(taskId, workerId);
 
@@ -69,6 +89,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpPost("{taskId}/start")]
         public async Task<IActionResult> StartTask(int taskId, [FromQuery] int workerId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null)
             {
@@ -94,6 +117,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpPost("{taskId}/pause")]
         public async Task<IActionResult> PauseTask(int taskId, [FromQuery] int workerId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
@@ -106,6 +132,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         [HttpPost("{taskId}/cancel")]
         public async Task<IActionResult> CancelTask(int taskId, [FromQuery] int workerId)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 
@@ -143,6 +172,9 @@ namespace TaskControl.TaskModule.Presentation.Controllers
         // ДОБАВЛЕНО: [FromBody] CompleteTaskRequest? request = null
         public async Task<IActionResult> CompleteTask(int taskId, [FromQuery] int workerId, [FromBody] CompleteTaskRequest? request = null)
         {
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(workerId)) return BadRequest(new { Message = "Действие запрещено. Сотрудник заблокирован." });
+
             var baseTask = await _baseTaskService.GetById(taskId);
             if (baseTask == null) return NotFound(new { Message = $"Базовая задача с ID {taskId} не найдена." });
 

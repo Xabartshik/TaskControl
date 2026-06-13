@@ -77,7 +77,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<CheckIOEmployeeService>();
 
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
-            services.AddScoped<IService<EmployeeDto>, EmployeeService>();
+            services.AddScoped<IEmployeeService, EmployeeService>();
+            services.AddScoped<IService<EmployeeDto>>(provider => provider.GetRequiredService<IEmployeeService>());
 
             services.AddScoped<IItemRepository, ItemRepository>();
             services.AddScoped<IService<ItemDto>, ItemService>();
@@ -219,6 +220,8 @@ namespace TaskControl.Core.Infrastructure
             services.AddScoped<IEmployeeCheckInObserver, ReturnTaskGeneratorObserver>();
             services.AddScoped<ITaskExecutionProvider, ReturnExecutionProvider>();
             services.AddScoped<ITaskWorkloadProvider, ReturnWorkloadProvider>();
+            services.AddScoped<ICourierReturnService, CourierReturnService>();
+            services.AddScoped<IEmployeeBlockObserver, EmployeeBlockObserver>();
 
             services.AddSingleton<ITaskComplexityCalculator, TaskComplexityCalculator>();
             services.AddScoped<ReturnTaskGeneratorService>();
@@ -245,6 +248,27 @@ namespace TaskControl.Core.Infrastructure
                         IssuerSigningKey = new SymmetricSecurityKey(key),
                         ValidateLifetime = true,
                         ClockSkew = TimeSpan.FromSeconds(30)
+                    };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = async context =>
+                        {
+                            // Проверка активности пользователя на каждый запрос
+                            var userIdClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+                            {
+                                context.Fail("Unauthorized");
+                                return;
+                            }
+
+                            var userRepository = context.HttpContext.RequestServices.GetRequiredService<IMobileAppUserRepository>();
+                            var user = await userRepository.GetByIdAsync(userId);
+                            if (user == null || !user.IsActive)
+                            {
+                                context.Fail("User is inactive or blocked");
+                            }
+                        }
                     };
                 });
 

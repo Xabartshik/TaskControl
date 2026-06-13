@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using TaskControl.InformationModule.DataAccess.Model;
 using TaskControl.InformationModule.Domain;
 
@@ -17,6 +17,7 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
                 Name = entity.Name,
                 MiddleName = entity.MiddleName,
                 RoleId = (int)entity.Role,
+                IsBlocked = entity.IsBlocked,
 
                 CreatedAt = DateTime.UtcNow // Устанавливается при создании
             };
@@ -32,7 +33,8 @@ namespace TaskControl.InformationModule.DataAccess.Mapper
                 Surname = model.Surname,
                 Name = model.Name,
                 MiddleName = model.MiddleName,
-                Role = (WorkerRole)model.RoleId
+                Role = (WorkerRole)model.RoleId,
+                IsBlocked = model.IsBlocked
             };
         }
     }

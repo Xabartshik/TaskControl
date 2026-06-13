@@ -59,14 +59,14 @@ namespace TaskControl.TaskModule.Application.Services
             IEnumerable<int> excludedEmployeeIds = null,
             IEnumerable<int> excludedRoleIds = null)
         {
-            // 1. Кто сейчас зачекинен на складе (последняя запись - IN)
-            // ИСПРАВЛЕНО: Транслируемый в SQL подзапрос для поиска последней отметки каждого сотрудника
+            // Выбор сотрудников, у которых последняя отметка имеет тип in и была сделана не более 14 часов назад
+            var cutoffTime = DateTime.UtcNow.AddHours(-14);
             var checkedInWorkers = await _db.GetTable<EmployeeModel>()
                 .Where(e => _db.GetTable<CheckIOEmployeeModel>()
                     .Where(c => c.EmployeeId == e.EmployeesId && c.BranchId == branchId)
                     .OrderByDescending(c => c.CheckTimeStamp)
-                    .Select(c => c.CheckType)
-                    .FirstOrDefault() == "in")
+                    .Take(1)
+                    .Any(c => c.CheckType == "in" && c.CheckTimeStamp >= cutoffTime))
                 .Select(e => e.EmployeesId)
                 .ToListAsync();
 
@@ -78,6 +78,7 @@ namespace TaskControl.TaskModule.Application.Services
                         join e in _db.GetTable<EmployeeModel>() on u.EmployeeId equals e.EmployeesId
                         where checkedInWorkers.Contains(e.EmployeesId)
                               && u.IsOnBreak == false
+                              && !e.IsBlocked
                         select new { e.EmployeesId, e.RoleId };
 
             // 2.1 Применяем опциональный фильтр по ID сотрудника
@@ -151,6 +152,7 @@ namespace TaskControl.TaskModule.Application.Services
                                                 && u.IsOnBreak == false // Не на перерыве
                                                 && u.EmployeeId != excludeWorkerId // ИСКЛЮЧАЕМ ИНИЦИАТОРА ЗАДАЧИ
                                                 && (e.RoleId == 1 || e.RoleId == 2) // 1=Грузчик/Сборщик
+                                                && !e.IsBlocked
                                           select e.EmployeesId).ToListAsync();
 
             if (!availableHelpers.Any()) return null;
@@ -183,6 +185,7 @@ namespace TaskControl.TaskModule.Application.Services
                                    {
                                        e.EmployeesId,
                                        FullName = e.Surname + " " + e.Name,
+                                       e.IsBlocked,
                                        // Проверка, зачекинен ли он (последний статус "in")
                                        IsAtWork = _db.GetTable<CheckIOEmployeeModel>()
                                            .Where(c => c.EmployeeId == e.EmployeesId && c.BranchId == branchId)
@@ -200,6 +203,7 @@ namespace TaskControl.TaskModule.Application.Services
                     EmployeeId = emp.EmployeesId,
                     FullName = emp.FullName,
                     IsAtWork = emp.IsAtWork,
+                    IsBlocked = emp.IsBlocked,
                     TotalComplexity = await GetTotalActiveComplexityAsync(emp.EmployeesId)
                 };
 

@@ -312,6 +312,18 @@ namespace TaskControl.TaskModule.Application.Services
                     throw new InvalidOperationException($"В филиале {bossBranchId} нет активных сотрудников.");
                 }
             }
+            else
+            {
+                // Проверка блокировки сотрудников перед назначением инвентаризации
+                foreach (var wId in workerIds)
+                {
+                    var emp = await _activeEmployeeService.GetEmployeeByIdAsync(wId);
+                    if (emp == null || emp.IsBlocked)
+                    {
+                        throw new InvalidOperationException($"Невозможно назначить задачу заблокированному сотруднику (ID: {wId}).");
+                    }
+                }
+            }
 
             var createDto = new CreateInventoryTaskDto
             {
@@ -485,8 +497,6 @@ namespace TaskControl.TaskModule.Application.Services
         {
             _logger.LogInformation("Получение всех сотрудников филиала {BossBranchId} через фильтрацию последних чекинов", bossBranchId);
 
-            // 1. Получаем только те записи, которые являются последними для конкретного сотрудника
-            // и при этом относятся к вашему филиалу.
             var lastChecks = await _db.GetTable<CheckIOEmployeeModel>()
                 .Where(c => c.CheckTimeStamp == _db.GetTable<CheckIOEmployeeModel>()
                     .Where(sub => sub.EmployeeId == c.EmployeeId)
@@ -496,19 +506,30 @@ namespace TaskControl.TaskModule.Application.Services
 
             var result = new List<AvailableEmployeeDto>();
 
+            // Фиксируем текущее время один раз до начала цикла
+            var currentTime = DateTime.UtcNow;
+
             foreach (var check in lastChecks)
             {
                 var emp = await _activeEmployeeService.GetEmployeeByIdAsync(check.EmployeeId);
                 if (emp == null) continue;
 
+                // Вычисляем, сколько часов прошло с момента последней отметки
+                var hoursSinceLastCheck = (currentTime - check.CheckTimeStamp).TotalHours;
+
                 result.Add(new AvailableEmployeeDto
                 {
                     EmployeeId = emp.EmployeesId,
                     FullName = $"{emp.Surname} {emp.Name}",
-                    // Если последний тип записи не 'check-out' — значит он на месте или на маршруте
-                    IsAtWork = check.CheckType != "check-out",
+
+                    // Сотрудник считается на работе, если:
+                    // 1. Последняя отметка НЕ 'check-out'
+                    // 2. С момента последней отметки прошло 14 часов или меньше
+                    IsAtWork = check.CheckType != "check-out" && hoursSinceLastCheck <= 14,
+
                     ActiveTasksCount = await _aggregator.GetTotalActiveWorkloadAsync(emp.EmployeesId),
-                    IsRecommended = false
+                    IsRecommended = false,
+                    IsBlocked = emp.IsBlocked
                 });
             }
 

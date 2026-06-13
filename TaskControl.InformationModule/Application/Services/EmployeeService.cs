@@ -12,20 +12,23 @@ using TaskControl.InformationModule.Domain;
 
 namespace TaskControl.InformationModule.Services
 {
-    public class EmployeeService : IService<EmployeeDto>
+    public class EmployeeService : IEmployeeService
     {
         private readonly IEmployeeRepository _repository;
         private readonly ILogger<EmployeeService> _logger;
         private readonly AppSettings _appSettings;
+        private readonly IEnumerable<IEmployeeBlockObserver> _blockObservers;
 
         public EmployeeService(
             IEmployeeRepository repository,
             ILogger<EmployeeService> logger,
-            IOptions<AppSettings> options)
+            IOptions<AppSettings> options,
+            IEnumerable<IEmployeeBlockObserver> blockObservers)
         {
             _repository = repository;
             _logger = logger;
             _appSettings = options.Value;
+            _blockObservers = blockObservers;
         }
 
         public async Task<int> Add(EmployeeDto dto)
@@ -161,6 +164,78 @@ namespace TaskControl.InformationModule.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка обновления сотрудника ID: {EmployeesId}", dto.EmployeesId);
+                throw;
+            }
+        }
+
+        public async Task<bool> BlockEmployeeAsync(int id)
+        {
+            _logger.LogInformation("Блокировка сотрудника ID: {EmployeesId}", id);
+            try
+            {
+                var emp = await _repository.GetByIdAsync(id);
+                if (emp == null)
+                {
+                    _logger.LogWarning("Сотрудник ID: {EmployeesId} не найден для блокировки", id);
+                    return false;
+                }
+
+                emp.IsBlocked = true;
+                await _repository.UpdateAsync(emp);
+
+                foreach (var observer in _blockObservers)
+                {
+                    try
+                    {
+                        await observer.OnEmployeeBlockedAsync(id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при вызове наблюдателя блокировки сотрудника {Id}", id);
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при блокировке сотрудника ID: {Id}", id);
+                throw;
+            }
+        }
+
+        public async Task<bool> UnblockEmployeeAsync(int id)
+        {
+            _logger.LogInformation("Разблокировка сотрудника ID: {EmployeesId}", id);
+            try
+            {
+                var emp = await _repository.GetByIdAsync(id);
+                if (emp == null)
+                {
+                    _logger.LogWarning("Сотрудник ID: {EmployeesId} не найден для разблокировки", id);
+                    return false;
+                }
+
+                emp.IsBlocked = false;
+                await _repository.UpdateAsync(emp);
+
+                foreach (var observer in _blockObservers)
+                {
+                    try
+                    {
+                        await observer.OnEmployeeUnblockedAsync(id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при вызове наблюдателя разблокировки сотрудника {Id}", id);
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при разблокировке сотрудника ID: {Id}", id);
                 throw;
             }
         }

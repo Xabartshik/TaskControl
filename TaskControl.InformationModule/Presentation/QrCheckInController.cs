@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.DTOs;
 using TaskControl.InformationModule.Application.Services;
+using TaskControl.InformationModule.DataAccess.Interface;
 
 namespace TaskControl.InformationModule.Presentation
 {
@@ -18,6 +19,7 @@ namespace TaskControl.InformationModule.Presentation
         private readonly IQRTokenService _qrTokenService;
         private readonly IService<CheckIOEmployeeDto> _checkIoService;
         private readonly ILogger<QrCheckInController> _logger;
+        private readonly IEmployeeRepository _employeeRepository;
 
         // Инжектим коллекцию всех модулей, которые хотят реагировать на чекины
         private readonly IEnumerable<IEmployeeCheckInObserver> _checkInObservers;
@@ -26,12 +28,21 @@ namespace TaskControl.InformationModule.Presentation
             IQRTokenService qrTokenService,
             IService<CheckIOEmployeeDto> checkIoService,
             ILogger<QrCheckInController> logger,
+            IEmployeeRepository employeeRepository,
             IEnumerable<IEmployeeCheckInObserver> checkInObservers)
         {
             _qrTokenService = qrTokenService;
             _checkIoService = checkIoService;
             _logger = logger;
+            _employeeRepository = employeeRepository;
             _checkInObservers = checkInObservers;
+        }
+
+        // Проверка блокировки сотрудника
+        private async Task<bool> IsEmployeeBlockedAsync(int employeeId)
+        {
+            var emp = await _employeeRepository.GetByIdAsync(employeeId);
+            return emp != null && emp.IsBlocked;
         }
 
         public class ScanQrRequestDto
@@ -53,6 +64,10 @@ namespace TaskControl.InformationModule.Presentation
             var employeeIdClaim = User.Claims.FirstOrDefault(c => c.Type == "EmployeeId" || c.Type == "id")?.Value;
             if (string.IsNullOrWhiteSpace(employeeIdClaim) || !int.TryParse(employeeIdClaim, out int employeeId))
                 return Unauthorized(new { Message = "Не удалось определить ID сотрудника из токена." });
+
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(employeeId))
+                return Unauthorized(new { Message = "Действие запрещено. Сотрудник заблокирован." });
 
             var checkDto = new CheckIOEmployeeDto
             {
@@ -101,6 +116,10 @@ namespace TaskControl.InformationModule.Presentation
             var employeeIdClaim = User.Claims.FirstOrDefault(c => c.Type == "EmployeeId" || c.Type == "id")?.Value;
             if (string.IsNullOrWhiteSpace(employeeIdClaim) || !int.TryParse(employeeIdClaim, out int employeeId))
                 return Unauthorized(new { Message = "Не удалось определить ID сотрудника из токена." });
+
+            // Проверка блокировки сотрудника
+            if (await IsEmployeeBlockedAsync(employeeId))
+                return Unauthorized(new { Message = "Действие запрещено. Сотрудник заблокирован." });
 
             var checkDto = new CheckIOEmployeeDto
             {
