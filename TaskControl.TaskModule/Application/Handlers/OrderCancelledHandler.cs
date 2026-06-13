@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InventoryModule.DataAccess.Model;
 using TaskControl.OrderModule.Domain;
@@ -111,7 +111,19 @@ namespace TaskControl.TaskModule.Application.Handlers
 
             var itemsToReturn = await _cancellationService.ProcessCancellationAsync(orderId, cancelledPositions, true);
 
-            if (previousStatus != OrderStatus.Created && previousStatus != OrderStatus.AwaitingPayment && itemsToReturn.Any())
+            bool skipReturnTask = false;
+            if (previousStatus == OrderStatus.Assembly)
+            {
+                // Если задача сборки не была начата, товары физически еще находятся на полке,
+                // поэтому создавать задачу возврата на полку не нужно
+                bool isAnyAssemblyStarted = activeAssignments.Any(a => a.Status == 1 || a.Status == 2 || a.StartedAt.HasValue);
+                if (!isAnyAssemblyStarted)
+                {
+                    skipReturnTask = true;
+                }
+            }
+
+            if (!skipReturnTask && previousStatus != OrderStatus.Created && previousStatus != OrderStatus.AwaitingPayment && itemsToReturn.Any())
             {
                 await _returnTaskGenerator.GenerateReturnTaskFromCancelledItemsAsync(orderId, branchId, itemsToReturn);
             }

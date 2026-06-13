@@ -556,7 +556,7 @@ namespace TaskControl.TaskModule.Application.Services
             var recommended = result.OrderBy(x => x.ActiveTasksCount).Take(3).ToList();
             foreach (var r in recommended) r.IsRecommended = true;
 
-            return result;
+            return result.OrderBy(x => x.ActiveTasksCount).ToList();
         }
 
         public async Task<IEnumerable<PositionCellDto>> GetPositionsAsync(int bossBranchId)

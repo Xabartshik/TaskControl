@@ -79,8 +79,13 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
-            var tasks = await _assemblyRepo.GetByUserIdAsync(workerId);
-            return tasks.Count(t => (int)t.Status == 0 || (int)t.Status == 1);
+            var query = from a in _db.GetTable<OrderAssemblyAssignmentModel>()
+                        join t in _db.GetTable<BaseTaskModel>() on a.TaskId equals t.TaskId
+                        where a.AssignedToUserId == workerId
+                           && (a.Status == 0 || a.Status == 1 || a.Status == 2)
+                           && t.Status != "Completed" && t.Status != "Cancelled"
+                        select a.Id;
+            return await query.CountAsync();
         }
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)

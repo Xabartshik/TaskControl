@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,9 +36,13 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
-            // Считаем задачи в статусе Assigned (0) или InProgress (1)
-            return await _db.GetTable<ReturnAssignmentModel>()
-                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1 || a.Status == 2));
+            var query = from a in _db.GetTable<ReturnAssignmentModel>()
+                        join t in _db.GetTable<BaseTaskModel>() on a.TaskId equals t.TaskId
+                        where a.AssignedToUserId == workerId
+                           && (a.Status == 0 || a.Status == 1 || a.Status == 2)
+                           && t.Status != "Completed" && t.Status != "Cancelled"
+                        select a.Id;
+            return await query.CountAsync();
         }
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)
@@ -346,7 +350,7 @@ namespace TaskControl.TaskModule.Application.Providers
                                         where p.BranchId == branchId
                                            && !reservedZones.Contains(p.ZoneCode)
                                            && p.Status == "Active"
-                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId && ip.Quantity > 0)
                                            && (p.Length >= itemL && p.Width >= itemW && p.Height >= itemH)
                                         select p.PositionId).FirstOrDefaultAsync();
 
@@ -358,7 +362,7 @@ namespace TaskControl.TaskModule.Application.Providers
                                      where p.BranchId == branchId
                                         && !reservedZones.Contains(p.ZoneCode)
                                         && p.Status == "Active"
-                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId && ip.Quantity > 0)
                                      select p.PositionId).FirstOrDefaultAsync();
 
             if (fallbackPos != 0) return fallbackPos;

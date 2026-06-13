@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -77,9 +77,13 @@ namespace TaskControl.TaskModule.Application.Providers
 
         public async Task<int> GetActiveWorkloadCountAsync(int workerId)
         {
-            // 0 = Assigned, 1 = InProgress
-            return await _db.GetTable<OrderHandoverAssignmentModel>()
-                .CountAsync(a => a.AssignedToUserId == workerId && (a.Status == 0 || a.Status == 1 || a.Status == 2));
+            var query = from a in _db.GetTable<OrderHandoverAssignmentModel>()
+                        join t in _db.GetTable<BaseTaskModel>() on a.TaskId equals t.TaskId
+                        where a.AssignedToUserId == workerId
+                           && (a.Status == 0 || a.Status == 1 || a.Status == 2)
+                           && t.Status != "Completed" && t.Status != "Cancelled"
+                        select a.Id;
+            return await query.CountAsync();
         }
 
         public async Task<double> GetActiveWorkloadComplexityAsync(int workerId)

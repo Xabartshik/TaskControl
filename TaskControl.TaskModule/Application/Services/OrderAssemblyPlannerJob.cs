@@ -351,7 +351,7 @@ namespace TaskControl.TaskModule.Application.Services
                     Quantity = x.Quantity
                 }).ToList();
 
-                var occupiedCellIds = _db.GetTable<ItemPositionModel>().Select(ip => ip.PositionId);
+                var occupiedCellIds = _db.GetTable<ItemPositionModel>().Where(ip => ip.Quantity > 0).Select(ip => ip.PositionId);
                 var availableCells = await _db.GetTable<PositionModel>()
                     .Where(p => p.BranchId == order.BranchId && p.ZoneCode == "PICKUP" && p.Status == "Active" && !occupiedCellIds.Contains(p.PositionId))
                     .Select(p => new CellToPackInto { PositionId = p.PositionId, Length = p.Length, Width = p.Width, Height = p.Height })

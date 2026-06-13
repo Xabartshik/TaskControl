@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -175,7 +175,7 @@ namespace TaskControl.TaskModule.Application.Services
             // 2. Поиск пустой полки по габаритам
             var emptyFittedPos = await (from p in _db.GetTable<PositionModel>()
                                         where p.BranchId == branchId && !reservedZones.Contains(p.ZoneCode) && p.Status == "Active"
-                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                           && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId && ip.Quantity > 0)
                                            && (p.Length >= item.Length && p.Width >= item.Width && p.Height >= item.Height)
                                         select p.PositionId).FirstOrDefaultAsync();
 
@@ -184,7 +184,7 @@ namespace TaskControl.TaskModule.Application.Services
             // 3. Запасной вариант (любая пустая активная ячейка)
             var fallbackPos = await (from p in _db.GetTable<PositionModel>()
                                      where p.BranchId == branchId && !reservedZones.Contains(p.ZoneCode) && p.Status == "Active"
-                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId)
+                                        && !_db.GetTable<ItemPositionModel>().Any(ip => ip.PositionId == p.PositionId && ip.Quantity > 0)
                                      select p.PositionId).FirstOrDefaultAsync();
 
             return fallbackPos != 0 ? fallbackPos : null;
