@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using TaskControl.Core.Shared.SharedInterfaces;
 using TaskControl.InformationModule.Application.Services;
 using TaskControl.OrderModule.Application.DTOs;
 using TaskControl.OrderModule.Application.Interface;
+using TaskControl.OrderModule.Application.Exceptions;
 
 namespace TaskControl.OrderModule.Presentation.Controllers
 {
@@ -160,6 +161,16 @@ namespace TaskControl.OrderModule.Presentation.Controllers
             {
                 var newId = await _service.Add(dto);
                 return CreatedAtAction(nameof(GetById), new { id = newId }, newId);
+            }
+            catch (OutOfStockException ex)
+            {
+                // Возвращаем структурированный ответ с кодом ошибки и списком отсутствующих товаров
+                return Conflict(new OrderCreationConflictDto
+                {
+                    Code = "OUT_OF_STOCK",
+                    Message = ex.Message,
+                    InvalidItemIds = ex.OutOfStockItemIds
+                });
             }
             catch (ArgumentException ex)
             {

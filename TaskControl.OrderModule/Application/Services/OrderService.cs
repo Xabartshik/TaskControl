@@ -275,6 +275,8 @@ namespace TaskControl.OrderModule.Application.Services
                 // 3. СОХРАНЕНИЕ ЗАКАЗА И ПОЗИЦИЙ
                 int orderId = await _repository.AddAsync(entity);
 
+                var outOfStockItemIds = new List<int>();
+
                 foreach (var vp in validPositions)
                 {
                     var pos = new OrderPosition
@@ -282,7 +284,7 @@ namespace TaskControl.OrderModule.Application.Services
                         OrderId = orderId,
                         ItemId = vp.dto.ItemId,
                         Quantity = vp.dto.Quantity,
-                        Price = vp.item.Price // <-- ФИКСИРУЕМ ЦЕНУ ЗА 1 ШТ. НА МОМЕНТ ПОКУПКИ
+                        Price = vp.item.Price // Запишем цену товара на момент оформления заказа
                     };
 
                     int orderPositionId = await _positionRepository.AddAsync(pos);
@@ -296,8 +298,16 @@ namespace TaskControl.OrderModule.Application.Services
 
                     if (!isAllocated)
                     {
-                        throw new InvalidOperationException($"Критическая ошибка: Товар {vp.dto.ItemId} закончился на складе в процессе оформления.");
+                        outOfStockItemIds.Add(vp.dto.ItemId);
                     }
+                }
+
+                if (outOfStockItemIds.Count > 0)
+                {
+                    throw new TaskControl.OrderModule.Application.Exceptions.OutOfStockException(
+                        "Недостаточно товара на складе для оформления заказа",
+                        outOfStockItemIds
+                    );
                 }
 
                 // 4. ВЫЗОВ СОБЫТИЙ
