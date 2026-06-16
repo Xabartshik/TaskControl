@@ -305,7 +305,7 @@ namespace TaskControl.TaskModule.Application.Services
                     .Where(l => assignmentIds.Contains(l.OrderAssemblyAssignmentId) && l.Status == 2)
                     .ToListAsync();
 
-                var orderIdsToUpdate = new HashSet<int>();
+                var orderIdsToUpdate = assignments.Select(a => a.OrderId).Distinct().ToHashSet();
                 var targetCellIds = new HashSet<int>(); // Для освобождения ячеек PICKUP
 
                 foreach (var line in completedLines)
@@ -314,15 +314,13 @@ namespace TaskControl.TaskModule.Application.Services
                         .FirstOrDefaultAsync(ip => ip.Id == line.ItemPositionId);
                     if (sourceItemPos == null) continue;
 
-                    var reservation = await _db.GetTable<OrderReservationModel>()
-                        .FirstOrDefaultAsync(r => r.ItemPositionId == line.ItemPositionId);
-
-                    if (reservation != null)
-                    {
-                        var orderPosition = await _db.GetTable<OrderPositionModel>()
-                            .FirstOrDefaultAsync(op => op.UniqueId == reservation.OrderPositionId);
-                        if (orderPosition != null) orderIdsToUpdate.Add(orderPosition.OrderId);
-                    }
+                    // Находим резерв для текущего заказа и позиции товара
+                    var reservation = await (
+                        from r in _db.GetTable<OrderReservationModel>()
+                        join op in _db.GetTable<OrderPositionModel>() on r.OrderPositionId equals op.UniqueId
+                        where op.OrderId == mainAssignment.OrderId && r.ItemPositionId == line.ItemPositionId
+                        select r
+                    ).FirstOrDefaultAsync();
 
                     // --- МАГИЯ 1: Пишем лог перемещения ---
                     await _db.InsertAsync(new ItemMovementModel
@@ -419,7 +417,7 @@ namespace TaskControl.TaskModule.Application.Services
                     await _db.UpdateAsync(baseTask);
                 }
 
-                // --- МАГИЯ 5: Пишем телеметрию (аналитика работы) ---
+                // --- МАГИЯ 5: Пишем телеметрию (Статистика работы) ---
                 int itemsProcessed = completedLines.Sum(l => l.Quantity);
                 DateTime startTime = mainAssignment.StartedAt ?? mainAssignment.AssignedAt;
                 int durationSeconds = (int)(DateTime.UtcNow - startTime).TotalSeconds;

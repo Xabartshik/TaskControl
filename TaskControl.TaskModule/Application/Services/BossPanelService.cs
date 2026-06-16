@@ -440,7 +440,10 @@ namespace TaskControl.TaskModule.Application.Services
                                 if (root.TryGetProperty("totalLines", out var tLines) || root.TryGetProperty("TotalLines", out tLines))
                                     if (tLines.ValueKind == System.Text.Json.JsonValueKind.Number) assignedVolume = tLines.GetInt32();
 
-                                if (root.TryGetProperty("completedLinesCount", out var cLines) || root.TryGetProperty("CompletedLinesCount", out cLines))
+                                if (root.TryGetProperty("completedLinesCount", out var cLines) ||
+                                    root.TryGetProperty("CompletedLinesCount", out cLines) ||
+                                    root.TryGetProperty("completedLines", out cLines) ||
+                                    root.TryGetProperty("CompletedLines", out cLines))
                                     if (cLines.ValueKind == System.Text.Json.JsonValueKind.Number) completedVolume = cLines.GetInt32();
                             }
                             catch
@@ -485,6 +488,212 @@ namespace TaskControl.TaskModule.Application.Services
 
             return result;
         }
+
+        public async Task<IEnumerable<BossPanelTaskCardDto>> GetAllTasksAsync(int bossBranchId, DateTime? from, DateTime? to, int? employeeId)
+        {
+            _logger.LogInformation("Получение всех задач (фильтры) для филиала {BossBranchId}", bossBranchId);
+
+            var tasks = await _activeTaskRepository.GetByBranchAsync(bossBranchId);
+
+            if (from.HasValue)
+                tasks = tasks.Where(t => t.CreatedAt >= from.Value);
+            if (to.HasValue)
+                tasks = tasks.Where(t => t.CreatedAt <= to.Value);
+
+            var result = new List<BossPanelTaskCardDto>();
+
+            foreach (var t in tasks.OrderByDescending(x => x.CreatedAt))
+            {
+                var dict = new Dictionary<int, TaskAssigneeProgressDto>();
+                var assignedIds = await _aggregator.GetAssignedEmployeeIdsAsync(t.TaskId);
+
+                if (employeeId.HasValue && !assignedIds.Contains(employeeId.Value))
+                    continue;
+
+                foreach (var empId in assignedIds)
+                {
+                    var details = await _aggregator.GetTaskDetailsAsync(t.TaskId, empId);
+                    var emp = await _activeEmployeeService.GetEmployeeByIdAsync(empId);
+
+                    int assignedVolume = 1;
+                    int completedVolume = 0;
+                    string statusStr = "Назначено";
+
+                    if (details != null)
+                    {
+                        statusStr = details.AssignmentStatus switch
+                        {
+                            Domain.AssignmentStatus.InProgress => "В процессе",
+                            Domain.AssignmentStatus.Completed => "Завершено",
+                            Domain.AssignmentStatus.Paused => "На паузе",
+                            Domain.AssignmentStatus.Cancelled => "Отменена",
+                            _ => "Назначена"
+                        };
+
+                        if (details.TaskDetails != null)
+                        {
+                            try
+                            {
+                                var json = System.Text.Json.JsonSerializer.Serialize(details.TaskDetails);
+                                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+
+                                if (root.TryGetProperty("totalLines", out var tLines) || root.TryGetProperty("TotalLines", out tLines))
+                                    if (tLines.ValueKind == System.Text.Json.JsonValueKind.Number) assignedVolume = tLines.GetInt32();
+
+                                if (root.TryGetProperty("completedLinesCount", out var cLines) ||
+                                    root.TryGetProperty("CompletedLinesCount", out cLines) ||
+                                    root.TryGetProperty("completedLines", out cLines) ||
+                                    root.TryGetProperty("CompletedLines", out cLines))
+                                    if (cLines.ValueKind == System.Text.Json.JsonValueKind.Number) completedVolume = cLines.GetInt32();
+                            }
+                            catch { }
+                        }
+
+                        if (details.AssignmentStatus == Domain.AssignmentStatus.Completed)
+                        {
+                            completedVolume = assignedVolume;
+                        }
+                    }
+
+                    dict[empId] = new TaskAssigneeProgressDto
+                    {
+                        EmployeeId = empId,
+                        FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {empId}",
+                        AssignedVolume = assignedVolume,
+                        CompletedVolume = completedVolume,
+                        Status = statusStr
+                    };
+                }
+
+                var assignees = dict.Values.ToList();
+                int totalAssigned = assignees.Sum(x => x.AssignedVolume);
+                int totalCompleted = assignees.Sum(x => x.CompletedVolume);
+                int progress = totalAssigned > 0 ? (totalCompleted * 100 / totalAssigned) : 0;
+
+                if (t.Status == Domain.TaskStatus.Completed) progress = 100;
+
+                result.Add(new BossPanelTaskCardDto
+                {
+                    Id = t.TaskId,
+                    Title = t.Title,
+                    TaskType = t.Type,
+                    CreatedAt = t.CreatedAt,
+                    ExpectedCompletionDate = t.CompletedAt,
+                    OverallProgressPercentage = progress,
+                    Assignees = assignees
+                });
+            }
+
+            return result;
+        }
+
+        public async Task<IEnumerable<BossPanelTaskCardDto>> GetTasksForOrderAsync(int bossBranchId, int orderId)
+        {
+            _logger.LogInformation("Получение задач для заказа {OrderId} в филиале {BossBranchId}", orderId, bossBranchId);
+
+            var assemblyTaskIds = await _db.GetTable<OrderAssemblyAssignmentModel>()
+                .Where(a => a.OrderId == orderId && a.BranchId == bossBranchId)
+                .Select(a => a.TaskId)
+                .Distinct()
+                .ToListAsync();
+
+            var handoverTaskIds = await _db.GetTable<OrderHandoverAssignmentModel>()
+                .Where(a => a.OrderId == orderId)
+                .Select(a => a.TaskId)
+                .Distinct()
+                .ToListAsync();
+
+            var allTaskIds = assemblyTaskIds.Concat(handoverTaskIds).Distinct().ToList();
+
+            var branchTasks = await _activeTaskRepository.GetByBranchAsync(bossBranchId);
+            var targetTasks = branchTasks.Where(t => allTaskIds.Contains(t.TaskId)).ToList();
+
+            var result = new List<BossPanelTaskCardDto>();
+
+            foreach (var t in targetTasks.OrderByDescending(x => x.CreatedAt))
+            {
+                var dict = new Dictionary<int, TaskAssigneeProgressDto>();
+                var assignedIds = await _aggregator.GetAssignedEmployeeIdsAsync(t.TaskId);
+
+                foreach (var empId in assignedIds)
+                {
+                    var details = await _aggregator.GetTaskDetailsAsync(t.TaskId, empId);
+                    var emp = await _activeEmployeeService.GetEmployeeByIdAsync(empId);
+
+                    int assignedVolume = 1;
+                    int completedVolume = 0;
+                    string statusStr = "Назначено";
+
+                    if (details != null)
+                    {
+                        statusStr = details.AssignmentStatus switch
+                        {
+                            Domain.AssignmentStatus.InProgress => "В процессе",
+                            Domain.AssignmentStatus.Completed => "Завершено",
+                            Domain.AssignmentStatus.Paused => "На паузе",
+                            Domain.AssignmentStatus.Cancelled => "Отменена",
+                            _ => "Назначена"
+                        };
+
+                        if (details.TaskDetails != null)
+                        {
+                            try
+                            {
+                                var json = System.Text.Json.JsonSerializer.Serialize(details.TaskDetails);
+                                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+
+                                if (root.TryGetProperty("totalLines", out var tLines) || root.TryGetProperty("TotalLines", out tLines))
+                                    if (tLines.ValueKind == System.Text.Json.JsonValueKind.Number) assignedVolume = tLines.GetInt32();
+
+                                if (root.TryGetProperty("completedLinesCount", out var cLines) ||
+                                    root.TryGetProperty("CompletedLinesCount", out cLines) ||
+                                    root.TryGetProperty("completedLines", out cLines) ||
+                                    root.TryGetProperty("CompletedLines", out cLines))
+                                    if (cLines.ValueKind == System.Text.Json.JsonValueKind.Number) completedVolume = cLines.GetInt32();
+                            }
+                            catch { }
+                        }
+
+                        if (details.AssignmentStatus == Domain.AssignmentStatus.Completed)
+                        {
+                            completedVolume = assignedVolume;
+                        }
+                    }
+
+                    dict[empId] = new TaskAssigneeProgressDto
+                    {
+                        EmployeeId = empId,
+                        FullName = emp != null ? $"{emp.Surname} {emp.Name}" : $"Работник {empId}",
+                        AssignedVolume = assignedVolume,
+                        CompletedVolume = completedVolume,
+                        Status = statusStr
+                    };
+                }
+
+                var assignees = dict.Values.ToList();
+                int totalAssigned = assignees.Sum(x => x.AssignedVolume);
+                int totalCompleted = assignees.Sum(x => x.CompletedVolume);
+                int progress = totalAssigned > 0 ? (totalCompleted * 100 / totalAssigned) : 0;
+
+                if (t.Status == Domain.TaskStatus.Completed) progress = 100;
+
+                result.Add(new BossPanelTaskCardDto
+                {
+                    Id = t.TaskId,
+                    Title = t.Title,
+                    TaskType = t.Type,
+                    CreatedAt = t.CreatedAt,
+                    ExpectedCompletionDate = t.CompletedAt,
+                    OverallProgressPercentage = progress,
+                    Assignees = assignees
+                });
+            }
+
+            return result;
+        }
+
         public async Task<IEnumerable<EmployeeWorkloadDto>> GetEmployeeWorkloadAsync(int bossBranchId)
         {
             _logger.LogInformation("Получение загруженности сотрудников филиала {BossBranchId} через агрегатор", bossBranchId);

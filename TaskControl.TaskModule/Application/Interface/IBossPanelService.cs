@@ -49,6 +49,8 @@ namespace TaskControl.TaskModule.Application.Interface
         Task<IEnumerable<TaskReportGroupDto>> GetGroupedTaskReportsAsync(int bossBranchId);
 
         Task<IEnumerable<BossPanelTaskCardDto>> GetActiveTasksAsync(int bossBranchId);
+        Task<IEnumerable<BossPanelTaskCardDto>> GetAllTasksAsync(int bossBranchId, DateTime? from, DateTime? to, int? employeeId);
+        Task<IEnumerable<BossPanelTaskCardDto>> GetTasksForOrderAsync(int bossBranchId, int orderId);
         Task<IEnumerable<EmployeeWorkloadDto>> GetEmployeeWorkloadAsync(int bossBranchId);
         Task<IEnumerable<AvailableEmployeeDto>> GetAvailableEmployeesAsync(int bossBranchId);
 

@@ -74,7 +74,7 @@ namespace TaskControl.ReportsModule.Application.Services
         {
             var data = await _repository.GetTopItemsAsync(filter);
             // Вызываем метод генерации из ReportExportService, который мы обновили (с графиками)
-            return _exportService.GenerateTopItemsPdf(data, "Аналитика: Популярные товары и объемы");
+            return _exportService.GenerateTopItemsPdf(data, "Статистика: Популярные товары и объемы");
         }
 
         public async Task<List<EmployeeKpiDto>> GetEmployeeKpiAsync(AnalyticsFilterDto filter)

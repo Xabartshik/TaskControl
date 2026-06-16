@@ -198,10 +198,10 @@ namespace TaskControl.TaskModule.Application.Providers
             var assignments = await _assemblyRepo.GetByTaskIdAsync(taskId);
 
             return assignments
-                .Where(a => a.Status != AssignmentStatus.Completed && a.Status != AssignmentStatus.Cancelled)
+                .Where(a => a.Status != AssignmentStatus.Cancelled)
                 .Select(a => a.AssignedToUserId)
-                .Where(id => id.HasValue) // 1. Убираем null значения
-                .Select(id => id.Value)    // 2. Преобразуем int? в int
+                .Where(id => id.HasValue)
+                .Select(id => id.Value)
                 .Distinct()
                 .ToList();
         }

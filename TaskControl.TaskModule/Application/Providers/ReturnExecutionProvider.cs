@@ -1,4 +1,4 @@
-﻿using LinqToDB;
+using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.Extensions.Logging;
 using System;
@@ -191,7 +191,8 @@ namespace TaskControl.TaskModule.Application.Providers
 
                         // 2. Вычитаем из источника
                         if (sourceItemPos.Quantity <= qtyToMove)
-                            await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                            // ИСПРАВЛЕНИЕ: Только обнуляем количество, чтобы не ломать историю
+                            await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == sourceItemPos.Id).Set(ip => ip.Quantity, 0).UpdateAsync();
                         else
                             await _db.GetTable<ItemPositionModel>().Where(ip => ip.Id == sourceItemPos.Id)
                                 .Set(ip => ip.Quantity, ip => ip.Quantity - qtyToMove).UpdateAsync();

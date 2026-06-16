@@ -1,4 +1,4 @@
-﻿#if DEBUG
+#if DEBUG
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.AspNetCore.Mvc;
@@ -855,6 +855,16 @@ namespace TaskControl.Web.Controllers
                 _logger.LogError(ex, "|   !!! [DEBUG] Ошибка в генераторе тестовых заказов");
                 return StatusCode(500, $"Ошибка генератора: {ex.Message}");
             }
+        }
+
+        [HttpGet("tasks/{taskId}/inspect-return")]
+        public async Task<IActionResult> InspectReturnTask(int taskId)
+        {
+            var assignments = await _db.GetTable<ReturnAssignmentModel>().Where(a => a.TaskId == taskId).ToListAsync();
+            var assignmentIds = assignments.Select(a => a.Id).ToList();
+            var lines = await _db.GetTable<ReturnLineModel>().Where(l => assignmentIds.Contains(l.ReturnAssignmentId)).ToListAsync();
+            var itemPositions = await _db.GetTable<ItemPositionModel>().Where(ip => lines.Select(l => l.ItemPositionId).Contains(ip.Id)).ToListAsync();
+            return Ok(new { assignments, lines, itemPositions });
         }
 
         /// <summary>

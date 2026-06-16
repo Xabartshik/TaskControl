@@ -1,4 +1,4 @@
-﻿using Hangfire.Server;
+using Hangfire.Server;
 using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.Extensions.Logging;
@@ -265,7 +265,9 @@ namespace TaskControl.TaskModule.Application.Providers
                             .UpdateAsync();
 
                         // Теперь безопасно удаляем ячейку
-                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                        // await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                        // ИСПРАВЛЕНИЕ: Только обнуляем количество, чтобы не ломать историю
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).Set(ip => ip.Quantity, 0).UpdateAsync();
                     }
                     else
                     {
@@ -351,7 +353,9 @@ namespace TaskControl.TaskModule.Application.Providers
                         // ВОЗВРАЩЕНО (Self-Healing): Очистка пустой складской полки
                         await reservations.Where(r => r.ItemPositionId == sourceItemPos.Id).Set(r => r.ItemPositionId, (int?)null).UpdateAsync();
                         await _db.GetTable<OrderHandoverLineModel>().Where(l => l.ItemPositionId == sourceItemPos.Id).Set(l => l.ItemPositionId, (int?)null).UpdateAsync();
-                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                        // await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).DeleteAsync();
+                        // ИСПРАВЛЕНИЕ: Только обнуляем количество, чтобы не ломать историю
+                        await itemPositions.Where(ip => ip.Id == sourceItemPos.Id).Set(ip => ip.Quantity, 0).UpdateAsync();
                     }
                     else
                     {
@@ -507,29 +511,48 @@ namespace TaskControl.TaskModule.Application.Providers
 
             foreach (var line in lines)
             {
-                var itemInfoQuery = from ip in itemPositions
-                                    join i in items on ip.ItemId equals i.ItemId
-                                    where ip.Id == line.ItemPositionId
-                                    select new { i.ItemId, i.Name, i.Barcode, ip.PositionId };
-
-                var itemInfo = await itemInfoQuery.FirstOrDefaultAsync();
-
-                string sourceCellCode = "Неизвестная ячейка";
-                if (itemInfo != null)
-                {
-                    var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == itemInfo.PositionId);
-                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemInfo.PositionId.ToString();
-                }
-
                 var orderPos = await _db.GetTable<OrderPositionModel>()
                     .FirstOrDefaultAsync(op => op.UniqueId == line.OrderPositionId);
+                var itemId = orderPos?.ItemId ?? 0;
+
+                var item = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemId);
+
+                int? positionId = null;
+                if (line.ItemPositionId.HasValue)
+                {
+                    var ip = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(x => x.Id == line.ItemPositionId.Value);
+                    if (ip != null)
+                    {
+                        positionId = ip.PositionId;
+                    }
+                }
+
+                if (positionId == null && itemId > 0)
+                {
+                    var lastMovement = await _db.GetTable<ItemMovementModel>()
+                        .Where(m => m.TaskId == taskId && m.ItemId == itemId)
+                        .OrderByDescending(m => m.CreatedAt)
+                        .FirstOrDefaultAsync();
+
+                    if (lastMovement != null)
+                    {
+                        positionId = lastMovement.SourcePositionId;
+                    }
+                }
+
+                string sourceCellCode = "Неизвестная ячейка";
+                if (positionId.HasValue)
+                {
+                    var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == positionId.Value);
+                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? positionId.Value.ToString();
+                }
 
                 dto.ItemsToScan.Add(new HandoverItemDto
                 {
                     LineId = line.Id,
-                    ItemId = itemInfo?.ItemId ?? 0,
-                    ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                    Barcode = itemInfo?.Barcode ?? "Неизвестный штрих-код",
+                    ItemId = itemId,
+                    ItemName = item?.Name ?? "Неизвестный товар",
+                    Barcode = item?.Barcode ?? "Неизвестный штрих-код",
                     SourceCellCode = sourceCellCode,
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity,

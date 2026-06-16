@@ -33,7 +33,7 @@ namespace TaskControl.ReportsModule.Application.Services
         }
 
         // 1. ОТЧЕТ ПО KPI СОТРУДНИКОВ (С графиками нагрузки и тоннажом)
-        public byte[] GenerateEmployeeKpiPdf(IEnumerable<EmployeeKpiDto> data, string title = "Глубокая аналитика: Эффективность и нагрузка сотрудников", DateTime? startDate = null, DateTime? endDate = null)
+        public byte[] GenerateEmployeeKpiPdf(IEnumerable<EmployeeKpiDto> data, string title = "Глубокая статистика: Эффективность и нагрузка сотрудников", DateTime? startDate = null, DateTime? endDate = null)
         {
             return Document.Create(container =>
             {
@@ -71,7 +71,7 @@ namespace TaskControl.ReportsModule.Application.Services
         }
 
         // 3. ОТЧЕТ ПО ТОВАРАМ (С графиками популярности)
-        public byte[] GenerateTopItemsPdf(IEnumerable<TopItemDto> data, string title = "Аналитика: Топ востребованных товаров", DateTime? startDate = null, DateTime? endDate = null)
+        public byte[] GenerateTopItemsPdf(IEnumerable<TopItemDto> data, string title = "Статистика: Топ востребованных товаров", DateTime? startDate = null, DateTime? endDate = null)
         {
             return Document.Create(container =>
             {
@@ -239,7 +239,7 @@ namespace TaskControl.ReportsModule.Application.Services
             });
         }
 
-        public byte[] GenerateOrderLeadTimePdf(IEnumerable<OrderLeadTimeDto> data, string title = "Аналитика времени выполнения заказов (Lead Time)", DateTime? startDate = null, DateTime? endDate = null)
+        public byte[] GenerateOrderLeadTimePdf(IEnumerable<OrderLeadTimeDto> data, string title = "Статистика времени выполнения заказов (Lead Time)", DateTime? startDate = null, DateTime? endDate = null)
         {
             return Document.Create(container =>
             {

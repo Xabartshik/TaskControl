@@ -168,7 +168,7 @@ namespace TaskControl.TaskModule.Application.Providers
                     TaskType = this.TaskType,
                     PriorityLevel = baseTask?.PriorityLevel ?? 1,
                     Status = baseTask?.Status ?? TaskStatus.Assigned,
-                    AssignmentStatus = (AssignmentStatus)mainAssignment.Status,
+                    AssignmentStatus = MapStatus(mainAssignment.Status),
                     CreatedAt = mainAssignment.AssignedAt,
                     Deadline = baseTask?.Deadline,
                     TaskDetails = headerDetails
@@ -180,7 +180,7 @@ namespace TaskControl.TaskModule.Application.Providers
         public async Task<IEnumerable<int>> GetAssignedEmployeeIdsAsync(int taskId)
         {
             return await _db.GetTable<OrderHandoverAssignmentModel>()
-                .Where(a => a.TaskId == taskId && a.Status != 2 && a.Status != 3 && a.AssignedToUserId != null)
+                .Where(a => a.TaskId == taskId && a.Status != (int)AssignmentStatus.Cancelled && a.AssignedToUserId != null)
                 .Select(a => a.AssignedToUserId.Value)
                 .Distinct()
                 .ToListAsync();
@@ -203,10 +203,22 @@ namespace TaskControl.TaskModule.Application.Providers
                 TaskType = this.TaskType,
                 PriorityLevel = baseTask?.PriorityLevel ?? 1,
                 Status = baseTask?.Status ?? TaskStatus.Assigned,
-                AssignmentStatus = (AssignmentStatus)assignment.Status,
+                AssignmentStatus = MapStatus(assignment.Status),
                 CreatedAt = assignment.AssignedAt,
                 Deadline = baseTask?.Deadline,
                 TaskDetails = richDetails
+            };
+        }
+
+        private AssignmentStatus MapStatus(int dbStatus)
+        {
+            return dbStatus switch
+            {
+                0 => AssignmentStatus.Assigned,
+                1 => AssignmentStatus.InProgress,
+                2 => AssignmentStatus.Completed,
+                3 => AssignmentStatus.Cancelled,
+                _ => AssignmentStatus.Assigned
             };
         }
 
@@ -268,24 +280,48 @@ namespace TaskControl.TaskModule.Application.Providers
 
             foreach (var line in lines)
             {
-                var itemInfo = await (from ip in itemPositions
-                                      join i in items on ip.ItemId equals i.ItemId
-                                      where ip.Id == line.ItemPositionId
-                                      select new { i.ItemId, i.Name, i.Barcode, ip.PositionId }).FirstOrDefaultAsync();
+                var orderPos = await _db.GetTable<OrderPositionModel>()
+                    .FirstOrDefaultAsync(op => op.UniqueId == line.OrderPositionId);
+                var itemId = orderPos?.ItemId ?? 0;
+
+                var item = await _db.GetTable<ItemModel>().FirstOrDefaultAsync(i => i.ItemId == itemId);
+
+                int? positionId = null;
+                if (line.ItemPositionId.HasValue)
+                {
+                    var ip = await _db.GetTable<ItemPositionModel>().FirstOrDefaultAsync(x => x.Id == line.ItemPositionId.Value);
+                    if (ip != null)
+                    {
+                        positionId = ip.PositionId;
+                    }
+                }
+
+                if (positionId == null && itemId > 0)
+                {
+                    var lastMovement = await _db.GetTable<ItemMovementModel>()
+                        .Where(m => m.TaskId == currentAssignment.TaskId && m.ItemId == itemId)
+                        .OrderByDescending(m => m.CreatedAt)
+                        .FirstOrDefaultAsync();
+
+                    if (lastMovement != null)
+                    {
+                        positionId = lastMovement.SourcePositionId;
+                    }
+                }
 
                 string sourceCellCode = "Неизвестная ячейка";
-                if (itemInfo != null)
+                if (positionId.HasValue)
                 {
-                    var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == itemInfo.PositionId);
-                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? itemInfo.PositionId.ToString();
+                    var sourcePosModel = await positions.FirstOrDefaultAsync(p => p.PositionId == positionId.Value);
+                    sourceCellCode = GetFullPositionCode(sourcePosModel) ?? positionId.Value.ToString();
                 }
 
                 dto.ItemsToScan.Add(new HandoverItemDto
                 {
                     LineId = line.Id,
-                    ItemId = itemInfo?.ItemId ?? 0,
-                    ItemName = itemInfo?.Name ?? "Неизвестный товар",
-                    Barcode = itemInfo?.Barcode ?? "Неизвестный штрих-код",
+                    ItemId = itemId,
+                    ItemName = item?.Name ?? "Неизвестный товар",
+                    Barcode = item?.Barcode ?? "Неизвестный штрих-код",
                     SourceCellCode = sourceCellCode,
                     Quantity = line.Quantity,
                     ScannedQuantity = line.ScannedQuantity

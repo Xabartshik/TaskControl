@@ -113,6 +113,50 @@ namespace TaskControl.TaskModule.Presentation
         }
 
         /// <summary>
+        /// Получить все задачи для текущего филиала с фильтрацией
+        /// </summary>
+        [HttpGet("tasks/all")]
+        [ProducesResponseType(typeof(IEnumerable<BossPanelTaskCardDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllTasks([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? employeeId)
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue) return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var tasks = await _bossPanelService.GetAllTasksAsync(branchId.Value, from, to, employeeId);
+                return Ok(tasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении всех задач");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получить задачи, связанные с заказом
+        /// </summary>
+        [HttpGet("orders/{orderId}/tasks")]
+        [ProducesResponseType(typeof(IEnumerable<BossPanelTaskCardDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetTasksForOrder(int orderId)
+        {
+            var branchId = GetBranchIdFromToken();
+            if (!branchId.HasValue) return Unauthorized(new { message = "Отсутствует BranchId в токене" });
+
+            try
+            {
+                var tasks = await _bossPanelService.GetTasksForOrderAsync(branchId.Value, orderId);
+                return Ok(tasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении задач заказа");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Получить загруженность сотрудников для текущего филиала
         /// </summary>
         [HttpGet("employees/workload")]
